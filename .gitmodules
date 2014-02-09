@@ -1,0 +1,3 @@
+[submodule "Z3_Haskell"]
+	path = Z3_Haskell
+	url = https://github.com/kayceesrk/Z3_Haskell
