@@ -6,10 +6,11 @@ import Language.Haskell.TH
 import Z3.Monad
 import Control.Applicative
 import Control.Monad.Reader
+import Data.List (find)
 
 newtype EventSort  = EventSort { unEventSort :: Sort }
 data Exec = Exec { getActSoup  :: AST,      -- Set Action
-                   getEvtInfo  :: FuncDecl, -- Action -> Event
+                   getEvtRecg  :: FuncDecl, -- Action -> Event -> Bool
                    getSessInfo :: FuncDecl, -- Action -> Session
                    getVisRel   :: FuncDecl, -- Action -> Action -> Bool
                    getSoRel    :: FuncDecl, -- Action -> Action -> Bool
@@ -39,6 +40,21 @@ data Prop where
   SessOrd  :: Action -> Action -> Prop
   IsEvent  :: Action -> ExpQ -> Prop
 
+
+getEvent :: Sort    -- Sort for Event datatype in Z3
+         -> ExpQ    -- ExpQ corresponding to Haskell Event value
+         -> Z3 AST  -- AST corresponding to Z3 event value
+getEvent eventSort eventValue = do -- Z3 Monad
+  constructors <- getDatatypeSortConstructors eventSort
+  nameList <- mapM getDeclName constructors
+  strList <- mapM getSymbolString nameList
+  let pList = zip strList constructors
+  constructor <- liftIO . runQ $ do -- Q Monad
+    ConE name <- eventValue
+    let (Just (_,c)) = find (\ (s,_) -> nameBase name == s) pList
+    return c
+  mkApp constructor []
+
 interpProp :: Prop -> Exec -> Z3 Axiom
 interpProp TrueP _ = Axiom <$> mkTrue
 interpProp FalseP _ = Axiom <$> mkFalse
@@ -63,6 +79,10 @@ interpProp (VisTo a1 a2) exec =
   Axiom <$> mkApp (getVisRel exec) [unAction a1, unAction a2]
 interpProp (SessOrd a1 a2) exec =
   Axiom <$> mkApp (getSoRel exec) [unAction a1, unAction a2]
+interpProp (IsEvent a e) exec = do
+  {- eventAst has type Event in Z3 -}
+  eventAst <- getEvent (getEventSort exec) e
+  Axiom <$> mkApp (getEvtRecg exec) [unAction a, eventAst]
 
 
 interpFOL :: FOL -> Exec -> Z3 Axiom
