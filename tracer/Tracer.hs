@@ -9,9 +9,11 @@ import Control.Monad.Reader
 import Data.List (find)
 
 newtype EventSort  = EventSort { unEventSort :: Sort }
-data Exec = Exec { getActSoup  :: AST,      -- Set Action
+data Exec = Exec { -- Soups
+                   getActSoup  :: AST,      -- Set Action
+                   getSessSoup :: AST,      -- Set Session
+                   -- Relations
                    getEvtRecg  :: FuncDecl, -- Action -> Event -> Bool
-                   getSessInfo :: FuncDecl, -- Action -> Session
                    getVisRel   :: FuncDecl, -- Action -> Action -> Bool
                    getSoRel    :: FuncDecl, -- Action -> Action -> Bool
                    -- Sorts
@@ -97,7 +99,6 @@ interpFOL (Forall f) exec = do
   qv <- toApp qvConst
   body <- unAx <$> interpFOL (f (Action qvConst)) exec
   Axiom <$> mkForallConst [] [qv] body
-
 
 createEventSort :: Name -> IO (Z3 EventSort)
 createEventSort t = do
