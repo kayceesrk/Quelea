@@ -4,6 +4,12 @@ import Tracer
 
 data Event = Deposit | Withdraw
 
+testProp :: FOL
+testProp = Forall $ \ a -> Forall $ \ b -> Prop $
+             (IsEvent a [| Withdraw |] `And`
+              IsEvent b [| Withdraw |]) `Impl`
+             ((a `VisTo` b) `Or` (b `VisTo` a))
+
 main = do
-  sort <- createZ3EventType ''Event
+  sort <- createEventSort ''Event
   return ()
