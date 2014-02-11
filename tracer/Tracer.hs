@@ -29,6 +29,10 @@ visRelStr = "visRel"
 soRelStr :: String
 soRelStr = "soRel"
 
+sessRelStr :: String
+sessRelStr = "sessRel"
+
+
 (>=>) :: Monad m => (a -> m b) -> (b -> m c) -> a -> m c
 f >=> g = \x -> f x >>= g
 
@@ -41,6 +45,7 @@ data Exec = Exec { -- Soups
                    _actSoup  :: AST,      -- Set Action
                    _sessSoup :: AST,      -- Set Session
                    -- Relations
+                   _sessRel  :: FuncDecl, -- Action -> Session
                    _evtRecg  :: FuncDecl, -- Action -> Event -> Bool
                    _visRel   :: FuncDecl, -- Action -> Action -> Bool
                    _soRel    :: FuncDecl, -- Action -> Action -> Bool
@@ -69,19 +74,32 @@ mkExec (EventSort eventSort) = do
   ------------
   -- Relations
   ------------
+  sessRelSym <- mkStringSymbol sessRelStr
+  sessRel <- mkFuncDecl sessRelSym [actionSort] sessionSort
+
   evtRecgRelSym <- mkStringSymbol evtRecgRelStr
   evtRecgRel <- mkFuncDecl evtRecgRelSym [actionSort, eventSort] boolSort
+
   visRelSym <- mkStringSymbol visRelStr
   visRel <- mkFuncDecl visRelSym [actionSort, actionSort] boolSort
+
   soRelSym <- mkStringSymbol soRelStr
   soRel <- mkFuncDecl soRelSym [actionSort, actionSort] boolSort
   ------------
   -- Execution
   ------------
-  return $ Exec actionSoup sessionSoup        -- Soups
-           evtRecgRel visRel soRel            -- Relations
-           actionSort sessionSort eventSort   -- Sorts
+  return $ Exec actionSoup sessionSoup      -- Soups
+           sessRel evtRecgRel visRel soRel  -- Relations
+           actionSort sessionSort eventSort -- Sorts
 
+-------------------------------------------------------------------------------
+-- Invariants
+--  (1) Actions are always added in session order.
+--  (2) The session to which the action belongs to is already in the session
+--      soup.
+--  (3) The visible actions belong to the action soup.
+--  (4) The session to which each visible action belongs to belongs to the
+--      session soup.
 
 newAction :: Maybe String           -- Action name.
           -> ExpQ                   -- Event.
@@ -115,8 +133,8 @@ data FOL where
   Prop   :: Prop -> FOL
 
 data Prop where
-  -- AST
-  AST      :: Z3 AST -> Prop
+  -- Z3AST: Is not exposed in the module.
+  Z3AST    :: (Exec -> Z3 AST) -> Prop
   -- Propositional logic constructors
   TrueP    :: Prop
   FalseP   :: Prop
@@ -146,7 +164,9 @@ getEvent eventSort eventValue = do -- Z3 Monad
   mkApp constructor []
 
 interpProp :: Prop -> ReaderT Exec Z3 Axiom
-interpProp (AST p) = lift $ Axiom <$> p
+interpProp (Z3AST f) = do
+  exec <- ask
+  lift $ Axiom <$> f exec
 interpProp TrueP = lift $ Axiom <$> mkTrue
 interpProp FalseP = lift $ Axiom <$> mkFalse
 interpProp (Not p) = do
@@ -211,19 +231,56 @@ createEventSort t = do
       mkDatatype dtSym consList
   return $ fmap EventSort makeDatatype
 
+inSameSess :: Action -> Action -> Prop
+inSameSess a b = Z3AST $ \ exec -> do
+  a1 <- mkApp (exec^.sessRel) [unAct a]
+  a2 <- mkApp (exec^.sessRel) [unAct b]
+  mkEq a1 a2
+
 assertBasicAxioms :: ReaderT Exec Z3 ()
 assertBasicAxioms = do
-  actSoup <- view actSoup
   -------------
   -- Visibility
   -------------
+  orderingAssertions VisTo
 
-  -- visibility only relates actions in action soup
-  assertFOL $ Forall (\x -> Forall (\y -> Prop $
-    ((Not $ AST $ mkSetMember (unAct x) actSoup) `Or`
-     (Not $ AST $ mkSetMember (unAct y) actSoup))
-     `Implies`
-     ((Not $ x `VisTo` y) `And`
-      (Not $ y `VisTo` x))))
+  ----------------
+  -- Session Order
+  ----------------
+  orderingAssertions SessOrd
+  -- Session order only relates actions from the same session
+  assertFOL $ Forall (\a -> (Forall (\b -> Prop $
+    (a `SessOrd` b) `Implies` (inSameSess a b)
+    )))
+
+  -- Actions from the same session are related by session order
+  assertFOL $ Forall (\a -> (Forall (\b -> Prop $
+    ((inSameSess a b) `And` (Not $ SameAct a b)) `Implies`
+    ((a `SessOrd` b) `Or` (b `SessOrd` b)))))
+
   where
     assertFOL = ((fmap unAx) . interpFOL) >=> (lift . assertCnstr)
+    --
+    orderingAssertions :: (Action -> Action -> Prop) -- Ordering relation
+                       -> ReaderT Exec Z3 ()
+    orderingAssertions rel = do
+      actSoup <- view actSoup
+      -- relation only relates actions in action soup
+      assertFOL $ Forall (\x -> Forall (\y -> Prop $
+        ((Not $ Z3AST $ \ _ -> mkSetMember (unAct x) actSoup) `Or`
+        (Not $ Z3AST $ \ _ -> mkSetMember (unAct y) actSoup))
+        `Implies`
+        ((Not $ x `rel` y) `And`
+          (Not $ y `rel` x))))
+
+      -- relation is irreflexive
+      assertFOL $ Forall (\x -> Prop $ Not $ x `rel` x)
+
+      -- relation is asymmetric
+      assertFOL $ Forall (\x -> Forall (\y -> Prop $
+        (x `rel` y) `Implies` (Not $ y `rel` x)))
+
+      -- relation is transitive
+      assertFOL $ Forall (\x -> Forall (\y -> Forall (\z -> Prop $
+        ((x `rel` y) `And` (y `rel` z)) `Implies`
+        (x `rel` z))))
