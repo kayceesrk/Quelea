@@ -32,12 +32,17 @@ soRelStr = "soRel"
 sessRelStr :: String
 sessRelStr = "sessRel"
 
+-------------------------------------------------------------------------------
+-- Helper functions
 
+-- Monadic composition
 (>=>) :: Monad m => (a -> m b) -> (b -> m c) -> a -> m c
 f >=> g = \x -> f x >>= g
 
+-------------------------------------------------------------------------------
+-- Types
+
 newtype EventSort   = EventSort { unEventSort :: Sort }
-newtype Axiom       = Axiom     { unAx :: AST }
 newtype Action      = Action    { unAct :: AST }
 newtype Session     = Session   { unSession :: AST }
 
@@ -56,6 +61,8 @@ data Exec = Exec { -- Soups
 
 makeLenses ''Exec
 
+
+-- Make an empty execution.
 mkExec :: EventSort -> Z3 Exec
 mkExec (EventSort eventSort) = do
   --------
@@ -92,7 +99,8 @@ mkExec (EventSort eventSort) = do
            sessRel evtRecgRel visRel soRel  -- Relations
            actionSort sessionSort eventSort -- Sorts
 
--------------------------------------------------------------------------------
+-- Make a new action.
+--
 -- Invariants
 --  (1) Actions are always added in session order.
 --  (2) The session to which the action belongs to is already in the session
@@ -100,7 +108,6 @@ mkExec (EventSort eventSort) = do
 --  (3) The visible actions belong to the action soup.
 --  (4) The session to which each visible action belongs to belongs to the
 --      session soup.
-
 newAction :: Maybe String           -- Action name.
           -> ExpQ                   -- Event.
           -> [Action]               -- Set of visible actions.
@@ -108,6 +115,7 @@ newAction :: Maybe String           -- Action name.
           -> StateT Exec Z3 Action  -- Returns the new action.
 newAction = undefined -- TODO
 
+-- Make a new session.
 newSession :: Maybe String           -- Session name.
            -> StateT Exec Z3 Session -- Return the new session identifier.
 newSession maybeStr = do
@@ -126,94 +134,9 @@ newSession maybeStr = do
   sessSoup .= newSoup
   return $ Session sess
 
-
-data FOL where
-  Exists :: (Action -> FOL) -> FOL
-  Forall :: (Action -> FOL) -> FOL
-  Prop   :: Prop -> FOL
-
-data Prop where
-  -- Z3AST: Is not exposed in the module.
-  Z3AST    :: (Exec -> Z3 AST) -> Prop
-  -- Propositional logic constructors
-  TrueP    :: Prop
-  FalseP   :: Prop
-  Not      :: Prop -> Prop
-  Or       :: Prop -> Prop -> Prop
-  And      :: Prop -> Prop -> Prop
-  Implies  :: Prop -> Prop -> Prop
-  -- Uninterpreterd functions
-  SameAct  :: Action -> Action -> Prop
-  VisTo    :: Action -> Action -> Prop
-  SessOrd  :: Action -> Action -> Prop
-  IsEvent  :: Action -> ExpQ -> Prop
-
-
-getEvent :: Sort    -- Sort for Event datatype in Z3
-         -> ExpQ    -- ExpQ corresponding to Haskell Event value
-         -> Z3 AST  -- AST corresponding to Z3 event value
-getEvent eventSort eventValue = do -- Z3 Monad
-  constructors <- getDatatypeSortConstructors eventSort
-  nameList <- mapM getDeclName constructors
-  strList <- mapM getSymbolString nameList
-  let pList = zip strList constructors
-  constructor <- liftIO . runQ $ do -- Q Monad
-    ConE name <- eventValue
-    let (Just (_,c)) = find (\ (s,_) -> nameBase name == s) pList
-    return c
-  mkApp constructor []
-
-interpProp :: Prop -> ReaderT Exec Z3 Axiom
-interpProp (Z3AST f) = do
-  exec <- ask
-  lift $ Axiom <$> f exec
-interpProp TrueP = lift $ Axiom <$> mkTrue
-interpProp FalseP = lift $ Axiom <$> mkFalse
-interpProp (Not p) = do
-  ast <- unAx <$> interpProp p
-  lift $ Axiom <$> mkNot ast
-interpProp (Or p1 p2) = do
-  ast1 <- unAx <$> interpProp p1
-  ast2 <- unAx <$> interpProp p2
-  lift $ Axiom <$> mkOr [ast1, ast2]
-interpProp (And p1 p2) = do
-  ast1 <- unAx <$> interpProp p1
-  ast2 <- unAx <$> interpProp p2
-  lift $ Axiom <$> mkAnd [ast1, ast2]
-interpProp (Implies p1 p2) = do
-  ast1 <- unAx <$> interpProp p1
-  ast2 <- unAx <$> interpProp p2
-  lift $ Axiom <$> mkImplies ast1 ast2
-interpProp (SameAct a1 a2) =
-  lift $ Axiom <$> mkEq (unAct a1) (unAct a2)
-interpProp (VisTo a1 a2) = do
-  vr <- view visRel
-  lift $ Axiom <$> mkApp vr [unAct a1, unAct a2]
-interpProp (SessOrd a1 a2) = do
-  so <- view soRel
-  lift $ Axiom <$> mkApp so [unAct a1, unAct a2]
-interpProp (IsEvent a e) = do
-  es <- view evtSort
-  eventAst <- lift $ getEvent es e
-  er <- view evtRecg
-  lift $ Axiom <$> mkApp er [unAct a, eventAst]
-
-interpFOL :: FOL -> ReaderT Exec Z3 Axiom
-interpFOL (Prop p) = interpProp p
-interpFOL (Exists f) = do
-  as <- view actSort
-  qvConst <- lift $ mkFreshConst "EX_" as
-  qv <- lift $ toApp qvConst
-  body <- unAx <$> interpFOL (f (Action qvConst))
-  lift $ Axiom <$> mkExistsConst [] [qv] body
-interpFOL (Forall f) = do
-  as <- view actSort
-  qvConst <- lift $ mkFreshConst "FA_" as
-  qv <- lift $ toApp qvConst
-  body <- unAx <$> interpFOL (f (Action qvConst))
-  lift $ Axiom <$> mkForallConst [] [qv] body
-
-createEventSort :: Name -> IO (Z3 EventSort)
+-- Create a Z3 Event Sort that mirrors the Haskell Event Type.
+createEventSort :: Name               -- ^ Name corresponding to Event type.
+                -> IO (Z3 EventSort)
 createEventSort t = do
   TyConI (DataD _ (typeName::Name) _ constructors _) <- runQ $ reify t
   let empty :: Z3 [Constructor] = return []
@@ -231,56 +154,150 @@ createEventSort t = do
       mkDatatype dtSym consList
   return $ fmap EventSort makeDatatype
 
-inSameSess :: Action -> Action -> Prop
-inSameSess a b = Z3AST $ \ exec -> do
-  a1 <- mkApp (exec^.sessRel) [unAct a]
-  a2 <- mkApp (exec^.sessRel) [unAct b]
-  mkEq a1 a2
+-- Fetch the Z3 Event value corresponding to Haskell Event value.
+getEvent :: ExpQ                  -- ^ Expression corresponding to Event type.
+         -> ReaderT Exec Z3 AST
+getEvent eventValue = do
+  eventSort <- view evtSort
+  constructors <- lift $ getDatatypeSortConstructors eventSort
+  nameList <- lift $ mapM getDeclName constructors
+  strList <- lift $ mapM getSymbolString nameList
+  let pList = zip strList constructors
+  constructor <- lift $ liftIO . runQ $ do -- Q Monad
+    ConE name <- eventValue
+    let (Just (_,c)) = find (\ (s,_) -> nameBase name == s) pList
+    return c
+  lift $ mkApp constructor []
+
+-- First-order logic.
+data FOL where
+  Exists_ :: (Action -> FOL) -> FOL
+  Forall_ :: (Action -> FOL) -> FOL
+  Prop_   :: Prop -> FOL
+
+exists_ = Exists_
+forall_ = forall_
+prop_   = Prop_
+
+-- Interpreter for first-order logic.
+interpFOL :: FOL -> ReaderT Exec Z3 AST
+interpFOL (Prop_ p) = unProp p
+interpFOL (Forall_ f) = do
+  as <- view actSort
+  qvConst <- lift $ mkFreshConst "FA_" as
+  qv <- lift $ toApp qvConst
+  body <- interpFOL $ f (Action qvConst)
+  lift $ mkForallConst [] [qv] body
+interpFOL (Exists_ f) = do
+  as <- view actSort
+  qvConst <- lift $ mkFreshConst "EX_" as
+  qv <- lift $ toApp qvConst
+  body <- interpFOL $ f (Action qvConst)
+  lift $ mkExistsConst [] [qv] body
+
+-- Propositional logic type.
+newtype Prop = Prop { unProp :: ReaderT Exec Z3 AST }
+
+-- Propositional logic constructors
+true_ :: Prop
+true_ = Prop $ lift mkTrue
+
+false_ :: Prop
+false_ = Prop $ lift mkFalse
+
+not_ :: Prop -> Prop
+not_ (Prop p) = Prop $ do
+  ast <- p
+  lift $ mkNot ast
+
+or_ :: Prop -> Prop -> Prop
+or_ (Prop p1) (Prop p2) = Prop $ do
+  ast1 <- p1
+  ast2 <- p2
+  lift $ mkOr [ast1, ast2]
+
+and_ :: Prop -> Prop -> Prop
+and_ (Prop p1) (Prop p2) = Prop $ do
+  ast1 <- p2
+  ast2 <- p2
+  lift $ mkAnd [ast1, ast2]
+
+implies_ :: Prop -> Prop -> Prop
+implies_ (Prop p1) (Prop p2) = Prop $ do
+  ast1 <- p2
+  ast2 <- p2
+  lift $ mkImplies ast1 ast2
+
+sameAct :: Action -> Action -> Prop
+sameAct (Action a1) (Action a2) =
+  Prop $ lift $ mkEq a1 a2
+
+visTo :: Action -> Action -> Prop
+visTo (Action a1) (Action a2) = Prop $ do
+  vr <- view visRel
+  lift $ mkApp vr [a1,a2]
+
+sessOrd :: Action -> Action -> Prop
+sessOrd (Action a1) (Action a2) = Prop $ do
+  so <- view soRel
+  lift $ mkApp so [a1, a2]
+
+isEvent :: Action -> ExpQ -> Prop
+isEvent (Action a1) e = Prop $ do
+  er <- view evtRecg
+  eventAst <- getEvent e
+  lift $ mkApp er [a1, eventAst]
+
+isInSameSess :: Action -> Action -> Prop
+isInSameSess (Action a1) (Action a2) = Prop $ do
+  sr <- view sessRel
+  as1 <- lift $ mkApp sr [a1]
+  as2 <- lift $ mkApp sr [a2]
+  lift $ mkEq a1 a2
+
 
 assertBasicAxioms :: ReaderT Exec Z3 ()
 assertBasicAxioms = do
   -------------
   -- Visibility
   -------------
-  orderingAssertions VisTo
+  orderingAssertions visTo
 
   ----------------
   -- Session Order
   ----------------
-  orderingAssertions SessOrd
+  orderingAssertions sessOrd
   -- Session order only relates actions from the same session
-  assertFOL $ Forall (\a -> (Forall (\b -> Prop $
-    (a `SessOrd` b) `Implies` (inSameSess a b)
-    )))
+  assertFOL $ forall_ $ \ a -> forall_ $ \b -> prop_ $
+    (a `sessOrd` b) `implies_` (isInSameSess a b)
+
 
   -- Actions from the same session are related by session order
-  assertFOL $ Forall (\a -> (Forall (\b -> Prop $
-    ((inSameSess a b) `And` (Not $ SameAct a b)) `Implies`
-    ((a `SessOrd` b) `Or` (b `SessOrd` b)))))
+  assertFOL $ forall_ $ \a -> forall_ $ \b -> prop_ $
+    ((isInSameSess a b) `and_` (not_ $ sameAct a b)) `implies_`
+    ((a `sessOrd` b) `or_` (b `sessOrd` b))
 
   where
-    assertFOL = ((fmap unAx) . interpFOL) >=> (lift . assertCnstr)
-    --
+    assertFOL = interpFOL >=> (lift . assertCnstr)
     orderingAssertions :: (Action -> Action -> Prop) -- Ordering relation
                        -> ReaderT Exec Z3 ()
     orderingAssertions rel = do
       actSoup <- view actSoup
+
       -- relation only relates actions in action soup
-      assertFOL $ Forall (\x -> Forall (\y -> Prop $
-        ((Not $ Z3AST $ \ _ -> mkSetMember (unAct x) actSoup) `Or`
-        (Not $ Z3AST $ \ _ -> mkSetMember (unAct y) actSoup))
-        `Implies`
-        ((Not $ x `rel` y) `And`
-          (Not $ y `rel` x))))
+      assertFOL $ forall_ $ \x -> forall_ $ \y -> prop_ $
+        ((not_ $ Prop $ lift $ mkSetMember (unAct x) actSoup) `or_`
+         (not_ $ Prop $ lift $ mkSetMember (unAct y) actSoup))
+        `implies_`
+        ((not_ $ x `rel` y) `and_` (not_ $ y `rel` x))
 
       -- relation is irreflexive
-      assertFOL $ Forall (\x -> Prop $ Not $ x `rel` x)
+      assertFOL $ forall_ $ \x -> prop_ $ not_ $ x `rel` x
 
       -- relation is asymmetric
-      assertFOL $ Forall (\x -> Forall (\y -> Prop $
-        (x `rel` y) `Implies` (Not $ y `rel` x)))
+      assertFOL $ forall_ $ \x -> forall_ $ \y -> prop_ $
+        (x `rel` y) `implies_` (not_ $ y `rel` x)
 
       -- relation is transitive
-      assertFOL $ Forall (\x -> Forall (\y -> Forall (\z -> Prop $
-        ((x `rel` y) `And` (y `rel` z)) `Implies`
-        (x `rel` z))))
+      assertFOL $ forall_ $ \x -> forall_ $ \y -> forall_ $ \z -> prop_ $
+        ((x `rel` y) `and_` (y `rel` z)) `implies_` (x `rel` z)
