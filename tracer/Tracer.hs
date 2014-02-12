@@ -81,17 +81,10 @@ mkExec (EventSort eventSort) = do
   ------------
   -- Relations
   ------------
-  sessRelSym <- mkStringSymbol sessRelStr
-  sessRel <- mkFuncDecl sessRelSym [actionSort] sessionSort
-
-  evtRecgRelSym <- mkStringSymbol evtRecgRelStr
-  evtRecgRel <- mkFuncDecl evtRecgRelSym [actionSort, eventSort] boolSort
-
-  visRelSym <- mkStringSymbol visRelStr
-  visRel <- mkFuncDecl visRelSym [actionSort, actionSort] boolSort
-
-  soRelSym <- mkStringSymbol soRelStr
-  soRel <- mkFuncDecl soRelSym [actionSort, actionSort] boolSort
+  sessRel <- mkFreshFuncDecl sessRelStr [actionSort] sessionSort
+  evtRecgRel <- mkFreshFuncDecl evtRecgRelStr [actionSort, eventSort] boolSort
+  visRel <- mkFreshFuncDecl visRelStr [actionSort, actionSort] boolSort
+  soRel <- mkFreshFuncDecl soRelStr [actionSort, actionSort] boolSort
   ------------
   -- Execution
   ------------
