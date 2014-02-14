@@ -68,8 +68,6 @@ soRelStr = "soRel"
 sessRelStr :: String
 sessRelStr = "sessRel"
 
-#define DBG_ASSERT
-
 -------------------------------------------------------------------------------
 -- Helper functions
 
@@ -84,7 +82,7 @@ assertCnstr ast = do
   astStr <- astToString ast
   liftIO $ putStrLn $ "--------\nAssert: \n--------\n" ++ astStr ++ "\n"
   Z3M.assertCnstr ast
-#elif
+#else
 assertCnstr = Z3M.assertCnstr
 #endif
 
