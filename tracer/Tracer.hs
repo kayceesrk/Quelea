@@ -5,6 +5,7 @@ module Tracer
   Session,
   ECD,
   Result (..),
+  EventType,
 
   FOL,
   forall_,
@@ -29,7 +30,9 @@ module Tracer
   newSession,
   checkConsistency,
   runECD,
-  doIO
+
+  doIO,
+  liftToSolverType
 ) where
 
 
@@ -65,6 +68,8 @@ soRelStr = "soRel"
 sessRelStr :: String
 sessRelStr = "sessRel"
 
+#define DBG_ASSERT
+
 -------------------------------------------------------------------------------
 -- Helper functions
 
@@ -72,11 +77,23 @@ sessRelStr = "sessRel"
 (>=>) :: Monad m => (a -> m b) -> (b -> m c) -> a -> m c
 f >=> g = \x -> f x >>= g
 
+assertCnstr :: AST -> Z3 ()
+#ifdef DBG_ASSERT
+assertCnstr ast = do
+  setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
+  astStr <- astToString ast
+  liftIO $ putStrLn $ "--------\nAssert: \n--------\n" ++ astStr ++ "\n"
+  Z3M.assertCnstr ast
+#elif
+assertCnstr = Z3M.assertCnstr
+#endif
+
 -------------------------------------------------------------------------------
 -- Types
 
 type ECD a = StateT Exec Z3 a
 type Result = Z3M.Result
+type EventType = Z3 Sort
 
 newtype EventSort   = EventSort { unEventSort :: Sort }
 newtype Action      = Action    { unAct :: AST }
@@ -155,13 +172,13 @@ or_ (Prop p1) (Prop p2) = Prop $ do
 
 and_ :: Prop -> Prop -> Prop
 and_ (Prop p1) (Prop p2) = Prop $ do
-  ast1 <- p2
+  ast1 <- p1
   ast2 <- p2
   lift $ mkAnd [ast1, ast2]
 
 implies_ :: Prop -> Prop -> Prop
 implies_ (Prop p1) (Prop p2) = Prop $ do
-  ast1 <- p2
+  ast1 <- p1
   ast2 <- p2
   lift $ mkImplies ast1 ast2
 
@@ -203,28 +220,25 @@ ite_ (Prop p1) (Prop p2) (Prop p3) = Prop $ do
 -- Execution builder
 
 -- Create a Z3 Event Sort that mirrors the Haskell Event Type.
-createEventSort :: Name         -- ^ Name corresponding to Event type.
-                -> IO (Z3 Sort)
-createEventSort t = do
-  TyConI (DataD _ (typeName::Name) _ constructors _) <- runQ $ reify t
-  let empty :: Z3 [Constructor] = return []
-  let makeCons consStr = do
-      consSym <- mkStringSymbol consStr
-      isConsSym <- mkStringSymbol $ "is_" ++ consStr
-      mkConstructor consSym isConsSym []
-  let bar (acc :: Z3 [Constructor]) (NormalC name _) = do
-      consList <- acc
-      newCons <- makeCons $ nameBase name
-      return (newCons:consList)
-  let makeDatatype = do
-      consList <- foldl bar empty constructors
-      dtSym <- mkStringSymbol (nameBase typeName)
-      mkDatatype dtSym consList
-  return makeDatatype
+liftToSolverType :: Name -> ExpQ
+liftToSolverType t = do
+  TyConI (DataD _ (typeName::Name) _ constructors _) <- reify t
+  let typeNameStr = nameBase typeName
+  let consNameStrList = map (\ (NormalC name _) -> nameBase name) constructors
+  [| do
+       let makeCons consStr = do
+           consSym <- mkStringSymbol consStr
+           isConsSym <- mkStringSymbol $ "is_" ++ consStr
+           mkConstructor consSym isConsSym []
+       let makeDatatype = do
+           consList <- sequence $ map makeCons consNameStrList
+           dtSym <- mkStringSymbol typeNameStr
+           mkDatatype dtSym consList
+       makeDatatype |]
 
 -- Make an empty execution.
-mkExec :: Name -> Z3 Exec
-mkExec evtName = do
+mkExec :: Z3 Sort -> Z3 Exec
+mkExec mkEventSort = do
   --------
   -- Sorts
   --------
@@ -234,7 +248,6 @@ mkExec evtName = do
   sessionSym <- mkStringSymbol sessSortStr
   sessionSort <- mkUninterpretedSort sessionSym
 
-  mkEventSort <- liftIO $ createEventSort evtName
   eventSort <- mkEventSort
   boolSort <- mkBoolSort
   --------
@@ -427,13 +440,16 @@ checkConsistency (FOL fol) = do
   exec <- get
   lift $ do
     push
+    runReaderT assertBasicAxioms exec
     ast <- runReaderT fol exec
-    assertCnstr ast
+    -- negate the given axiom and check its sat
+    mkNot ast >>= assertCnstr
+    -- we're looking for Unsat here
     r <- check
     pop 1
     return r
 
-runECD :: Name -> ECD a -> IO a
+runECD :: EventType -> ECD a -> IO a
 runECD evtName ecd = evalZ3 $ do
   exec <- mkExec evtName
   evalStateT ecd exec
