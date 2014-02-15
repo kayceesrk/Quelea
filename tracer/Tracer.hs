@@ -30,6 +30,7 @@ module Tracer
   inActSoup,
 
   -- Consistency annotation
+  basicEventual,
   readMyWrites,
 
   -- Execution builder and checker
@@ -83,7 +84,6 @@ sessRelStr = "sessRel"
 (>=>) :: Monad m => (a -> m b) -> (b -> m c) -> a -> m c
 f >=> g = \x -> f x >>= g
 
-#define DBG_ASSERT
 
 assertCnstr :: AST -> Z3 ()
 #ifdef DBG_ASSERT
@@ -92,6 +92,8 @@ assertCnstr ast = do
   astStr <- astToString ast
   liftIO $ putStrLn $ "--------\nAssert: \n--------\n" ++ astStr ++ "\n"
   Z3M.assertCnstr ast
+  r <- check
+  liftIO $ putStrLn $ "Assert Result: " ++ (show r)
 #else
 assertCnstr = Z3M.assertCnstr
 #endif
@@ -215,7 +217,7 @@ isInSameSess (Action a1) (Action a2) = Prop $ do
   sr <- view sessRel
   as1 <- lift $ mkApp sr [a1]
   as2 <- lift $ mkApp sr [a2]
-  lift $ mkEq a1 a2
+  lift $ mkEq as1 as2
 
 ite_ :: Prop -> Prop -> Prop -> Prop
 ite_ (Prop p1) (Prop p2) (Prop p3) = Prop $ do
@@ -231,6 +233,9 @@ inActSoup (Action a1) = Prop $ do
 
 -------------------------------------------------------------------------------
 -- Consistency annotations
+
+basicEventual :: (Action -> FOL)
+basicEventual _ = prop true_
 
 readMyWrites :: (Action -> FOL)
 readMyWrites x =
@@ -292,10 +297,21 @@ mkExec mkEventSort = do
              sessRel evtRecgRel visRel soRel  -- Relations
              actionSort sessionSort eventSort -- Sorts
 
+  -------------
+  -- Assertions
+  -------------
+
   -- Assertion to create an empty event recognition relation
   -- ∀x.∀y. evtRecgRel x y = false
   assertFOL exec $ forall_ $ \ (Action x) -> forallE_ $ \ (Event y) ->
                     prop $ Prop $ lift $ mkApp evtRecgRel [x,y] >>= mkNot
+
+  -- Assertion to associate all actions to a dummy session
+  -- ∀x. sessRel x = dummySess
+  dummySess <- mkFreshConst "dumSess" sessionSort
+  assertFOL exec $ forall_ $ \ (Action x) -> prop $ Prop $ lift $
+                     mkEq dummySess =<< mkApp sessRel [x]
+
 
   return exec
   where
@@ -338,14 +354,18 @@ newAction actStr evt annFun sess = do
   sessRel .= newSr
 
   -- Extend soRel
+  sr <- use sessRel
   sor <- use soRel
   newSor <- lift $ mkFreshFuncDecl soRelStr [actSort, actSort] =<< mkBoolSort
-  -- ∀x. sr(x) = sess ⇒ x ――so―→ act
-  -- Other axioms, such as so is total order, so only relates actions in the
-  -- same session are available in basic consistency axioms.
-  let antecedent x = Prop $ lift $ mkEq (unSession sess) =<< mkApp sr [unAct x]
-  let consequent x = x `sessOrd` (Action act)
-  assertFOL $ forall_ $ \x -> prop $ (antecedent x) `implies_` (consequent x)
+  -- ∀x.∀y. if (x ≠ y ∧ y = act ∧ sr(x) = sess) then newSor x y else sor x y
+  let conditional x y = Prop $ lift $ do
+                          c1 <- mkEq x y >>= mkNot
+                          c2 <- mkEq y act
+                          c3 <- mkEq (unSession sess) =<< mkApp sr [x]
+                          mkAnd [c1,c2,c3]
+  let branch rel x y = Prop $ lift $ mkApp rel [x,y]
+  assertFOL $ forall_ $ \(Action x) -> forall_ $ \(Action y) -> prop $
+                ite_ (conditional x y) (branch newSor x y) (branch sor x y)
   soRel .= newSor
 
   -- Extend evtRecgRel
@@ -361,7 +381,6 @@ newAction actStr evt annFun sess = do
   evtRecgRel .= newErr
 
   -- Assert the consistency annotation
-  doIO $ putStrLn "AnnFun"
   assertFOL $ annFun $ Action act
 
   return $ Action act
@@ -429,7 +448,7 @@ assertBasicAxioms = do
   -- Actions from the same session are related by session order
   assertFOL $ forall_ $ \a -> forall_ $ \b -> prop $
     ((isInSameSess a b) `and_` (not_ $ sameAct a b)) `implies_`
-    ((a `sessOrd` b) `or_` (b `sessOrd` b))
+    ((a `sessOrd` b) `or_` (b `sessOrd` a))
 
   where
     assertFOL = unFOL >=> (lift . assertCnstr)

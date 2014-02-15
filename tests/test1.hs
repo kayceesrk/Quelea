@@ -31,38 +31,101 @@ main = do
   --
   -- Expect Unsat
   putStrLn $ "Test 3: Expect Unsat"
-  let test3 = do
+  let test = do
         s <- newSession "s1"
-        a <- newAction "a" [| Deposit |] (\_ -> prop true_) s
+        a <- newAction "a" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop true_
         doIO $ print r
-  runECD $(liftToSolverType ''Event) test3
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 3.1
+  --
+  -- Expect Unsat
+  putStrLn $ "Test 3.1: Expect Unsat"
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
+        r <- checkConsistency $ prop $ isInSameSess a a
+        doIO $ print r
+  runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
   -- Test 4
   --
   -- Expect UnSat.
   putStrLn $ "Test 4: Expect Unsat"
-  let test4 = do
+  let test = do
         s <- newSession "s1"
-        a <- newAction "a" [| Deposit |] (\_ -> prop true_) s
-        b <- newAction "b" [| Deposit |] (\_ -> prop true_) s
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop true_
         doIO $ print r
-  runECD $(liftToSolverType ''Event) test4
+  runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
   -- Test 4.1
   --
   -- Expect Sat -> Asserting (not false).
   putStrLn $ "Test 4.1: Expect Sat"
-  let test4_1 = do
+  let test = do
         s <- newSession "s1"
-        a <- newAction "a" [| Deposit |] (\_ -> prop true_) s
-        b <- newAction "b" [| Deposit |] (\_ -> prop true_) s
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop false_
         doIO $ print r
-  runECD $(liftToSolverType ''Event) test4_1
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 4.2
+  --
+  -- Expect Unsat.
+  putStrLn $ "Test 4.2: Expect Unsat"
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] basicEventual s
+        r <- checkConsistency $ prop $ isInSameSess a b
+        doIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 4.3
+  --
+  -- Expect Unsat.
+  putStrLn $ "Test 4.3: Expect Unsat"
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] basicEventual s
+        r <- checkConsistency $ prop $ a `sessOrd` b
+        doIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 4.4
+  --
+  -- Expect Unsat.
+  putStrLn $ "Test 4.4: Expect Unsat"
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] basicEventual s
+        c <- newAction "c" [| Deposit |] basicEventual s
+        r <- checkConsistency $ prop $ isInSameSess a b
+        doIO $ print r
+        r <- checkConsistency $ prop $ isInSameSess a c
+        doIO $ print r
+        r <- checkConsistency $ prop $ isInSameSess b c
+        doIO $ print r
+        r <- checkConsistency $ prop $ a `sessOrd` b
+        doIO $ print r
+        r <- checkConsistency $ prop $ a `sessOrd` c
+        doIO $ print r
+        r <- checkConsistency $ prop $ b `sessOrd` c
+        doIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
 
   -----------------------------------------------------------------------------
   -- Test 5
@@ -71,27 +134,43 @@ main = do
   -- be visible to each other.
   putStrLn $ "Test 5: Expect Sat"
   let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
+              ((not_ $ sameAct x y) `and_` (inActSoup x) `and_` (inActSoup y))
+              `implies_`
               (x `visTo` y) `or_` (y `visTo` x)
-  let test5 = do
+  let test = do
         s <- newSession "s1"
-        a <- newAction "a" [| Deposit |] (\_ -> prop true_) s
-        b <- newAction "b" [| Deposit |] (\_ -> prop true_) s
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ fol
         doIO $ print r
-  runECD $(liftToSolverType ''Event) test5
+  runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
   -- Test 6
   --
   -- Expect Unsat.
   putStrLn $ "Test 6: Expect Unsat"
-  let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
-              ((inActSoup x) `and_` (inActSoup y)) `implies_`
-              ((x `visTo` y) `or_` (y `visTo` x))
-  let test6 = do
+  let test = do
         s <- newSession "s1"
-        a <- newAction "a" [| Deposit |] (\_ -> prop true_) s
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] readMyWrites s
+        r <- checkConsistency $ prop $ a `visTo` b
+        doIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 7
+  --
+  -- Expect Unsat.
+  putStrLn $ "Test 7: Expect Unsat"
+  let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
+              ((not_ $ sameAct x y) `and_` (inActSoup x) `and_` (inActSoup y))
+              `implies_`
+              (x `visTo` y) `or_` (y `visTo` x)
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] readMyWrites s
         r <- checkConsistency $ fol
         doIO $ print r
-  runECD $(liftToSolverType ''Event) test6
+  runECD $(liftToSolverType ''Event) test
