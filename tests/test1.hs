@@ -5,11 +5,7 @@ import Language.Haskell.TH
 
 data Event = Deposit | Withdraw
 
-checkFol fol = do
-  r <- checkConsistency fol
-  doIO $ print r
-
-runTest fol = runECD $(liftToSolverType ''Event) $ checkFol fol
+tabIO s = doIO $ (putStr "\t") >> s
 
 main = do
   -----------------------------------------------------------------------------
@@ -17,14 +13,20 @@ main = do
   --
   -- Expect Sat
   putStrLn $ "Test 1: Expect Sat"
-  runTest $ prop false_
+  let test = do
+        r <- checkConsistency $ prop false_
+        tabIO $ print r
+  runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
   -- Test 2
   --
   -- Expect Unsat
   putStrLn $ "Test 2: Expect Unsat"
-  runTest $ prop true_
+  let test = do
+        r <- checkConsistency $ prop true_
+        tabIO $ print r
+  runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
   -- Test 3
@@ -35,7 +37,7 @@ main = do
         s <- newSession "s1"
         a <- newAction "a" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop true_
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -47,8 +49,23 @@ main = do
         s <- newSession "s1"
         a <- newAction "a" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a a
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 3.2
+  --
+  -- Expect Unsat
+  putStrLn $ "Test 3.2: Expect Unsat, Sat"
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
+        r <- checkConsistency $ prop $ isEvent a [| Deposit |]
+        tabIO $ print r
+        r <- checkConsistency $ prop $ isEvent a [| Withdraw |]
+        tabIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
 
   -----------------------------------------------------------------------------
   -- Test 4
@@ -60,7 +77,7 @@ main = do
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop true_
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -73,7 +90,7 @@ main = do
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop false_
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -86,7 +103,7 @@ main = do
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a b
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -99,7 +116,7 @@ main = do
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop $ a `sessOrd` b
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -113,17 +130,17 @@ main = do
         b <- newAction "b" [| Deposit |] basicEventual s
         c <- newAction "c" [| Deposit |] basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a b
-        doIO $ print r
+        tabIO $ print r
         r <- checkConsistency $ prop $ isInSameSess a c
-        doIO $ print r
+        tabIO $ print r
         r <- checkConsistency $ prop $ isInSameSess b c
-        doIO $ print r
+        tabIO $ print r
         r <- checkConsistency $ prop $ a `sessOrd` b
-        doIO $ print r
+        tabIO $ print r
         r <- checkConsistency $ prop $ a `sessOrd` c
-        doIO $ print r
+        tabIO $ print r
         r <- checkConsistency $ prop $ b `sessOrd` c
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
 
@@ -136,13 +153,13 @@ main = do
   let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
               ((not_ $ sameAct x y) `and_` (inActSoup x) `and_` (inActSoup y))
               `implies_`
-              (x `visTo` y) `or_` (y `visTo` x)
+              ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s <- newSession "s1"
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] basicEventual s
         r <- checkConsistency $ fol
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -155,7 +172,7 @@ main = do
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] readMyWrites s
         r <- checkConsistency $ prop $ a `visTo` b
-        doIO $ print r
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test
 
   -----------------------------------------------------------------------------
@@ -166,11 +183,86 @@ main = do
   let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
               ((not_ $ sameAct x y) `and_` (inActSoup x) `and_` (inActSoup y))
               `implies_`
-              (x `visTo` y) `or_` (y `visTo` x)
+              ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s <- newSession "s1"
         a <- newAction "a" [| Deposit |] basicEventual s
         b <- newAction "b" [| Deposit |] readMyWrites s
         r <- checkConsistency $ fol
-        doIO $ print r
+        tabIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 8
+  --
+  -- Expect Unsat.
+  putStrLn $ "Test 8: Expect Unsat"
+  let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
+              (not_ $ sameAct x y) `and_`
+               (inActSoup x) `and_` (inActSoup y) `and_`
+               (isEvent x [| Withdraw |]) `and_` (isEvent y [| Withdraw |])
+              `implies_`
+              ((x `visTo` y) `or_` (y `visTo` x))
+  let test = do
+        s <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s
+        b <- newAction "b" [| Deposit |] readMyWrites s
+        r <- checkConsistency $ fol
+        tabIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 9
+  --
+  -- Expect Sat -> the withdraw operations are not totally ordered.
+  putStrLn $ "Test 9: Expect Sat"
+  let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
+              (not_ $ sameAct x y) `and_`
+               (inActSoup x) `and_` (inActSoup y) `and_`
+               (isEvent x [| Withdraw |]) `and_` (isEvent y [| Withdraw |])
+              `implies_`
+              ((x `visTo` y) `or_` (y `visTo` x))
+  let test = do
+        s1 <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s1
+        b <- newAction "b" [| Withdraw |] readMyWrites s1
+        s2 <- newSession "s2"
+        c <- newAction "c" [| Deposit |] basicEventual s2
+        d <- newAction "d" [| Withdraw |] readMyWrites s2
+        r <- checkConsistency $ fol
+        tabIO $ print r
+  runECD $(liftToSolverType ''Event) test
+
+  -----------------------------------------------------------------------------
+  -- Test 10
+  --
+  -- Expect Unsat.
+  putStrLn $ "Test 10: Expect Unsat+"
+  let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
+              ((not_ $ sameAct x y) `and_`
+               (inActSoup x) `and_` (inActSoup y) `and_`
+               (isEvent x [| Withdraw |]) `and_` (isEvent y [| Withdraw |]))
+              `implies_`
+              ((x `visTo` y) `or_` (y `visTo` x))
+  let test = do
+        s1 <- newSession "s1"
+        a <- newAction "a" [| Deposit |] basicEventual s1
+        b <- newAction "b" [| Withdraw |] strong s1
+        s2 <- newSession "s2"
+        c <- newAction "c" [| Deposit |] basicEventual s2
+        d <- newAction "d" [| Withdraw |] strong s2
+        r <- checkConsistency $ prop $ isStrongAct b
+        tabIO $ print r
+        r <- checkConsistency $ prop $ isStrongAct d
+        tabIO $ print r
+        r <- checkConsistency $ prop $ (b `visTo` d) `or_` (d `visTo` b)
+        tabIO $ print r
+        r <- checkConsistency $ prop $ isEvent b [| Withdraw |]
+        tabIO $ print r
+        r <- checkConsistency $ prop $ isEvent d [| Withdraw |]
+        tabIO $ print r
+        r <- checkConsistency $ prop $ (isEvent a [| Deposit |]) `and_` (isEvent c [| Deposit |])
+        tabIO $ print r
+        r <- checkConsistency fol
+        tabIO $ print r
   runECD $(liftToSolverType ''Event) test

@@ -7,14 +7,14 @@ module Tracer
   ECD,
   Result (..),
   EventType,
-
-  -- Logical operators
   FOL,
+  Prop,
+
+  -- Axiom builders
   forall_,
   exists_,
   prop,
 
-  Prop,
   true_,
   false_,
   not_,
@@ -22,25 +22,29 @@ module Tracer
   and_,
   implies_,
   ite_,
+
   sameAct,
   visTo,
   sessOrd,
   isEvent,
   isInSameSess,
   inActSoup,
+  isStrongAct,
 
   -- Consistency annotation
   basicEventual,
   readMyWrites,
+  strong,
 
   -- Execution builder and checker
   newAction,
   newSession,
   checkConsistency,
+  liftToSolverType,
   runECD,
 
+  -- Auxiliary functions
   doIO,
-  liftToSolverType,
 
 ) where
 
@@ -106,6 +110,7 @@ assertCnstr = Z3M.assertCnstr
 type ECD a = StateT Exec Z3 a
 type Result = Z3M.Result
 type EventType = Z3 Sort
+type ConsAnn = (Action -> ECD AST)
 
 newtype EventSort   = EventSort { unEventSort :: Sort }
 newtype Action      = Action    { unAct :: AST }
@@ -113,8 +118,9 @@ newtype Event       = Event     { unEvent :: AST }
 newtype Session     = Session   { unSession :: AST }
 
 data Exec = Exec { -- Soups
-                   _actSoup  :: AST,      -- Set Action
-                   _sessSoup :: AST,      -- Set Session
+                   _actSoup   :: AST, -- Set Action
+                   _sessSoup  :: AST, -- Set Session
+                   _strgSoup  :: AST, -- Set Action -> Set of actions with "Strong" consistency annotation.
                    -- Relations
                    _sessRel     :: FuncDecl, -- Action -> Session
                    _evtRecgRel  :: FuncDecl, -- Action -> Event -> Bool
@@ -233,15 +239,33 @@ inActSoup (Action a1) = Prop $ do
   as <- view actSoup
   lift $ mkSetMember a1 as
 
+isStrongAct :: Action -> Prop
+isStrongAct (Action a1) = Prop $ do
+  as <- view strgSoup
+  lift $ mkSetMember a1 as
+
 -------------------------------------------------------------------------------
 -- Consistency annotations
 
-basicEventual :: (Action -> FOL)
-basicEventual _ = prop true_
+assertFOL :: FOL -> ECD AST
+assertFOL (FOL fol) = do
+  exec <- get
+  lift $ runReaderT fol exec >>= assertCnstr >> mkTrue
 
-readMyWrites :: (Action -> FOL)
-readMyWrites x =
-  forall_ $ \ y -> prop $ (y `sessOrd` x) `implies_` (y `visTo` x)
+basicEventual :: ConsAnn
+basicEventual _ = lift $ mkTrue
+
+readMyWrites :: ConsAnn
+readMyWrites x = do
+  let fol = forall_ $ \ y -> prop $ (y `sessOrd` x) `implies_` (y `visTo` x)
+  assertFOL fol
+
+strong :: ConsAnn
+strong (Action x) = do
+  oldStrgSoup <- use strgSoup
+  newStrgSoup <- lift $ mkSetAdd oldStrgSoup x
+  strgSoup .= newStrgSoup
+  lift $ mkTrue
 
 -------------------------------------------------------------------------------
 -- Execution builder
@@ -277,44 +301,45 @@ mkExec mkEventSort = do
 
   eventSort <- mkEventSort
   boolSort <- mkBoolSort
+
   --------
   -- Soups
   --------
   actionSoup <- mkEmptySet actionSort
   sessionSoup <- mkEmptySet sessionSort
+  strongSoup <- mkEmptySet actionSort
+
   ------------
   -- Relations
   ------------
-  sessRel <- mkFreshFuncDecl sessRelStr [actionSort] sessionSort
-
   evtRecgRel <- mkFreshFuncDecl evtRecgRelStr [actionSort, eventSort] boolSort
-
+  sessRel <- mkFreshFuncDecl sessRelStr [actionSort] sessionSort
+  soRel <- mkFreshFuncDecl soRelStr [actionSort, actionSort] boolSort
   visRel <- mkFreshFuncDecl visRelStr [actionSort, actionSort] boolSort
 
-  soRel <- mkFreshFuncDecl soRelStr [actionSort, actionSort] boolSort
   ------------
   -- Execution
   ------------
-  let exec = Exec actionSoup sessionSoup      -- Soups
-             sessRel evtRecgRel visRel soRel  -- Relations
-             actionSort sessionSort eventSort -- Sorts
+  let exec = Exec actionSoup sessionSoup strongSoup -- Soups
+             sessRel evtRecgRel visRel soRel        -- Relations
+             actionSort sessionSort eventSort       -- Sorts
 
   -------------
   -- Assertions
   -------------
 
-  -- Assertion to create an empty event recognition relation
+  -- evtRecgRel: Assertion to create an empty event recognition relation
   -- ∀x.∀y. evtRecgRel x y = false
   assertFOL exec $ forall_ $ \ (Action x) -> forallE_ $ \ (Event y) ->
                     prop $ Prop $ lift $ mkApp evtRecgRel [x,y] >>= mkNot
 
-  -- Assertion to associate all actions to a dummy session
+  -- sessRel: Assertion to associate all actions to a dummy session
   -- ∀x. sessRel x = dummySess
   dummySess <- mkFreshConst "dumSess" sessionSort
   assertFOL exec $ forall_ $ \ (Action x) -> prop $ Prop $ lift $
                      mkEq dummySess =<< mkApp sessRel [x]
 
-  -- Assertion to create an empty soRel
+  -- soRel: Assertion to create an empty soRel
   assertFOL exec $ forall_ $ \(Action x) -> forall_ $ \(Action y) ->
                      prop $ Prop $ lift $ mkApp soRel [x,y] >>= mkNot
 
@@ -332,7 +357,7 @@ mkExec mkEventSort = do
 --      soup.
 newAction :: String                 -- Action name prefix.
           -> ExpQ                   -- Event.
-          -> (Action -> FOL)        -- Consistency annotation
+          -> ConsAnn                -- Consistency annotation
           -> Session                -- Session identifier.
           -> ECD Action             -- Returns the new action.
 newAction actStr evt annFun sess = do
@@ -353,9 +378,12 @@ newAction actStr evt annFun sess = do
   sr <- use sessRel
   newSr <- lift $ mkFreshFuncDecl sessRelStr [actSort] sessSort
   -- ∀x. if (x = act) then (newSr act = sess) else (newSr x = sr x)
-  let trueBranch x = Prop $ lift $ mkApp newSr [unAct x] >>= mkEq (unSession sess)
-  let falseBranch x = Prop $ lift $ join $ mkEq <$> (mkApp newSr [unAct x]) <*> (mkApp sr [unAct x])
-  assertFOL $ forall_ $ \x -> prop $ ite_ (sameAct x (Action act)) (trueBranch x) (falseBranch x)
+  let trueBranch x = Prop $ lift $
+        mkApp newSr [unAct x] >>= mkEq (unSession sess)
+  let falseBranch x = Prop $ lift $ join $
+        mkEq <$> (mkApp newSr [unAct x]) <*> (mkApp sr [unAct x])
+  assertFOL $ forall_ $ \x -> prop $
+        ite_ (sameAct x (Action act)) (trueBranch x) (falseBranch x)
   sessRel .= newSr
 
   -- Extend soRel
@@ -379,16 +407,21 @@ newAction actStr evt annFun sess = do
   err <- use evtRecgRel
   newErr <- lift $ mkFreshFuncDecl evtRecgRelStr [actSort, evtSort] =<< mkBoolSort
   z3Evt <- getZ3Evt evt
-  -- ∀x:Action.∀y:Event. if (x = act) then (newErr x evt) else (newErr x y = err x y)
-  let conditional x = sameAct x (Action act)
-  let trueBranch x = Prop $ lift $ mkApp newErr [unAct x, z3Evt]
+  -- ∀x:Action.∀y:Event. if (x = act ∧ y = evt)
+  --                     then (newErr x y)
+  --                     else (newErr x y = err x y)
+  let conditional x y =
+        (sameAct x (Action act)) `and_` (Prop $ lift $ mkEq z3Evt $ unEvent y)
+  let trueBranch x y = Prop $ lift $ mkApp newErr [unAct x, unEvent y]
   let falseBranch x y = Prop $ lift $ join $
-        mkEq <$> (mkApp newErr [unAct x, unEvent y]) <*> (mkApp err [unAct x, unEvent y])
-  assertFOL $ forall_ $ \x -> forallE_ $ \y -> prop $ ite_ (conditional x) (trueBranch x) (falseBranch x y)
+        mkEq <$> (mkApp newErr [unAct x, unEvent y])
+             <*> (mkApp err [unAct x, unEvent y])
+  assertFOL $ forall_ $ \x -> forallE_ $ \y -> prop $
+    ite_ (conditional x y) (trueBranch x y) (falseBranch x y)
   evtRecgRel .= newErr
 
   -- Assert the consistency annotation
-  assertFOL $ annFun $ Action act
+  (annFun $ Action act) >>= (lift . assertCnstr)
 
   return $ Action act
   where
@@ -401,7 +434,7 @@ newAction actStr evt annFun sess = do
 
 
 -- Make a new session.
-newSession :: String                 -- Session name prefix.
+newSession :: String      -- Session name prefix.
            -> ECD Session -- Return the new session identifier.
 newSession sessName = do
   ss <- use sessSort
@@ -456,6 +489,16 @@ assertBasicAxioms = do
   assertFOL $ forall_ $ \a -> forall_ $ \b -> prop $
     ((isInSameSess a b) `and_` (not_ $ sameAct a b)) `implies_`
     ((a `sessOrd` b) `or_` (b `sessOrd` a))
+
+  ---------------------
+  -- Strong Consistency
+  ---------------------
+  ss <- view strgSoup
+  assertFOL $ forall_ $ \ a -> forall_ $ \ b -> prop $
+    ((Prop $ lift $ mkSetMember (unAct a) ss) `and_`
+     (Prop $ lift $ mkSetMember (unAct b) ss) `and_`
+     (not_ $ sameAct a b)) `implies_`
+    ((a `visTo` b) `or_` (b `visTo` a))
 
   where
     assertFOL = unFOL >=> (lift . assertCnstr)
