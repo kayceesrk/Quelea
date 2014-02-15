@@ -1,12 +1,14 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, GADTs, DeriveFunctor #-}
 
 module Tracer
-( Action,
+( -- Types
+  Action,
   Session,
   ECD,
   Result (..),
   EventType,
 
+  -- Logical operators
   FOL,
   forall_,
   exists_,
@@ -25,14 +27,20 @@ module Tracer
   sessOrd,
   isEvent,
   isInSameSess,
+  inActSoup,
 
+  -- Consistency annotation
+  readMyWrites,
+
+  -- Execution builder and checker
   newAction,
   newSession,
   checkConsistency,
   runECD,
 
   doIO,
-  liftToSolverType
+  liftToSolverType,
+
 ) where
 
 
@@ -74,6 +82,8 @@ sessRelStr = "sessRel"
 -- Monadic composition
 (>=>) :: Monad m => (a -> m b) -> (b -> m c) -> a -> m c
 f >=> g = \x -> f x >>= g
+
+#define DBG_ASSERT
 
 assertCnstr :: AST -> Z3 ()
 #ifdef DBG_ASSERT
@@ -214,6 +224,18 @@ ite_ (Prop p1) (Prop p2) (Prop p3) = Prop $ do
   ast3 <- p3
   lift $ mkIte ast1 ast2 ast3
 
+inActSoup :: Action -> Prop
+inActSoup (Action a1) = Prop $ do
+  as <- view actSoup
+  lift $ mkSetMember a1 as
+
+-------------------------------------------------------------------------------
+-- Consistency annotations
+
+readMyWrites :: (Action -> FOL)
+readMyWrites x =
+  forall_ $ \ y -> prop $ (y `sessOrd` x) `implies_` (y `visTo` x)
+
 -------------------------------------------------------------------------------
 -- Execution builder
 
@@ -339,6 +361,7 @@ newAction actStr evt annFun sess = do
   evtRecgRel .= newErr
 
   -- Assert the consistency annotation
+  doIO $ putStrLn "AnnFun"
   assertFOL $ annFun $ Action act
 
   return $ Action act
@@ -454,3 +477,6 @@ runECD evtName ecd = evalZ3 $ do
 
 doIO :: IO a -> ECD a
 doIO = lift . liftIO
+
+liftZ3 :: Z3 a -> ECD a
+liftZ3 = lift
