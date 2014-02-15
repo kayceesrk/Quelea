@@ -85,6 +85,8 @@ sessRelStr = "sessRel"
 f >=> g = \x -> f x >>= g
 
 
+-- #define DBG_ASSERT
+
 assertCnstr :: AST -> Z3 ()
 #ifdef DBG_ASSERT
 assertCnstr ast = do
@@ -312,6 +314,9 @@ mkExec mkEventSort = do
   assertFOL exec $ forall_ $ \ (Action x) -> prop $ Prop $ lift $
                      mkEq dummySess =<< mkApp sessRel [x]
 
+  -- Assertion to create an empty soRel
+  assertFOL exec $ forall_ $ \(Action x) -> forall_ $ \(Action y) ->
+                     prop $ Prop $ lift $ mkApp soRel [x,y] >>= mkNot
 
   return exec
   where
@@ -363,9 +368,11 @@ newAction actStr evt annFun sess = do
                           c2 <- mkEq y act
                           c3 <- mkEq (unSession sess) =<< mkApp sr [x]
                           mkAnd [c1,c2,c3]
-  let branch rel x y = Prop $ lift $ mkApp rel [x,y]
+  let trueBranch x y = Prop $ lift $ mkApp newSor [x,y]
+  let falseBranch x y = Prop $ lift $ join $
+        mkEq <$> (mkApp newSor [x,y]) <*> (mkApp sor [x,y])
   assertFOL $ forall_ $ \(Action x) -> forall_ $ \(Action y) -> prop $
-                ite_ (conditional x y) (branch newSor x y) (branch sor x y)
+                ite_ (conditional x y) (trueBranch x y) (falseBranch x y)
   soRel .= newSor
 
   -- Extend evtRecgRel
@@ -481,6 +488,10 @@ checkConsistency (FOL fol) = do
   lift $ do
     push
     runReaderT assertBasicAxioms exec
+    r <- check
+    case r of
+      Unsat -> liftIO $ putStrLn "Basic consistency axioms failed"
+      otherwise -> return ()
     ast <- runReaderT fol exec
     -- negate the given axiom and check its sat
     mkNot ast >>= assertCnstr
