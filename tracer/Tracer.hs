@@ -30,6 +30,8 @@ module Tracer
   isInSameSess,
   inActSoup,
   isStrongAct,
+  sameAttr,
+  keyRelAttr,
 
   -- Consistency annotation
   basicEventual,
@@ -243,6 +245,12 @@ isStrongAct :: Action -> Prop
 isStrongAct (Action a1) = Prop $ do
   as <- view strgSoup
   lift $ mkSetMember a1 as
+
+sameAttr :: ExpQ -> Action -> Action -> Prop
+sameAttr attr (Action a1) (Action a2) = undefined
+
+keyRelAttr :: Action -> Action -> ExpQ -> Prop
+keyRelAttr (Action parent) (Action child) attr = undefined
 
 -------------------------------------------------------------------------------
 -- Consistency annotations
