@@ -2,6 +2,8 @@
 
 module Tracer
 ( -- Types
+  SolverEvent,
+  SolverAttr,
   Action,
   Session,
   ECD,
@@ -42,14 +44,14 @@ module Tracer
   newAction,
   newSession,
   checkConsistency,
-  liftToSolverType,
+  liftEvent,
+  liftAttr,
   runECD,
 
   -- Auxiliary functions
   doIO,
 
 ) where
-
 
 
 import Language.Haskell.TH
@@ -61,6 +63,7 @@ import Control.Lens hiding (Action)
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Maybe (fromJust)
+import Data.Map as Map
 
 -------------------------------------------------------------------------------
 -- Global strings
@@ -109,20 +112,37 @@ assertCnstr = Z3M.assertCnstr
 -------------------------------------------------------------------------------
 -- Types
 
+class Show a => SolverEvent a
+class Show a => SolverAttr a
+
 type ECD a = StateT Exec Z3 a
 type Result = Z3M.Result
 type EventType = Z3 Sort
+type AttrTypes = Z3 [Sort]
 type ConsAnn = (Action -> ECD AST)
 
 newtype EventSort   = EventSort { unEventSort :: Sort }
 newtype Action      = Action    { unAct :: AST }
+newtype Attr        = Attr      { unAttr :: AST }
 newtype Event       = Event     { unEvent :: AST }
 newtype Session     = Session   { unSession :: AST }
+
+data AttrInfo = AttrInfo {
+  _attrSort :: Sort,            -- Type of this attribute
+  _attrSoup :: AST,             -- Set of known constants for this type of
+                                -- attribute
+  _attrMap  :: Map String AST   -- Map from the name of the constant to the Z3
+                                -- constant. The name of the constant is always
+                                -- prefixed with the attribute name in otder to
+                                -- avoid conflicts.
+}
+
 
 data Exec = Exec { -- Soups
                    _actSoup   :: AST, -- Set Action
                    _sessSoup  :: AST, -- Set Session
-                   _strgSoup  :: AST, -- Set Action -> Set of actions with "Strong" consistency annotation.
+                   _strgSoup  :: AST, -- Set Action -> Set of actions with
+                                      -- "Strong" consistency annotation.
                    -- Relations
                    _sessRel     :: FuncDecl, -- Action -> Session
                    _evtRecgRel  :: FuncDecl, -- Action -> Event -> Bool
@@ -131,7 +151,9 @@ data Exec = Exec { -- Soups
                    -- Sorts
                    _actSort  :: Sort,
                    _sessSort :: Sort,
-                   _evtSort  :: Sort}
+                   _evtSort  :: Sort,
+                   -- Attributes
+                   _attrInfoMap :: Map String AttrInfo}
 
 -- First-order logic.
 newtype FOL = FOL { unFOL :: ReaderT Exec Z3 AST }
@@ -216,7 +238,7 @@ sessOrd (Action a1) (Action a2) = Prop $ do
   so <- view soRel
   lift $ mkApp so [a1, a2]
 
-isEvent :: Action -> ExpQ -> Prop
+isEvent :: SolverEvent a => Action -> a -> Prop
 isEvent (Action a1) e = Prop $ do
   er <- view evtRecgRel
   eventAst <- getEvent e
@@ -279,25 +301,36 @@ strong (Action x) = do
 -- Execution builder
 
 -- Create a Z3 Event Sort that mirrors the Haskell Event Type.
-liftToSolverType :: Name -> ExpQ
-liftToSolverType t = do
+liftEvent :: Name -> ExpQ
+liftEvent t = do
   TyConI (DataD _ (typeName::Name) _ constructors _) <- reify t
   let typeNameStr = nameBase typeName
-  let consNameStrList = map (\ (NormalC name _) -> nameBase name) constructors
+  let consNameStrList = Prelude.map (\ (NormalC name _) -> nameBase name) constructors
   [| do
        let makeCons consStr = do
            consSym <- mkStringSymbol consStr
            isConsSym <- mkStringSymbol $ "is_" ++ consStr
            mkConstructor consSym isConsSym []
        let makeDatatype = do
-           consList <- sequence $ map makeCons consNameStrList
+           consList <- sequence $ Prelude.map makeCons consNameStrList
            dtSym <- mkStringSymbol typeNameStr
            mkDatatype dtSym consList
        makeDatatype |]
 
+-- Create Z3 sorts for attributes
+liftAttr :: Name -> ExpQ
+liftAttr t = do
+  TyConI (DataD _ (typeName::Name) _ constructors _) <- reify t
+  let typeNameStr = nameBase typeName
+  let consNameStrList = Prelude.map (\ (NormalC name _) -> nameBase name) constructors
+  [| do
+       sortSymList <- sequence $ Prelude.map mkStringSymbol consNameStrList
+       sequence $ Prelude.map mkUninterpretedSort sortSymList |]
+
+
 -- Make an empty execution.
-mkExec :: Z3 Sort -> Z3 Exec
-mkExec mkEventSort = do
+mkExec :: Z3 Sort -> Z3 [Sort] -> Z3 Exec
+mkExec mkEventSort mkAttrSorts = do
   --------
   -- Sorts
   --------
@@ -308,6 +341,7 @@ mkExec mkEventSort = do
   sessionSort <- mkUninterpretedSort sessionSym
 
   eventSort <- mkEventSort
+  attrSortList <- mkAttrSorts
   boolSort <- mkBoolSort
 
   --------
@@ -325,12 +359,23 @@ mkExec mkEventSort = do
   soRel <- mkFreshFuncDecl soRelStr [actionSort, actionSort] boolSort
   visRel <- mkFreshFuncDecl visRelStr [actionSort, actionSort] boolSort
 
+  -------------
+  -- Attributes
+  -------------
+  attrNameStrList <- sequence $ Prelude.map sortToString attrSortList
+  attrInfoList <- sequence $ Prelude.map (\s -> do
+                                                  set <- mkEmptySet s
+                                                  return $ AttrInfo s set $ fromList [])
+                                         attrSortList
+  let attrInfoMap = fromList $ zip attrNameStrList attrInfoList
+
   ------------
   -- Execution
   ------------
-  let exec = Exec actionSoup sessionSoup strongSoup -- Soups
-             sessRel evtRecgRel visRel soRel        -- Relations
-             actionSort sessionSort eventSort       -- Sorts
+  let exec :: Exec = Exec actionSoup sessionSoup strongSoup -- Soups
+                     sessRel evtRecgRel visRel soRel        -- Relations
+                     actionSort sessionSort eventSort       -- Sorts
+                     attrInfoMap                            -- attrInfoMap
 
   -------------
   -- Assertions
@@ -357,14 +402,24 @@ mkExec mkEventSort = do
       ast <- runReaderT fol exec
       assertCnstr ast
 
+{-
+-- Make Attribute
+mkAttr :: String    -- Attr value. <Attr name> + this string will be the constant name.
+       -> ExpQ      -- Attr
+       -> ECD Attr
+mkAttr attrVal attr = do
+  attrInfoMap
+-}
+
 -- Make a new action.
 --
 -- Invariants
 --  (1) Actions are always added in session order.
 --  (2) The session to which the action belongs to is already in the session
 --      soup.
-newAction :: String                 -- Action name prefix.
-          -> ExpQ                   -- Event.
+newAction :: SolverEvent a =>
+          String                    -- Action name prefix.
+          -> a                      -- Event.
           -> ConsAnn                -- Consistency annotation
           -> Session                -- Session identifier.
           -> ECD Action             -- Returns the new action.
@@ -460,8 +515,7 @@ newSession sessName = do
 
 
 -- Fetch the Z3 Event value corresponding to Haskell Event value.
-getEvent :: ExpQ                  -- ^ Expression corresponding to Event type.
-         -> ReaderT Exec Z3 AST
+getEvent :: SolverEvent a => a -> ReaderT Exec Z3 AST
 getEvent eventValue = do
   eventSort <- view evtSort
   constructors <- lift $ getDatatypeSortConstructors eventSort
@@ -469,8 +523,7 @@ getEvent eventValue = do
   strList <- lift $ mapM getSymbolString nameList
   let pList = zip strList constructors
   constructor <- lift $ liftIO . runQ $ do -- Q Monad
-    ConE name <- eventValue
-    let (Just (_,c)) = find (\ (s,_) -> nameBase name == s) pList
+    let (Just (_,c)) = find (\ (s,_) -> (show eventValue) == s) pList
     return c
   lift $ mkApp constructor []
 
@@ -551,9 +604,9 @@ checkConsistency (FOL fol) = do
     pop 1
     return r
 
-runECD :: EventType -> ECD a -> IO a
-runECD evtName ecd = evalZ3 $ do
-  exec <- mkExec evtName
+runECD :: EventType -> AttrTypes -> ECD a -> IO a
+runECD evtType attrTypes ecd = evalZ3 $ do
+  exec <- mkExec evtType attrTypes
   evalStateT ecd exec
 
 doIO :: IO a -> ECD a

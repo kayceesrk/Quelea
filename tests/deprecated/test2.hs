@@ -65,4 +65,4 @@ main = do
        res <- checkConsistency calcSalSafety
        tabIO $ print res
 
- runECD $(liftToSolverType ''Event) test
+ runECD $(liftEvent ''Event) test
