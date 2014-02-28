@@ -42,6 +42,7 @@ module Tracer
 
   -- Execution builder and checker
   newAction,
+  mkAttrVal,
   newSession,
   checkConsistency,
   liftEvent,
@@ -109,6 +110,10 @@ assertCnstr ast = do
 assertCnstr = Z3M.assertCnstr
 #endif
 
+-- Traverse helper
+traverseAt :: (Applicative f, Ord k) => k -> (v -> f v) -> Map k v -> f (Map k v)
+traverseAt k = at k . traverse
+
 -------------------------------------------------------------------------------
 -- Types
 
@@ -162,6 +167,7 @@ newtype FOL = FOL { unFOL :: ReaderT Exec Z3 AST }
 newtype Prop = Prop { unProp :: ReaderT Exec Z3 AST }
 
 makeLenses ''Exec
+makeLenses ''AttrInfo
 
 -------------------------------------------------------------------------------
 -- Logic library
@@ -402,14 +408,45 @@ mkExec mkEventSort mkAttrSorts = do
       ast <- runReaderT fol exec
       assertCnstr ast
 
-{-
+
 -- Make Attribute
-mkAttr :: String    -- Attr value. <Attr name> + this string will be the constant name.
-       -> ExpQ      -- Attr
-       -> ECD Attr
-mkAttr attrVal attr = do
-  attrInfoMap
--}
+mkAttrVal :: (SolverAttr a, Show b)
+          => a    -- Attr
+          -> b    -- AttrValue. (<Attr name> + show a) will be the constant name.
+          -> ECD Attr
+mkAttrVal attr attrVal = do
+  -- Search for the given attribute value in the attrInfoMap
+  maybeAttr <- lookup (show attr) (show attrVal)
+  case maybeAttr of
+    Left ast -> return $ Attr ast
+    Right attrSort -> do
+      let valIndex = show attr ++ show attrVal
+      sym <- lift $ mkStringSymbol valIndex
+      const <- lift $ mkConst sym attrSort
+      -- update
+      aim <- use attrInfoMap
+      let ai :: AttrInfo = fromJust $ aim ^.at (show attr)
+      let am :: Map String AST = ai ^. attrMap
+      let amNew :: Map String AST = at valIndex .~ Just const $ am
+      attrInfoMap.(traverseAt $ show attr).attrMap .= amNew
+      -- return result
+      return $ Attr const
+  where
+  lookup attr attrVal = do
+    exec <- get
+    lift $ runReaderT (lookupAttrVal attr attrVal) exec
+
+
+lookupAttrVal :: String -> String -> ReaderT Exec Z3 (Either AST Sort)
+lookupAttrVal attr attrVal = do
+  m <- view attrInfoMap
+  let ai :: AttrInfo = fromJust $ m ^.at attr
+  let am :: Map String AST = ai ^. attrMap
+  let ast :: Maybe AST = am ^.at (attr ++ attrVal)
+  case ast of
+    Just ast -> return $ Left ast
+    Nothing -> return $ Right $ ai ^. attrSort
+
 
 -- Make a new action.
 --
@@ -512,6 +549,8 @@ newSession sessName = do
   newSoup <- lift $ mkSetAdd soup sess
   sessSoup .= newSoup
   return $ Session sess
+
+
 
 
 -- Fetch the Z3 Event value corresponding to Haskell Event value.
