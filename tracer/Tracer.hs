@@ -87,6 +87,9 @@ soRelStr = "soRel"
 sessRelStr :: String
 sessRelStr = "sessRel"
 
+attrRelStr :: String
+attrRelStr = "AttrRel"
+
 -------------------------------------------------------------------------------
 -- Helper functions
 
@@ -136,6 +139,7 @@ data AttrInfo = AttrInfo {
   _attrSort :: Sort,            -- Type of this attribute
   _attrSoup :: AST,             -- Set of known constants for this type of
                                 -- attribute
+  _attrRel :: FuncDecl,         -- Action -> Attr -> Bool
   _attrMap  :: Map String AST   -- Map from the name of the constant to the Z3
                                 -- constant. The name of the constant is always
                                 -- prefixed with the attribute name in otder to
@@ -369,10 +373,13 @@ mkExec mkEventSort mkAttrSorts = do
   -- Attributes
   -------------
   attrNameStrList <- sequence $ Prelude.map sortToString attrSortList
-  attrInfoList <- sequence $ Prelude.map (\s -> do
-                                                  set <- mkEmptySet s
-                                                  return $ AttrInfo s set $ fromList [])
-                                         attrSortList
+  attrInfoList <- sequence $ Prelude.map
+    (\s -> do
+             set <- mkEmptySet s
+             name <- sortToString s
+             rel <- mkFreshFuncDecl (name ++ attrRelStr) [actionSort, s] boolSort
+             return $ AttrInfo s set attrRel $ fromList [])
+    attrSortList
   let attrInfoMap = fromList $ zip attrNameStrList attrInfoList
 
   ------------
@@ -460,13 +467,14 @@ lookupAttrVal attr attrVal = do
 --  (1) Actions are always added in session order.
 --  (2) The session to which the action belongs to is already in the session
 --      soup.
-newAction :: SolverEvent a =>
-          String                    -- Action name prefix.
-          -> a                      -- Event.
+newAction :: (SolverEvent a, SolverAttr b) =>
+          String                    -- Action name prefix
+          -> a                      -- Event
+          -> [(b,Attr)]             -- Attributes
           -> ConsAnn                -- Consistency annotation
-          -> Session                -- Session identifier.
-          -> ECD Action             -- Returns the new action.
-newAction actStr evt annFun sess = do
+          -> Session                -- Session identifier
+          -> ECD Action             -- Returns the new action
+newAction actStr evt attr annFun sess = do
   actSort <- use actSort
   sessSort <- use sessSort
   evtSort <- use evtSort
