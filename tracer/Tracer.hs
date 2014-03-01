@@ -423,9 +423,15 @@ mkAttrVal attr attrVal = do
       let valIndex = show attr ++ show attrVal
       sym <- lift $ mkStringSymbol valIndex
       const <- lift $ mkConst sym attrSort
-      -- update
+      -- Fetch attrInfo
       aim <- use attrInfoMap
       let ai :: AttrInfo = fromJust $ aim ^.at (show attr)
+      -- Extend attribute soup
+      let as :: AST = ai ^. attrSoup
+      lift $ mkSetMember const as >>= mkNot >>= assertCnstr
+      newAs <- lift $ mkSetAdd as const
+      attrInfoMap.(traverseAt $ show attr).attrSoup .= newAs
+      -- update
       let am :: Map String AST = ai ^. attrMap
       let amNew :: Map String AST = at valIndex .~ Just const $ am
       attrInfoMap.(traverseAt $ show attr).attrMap .= amNew
