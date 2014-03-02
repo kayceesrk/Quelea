@@ -6,16 +6,14 @@ import Language.Haskell.TH
 data Event = Deposit | Withdraw deriving Show
 instance SolverEvent Event
 
-data Attr
-instance Show Attr where
-  show _ = ""
-
+data Attr = Empty deriving Show
 instance SolverAttr Attr
 
 
 tabIO s = doIO $ (putStr "\t") >> s
 
 main = do
+  let emptyAttr :: [(Attr,String)] = []
   -----------------------------------------------------------------------------
   -- Test 1
   --
@@ -43,7 +41,7 @@ main = do
   putStrLn $ "Test 3: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop true_
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -55,7 +53,7 @@ main = do
   putStrLn $ "Test 3.1: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a a
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -67,10 +65,10 @@ main = do
   putStrLn $ "Test 3.2: Expect Unsat, Sat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        r <- checkConsistency $ prop $ isEvent a Deposit
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        r <- checkConsistency $ prop $ isEventOf a Deposit
         tabIO $ print r
-        r <- checkConsistency $ prop $ isEvent a Withdraw
+        r <- checkConsistency $ prop $ isEventOf a Withdraw
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
 
@@ -82,8 +80,8 @@ main = do
   putStrLn $ "Test 4: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop true_
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -95,8 +93,8 @@ main = do
   putStrLn $ "Test 4.1: Expect Sat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop false_
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -108,8 +106,8 @@ main = do
   putStrLn $ "Test 4.2: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a b
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -121,8 +119,8 @@ main = do
   putStrLn $ "Test 4.3: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ a `sessOrd` b
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -134,9 +132,9 @@ main = do
   putStrLn $ "Test 4.4: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit basicEventual s
-        c <- newAction "c" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr basicEventual s
+        c <- newAction "c" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a b
         tabIO $ print r
         r <- checkConsistency $ prop $ isInSameSess a c
@@ -164,8 +162,8 @@ main = do
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit basicEventual s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ fol
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -177,8 +175,8 @@ main = do
   putStrLn $ "Test 6: Expect Unsat"
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit readMyWrites s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr readMyWrites s
         r <- checkConsistency $ prop $ a `visTo` b
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -194,8 +192,8 @@ main = do
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit readMyWrites s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr readMyWrites s
         r <- checkConsistency $ fol
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -208,13 +206,13 @@ main = do
   let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
               (not_ $ sameAct x y) `and_`
                (inActSoup x) `and_` (inActSoup y) `and_`
-               (isEvent x Withdraw) `and_` (isEvent y Withdraw)
+               (isEventOf x Withdraw) `and_` (isEventOf y Withdraw)
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s
-        b <- newAction "b" Deposit readMyWrites s
+        a <- newAction "a" Deposit emptyAttr basicEventual s
+        b <- newAction "b" Deposit emptyAttr readMyWrites s
         r <- checkConsistency $ fol
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -227,16 +225,16 @@ main = do
   let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
               (not_ $ sameAct x y) `and_`
                (inActSoup x) `and_` (inActSoup y) `and_`
-               (isEvent x Withdraw) `and_` (isEvent y Withdraw)
+               (isEventOf x Withdraw) `and_` (isEventOf y Withdraw)
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s1 <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s1
-        b <- newAction "b" Withdraw readMyWrites s1
+        a <- newAction "a" Deposit emptyAttr basicEventual s1
+        b <- newAction "b" Withdraw emptyAttr readMyWrites s1
         s2 <- newSession "s2"
-        c <- newAction "c" Deposit basicEventual s2
-        d <- newAction "d" Withdraw readMyWrites s2
+        c <- newAction "c" Deposit emptyAttr basicEventual s2
+        d <- newAction "d" Withdraw emptyAttr readMyWrites s2
         r <- checkConsistency $ fol
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
@@ -249,27 +247,27 @@ main = do
   let fol = forall_ $ \ x -> forall_ $ \ y -> prop $
               ((not_ $ sameAct x y) `and_`
                (inActSoup x) `and_` (inActSoup y) `and_`
-               (isEvent x Withdraw) `and_` (isEvent y Withdraw))
+               (isEventOf x Withdraw) `and_` (isEventOf y Withdraw))
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
         s1 <- newSession "s1"
-        a <- newAction "a" Deposit basicEventual s1
-        b <- newAction "b" Withdraw strong s1
+        a <- newAction "a" Deposit emptyAttr basicEventual s1
+        b <- newAction "b" Withdraw emptyAttr strong s1
         s2 <- newSession "s2"
-        c <- newAction "c" Deposit basicEventual s2
-        d <- newAction "d" Withdraw strong s2
+        c <- newAction "c" Deposit emptyAttr basicEventual s2
+        d <- newAction "d" Withdraw emptyAttr strong s2
         r <- checkConsistency $ prop $ isStrongAct b
         tabIO $ print r
         r <- checkConsistency $ prop $ isStrongAct d
         tabIO $ print r
         r <- checkConsistency $ prop $ (b `visTo` d) `or_` (d `visTo` b)
         tabIO $ print r
-        r <- checkConsistency $ prop $ isEvent b Withdraw
+        r <- checkConsistency $ prop $ isEventOf b Withdraw
         tabIO $ print r
-        r <- checkConsistency $ prop $ isEvent d Withdraw
+        r <- checkConsistency $ prop $ isEventOf d Withdraw
         tabIO $ print r
-        r <- checkConsistency $ prop $ (isEvent a Deposit) `and_` (isEvent c Deposit)
+        r <- checkConsistency $ prop $ (isEventOf a Deposit) `and_` (isEventOf c Deposit)
         tabIO $ print r
         r <- checkConsistency fol
         tabIO $ print r

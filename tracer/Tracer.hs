@@ -27,9 +27,10 @@ module Tracer
   ite_,
 
   sameAct,
+  distinctActs,
   visTo,
   sessOrd,
-  isEvent,
+  isEventOf,
   isInSameSess,
   inActSoup,
   isStrongAct,
@@ -40,22 +41,31 @@ module Tracer
   readMyWrites,
   strong,
 
-  -- Execution builder and checker
+  -- Execution builder
   newAction,
   newSession,
+  newInitWrite,
+  addAssertion,
+
+  -- Execution checker
   checkConsistency,
+  checkConsistencyAndIfSatDo,
+
+  -- Execution runner
   liftEvent,
   liftAttr,
   runECD,
 
   -- Auxiliary functions
   doIO,
+  showExec,
+  showModel,
 
 ) where
 
 
 import Language.Haskell.TH
-import Z3.Monad hiding (Result)
+import Z3.Monad hiding (Result, showModel)
 import qualified Z3.Monad as Z3M
 import Control.Applicative
 import Data.List (find)
@@ -146,7 +156,7 @@ data AttrInfo = AttrInfo {
                                 -- constant. The name of the constant is always
                                 -- prefixed with the attribute name in otder to
                                 -- avoid conflicts.
-}
+} deriving Show
 
 
 data Exec = Exec { -- Soups
@@ -165,7 +175,7 @@ data Exec = Exec { -- Soups
                    _evtSort     :: Sort,
                    _attrIdxSort :: Sort,
                    -- Attributes
-                   _attrInfoMap :: Map String AttrInfo}
+                   _attrInfoMap :: Map String AttrInfo} deriving Show
 
 -- First-order logic.
 newtype FOL = FOL { unFOL :: ReaderT Exec Z3 AST }
@@ -251,6 +261,10 @@ sameAct :: Action -> Action -> Prop
 sameAct (Action a1) (Action a2) =
   Prop $ lift $ mkEq a1 a2
 
+distinctActs :: [Action] -> Prop
+distinctActs al =
+  Prop $ lift $ mkDistinct $ map unAct al
+
 visTo :: Action -> Action -> Prop
 visTo (Action a1) (Action a2) = Prop $ do
   vr <- view visRel
@@ -261,8 +275,8 @@ sessOrd (Action a1) (Action a2) = Prop $ do
   so <- view soRel
   lift $ mkApp so [a1, a2]
 
-isEvent :: SolverEvent a => Action -> a -> Prop
-isEvent (Action a1) e = Prop $ do
+isEventOf :: SolverEvent a => Action -> a -> Prop
+isEventOf (Action a1) e = Prop $ do
   er <- view evtRecgRel
   eventAst <- getEvent e
   lift $ mkApp er [a1, eventAst]
@@ -493,6 +507,15 @@ lookupAttrVal attr attrVal = do
     Nothing -> return $ Right $ ai ^. attrSort
 
 
+-- Make a new initial write
+newInitWrite :: (SolverEvent a, SolverAttr b)
+             => String
+             -> a             -- Event
+             -> [(b, String)] -- Attributes
+             -> ECD Action    -- Returns the new action
+newInitWrite actStr evt attrList =
+  mkAction actStr evt attrList basicEventual Nothing
+
 -- Make a new action.
 --
 -- Invariants
@@ -506,7 +529,17 @@ newAction :: (SolverEvent a, SolverAttr b) =>
           -> ConsAnn        -- Consistency annotation
           -> Session        -- Session identifier
           -> ECD Action     -- Returns the new action
-newAction actStr evt attrList annFun sess = do
+newAction actStr evt attrList annFun sess =
+  mkAction actStr evt attrList annFun (Just sess)
+
+mkAction :: (SolverEvent a, SolverAttr b) =>
+         String            -- Action name prefix
+         -> a              -- Event
+         -> [(b,String)]   -- Attributes
+         -> ConsAnn        -- Consistency annotation
+         -> Maybe Session  -- Session identifier
+         -> ECD Action     -- Returns the new action
+mkAction actStr evt attrList annFun sess = do
   actSort <- use actSort
   sessSort <- use sessSort
   evtSort <- use evtSort
@@ -522,38 +555,42 @@ newAction actStr evt attrList annFun sess = do
   newAs <- lift $ mkSetAdd as act
   actSoup .= newAs
 
-  ---------------------
-  -- Extend sessRel
-  ---------------------
-  sr <- use sessRel
-  newSr <- lift $ mkFreshFuncDecl sessRelStr [actSort] sessSort
-  -- ∀x. if (x = act) then (newSr act = sess) else (newSr x = sr x)
-  let trueBranch x = Prop $ lift $
-        mkApp newSr [unAct x] >>= mkEq (unSession sess)
-  let falseBranch x = Prop $ lift $ join $
-        mkEq <$> (mkApp newSr [unAct x]) <*> (mkApp sr [unAct x])
-  assertFOL $ forall_ $ \x -> prop $
-        ite_ (sameAct x (Action act)) (trueBranch x) (falseBranch x)
-  sessRel .= newSr
 
-  ---------------------
-  -- Extend soRel
-  ---------------------
-  sr <- use sessRel
-  sor <- use soRel
-  newSor <- lift $ mkFreshFuncDecl soRelStr [actSort, actSort] =<< mkBoolSort
-  -- ∀x.∀y. if (x ≠ y ∧ y = act ∧ sr(x) = sess) then newSor x y else sor x y
-  let conditional x y = Prop $ lift $ do
-                          c1 <- mkEq x y >>= mkNot
-                          c2 <- mkEq y act
-                          c3 <- mkEq (unSession sess) =<< mkApp sr [x]
-                          mkAnd [c1,c2,c3]
-  let trueBranch x y = Prop $ lift $ mkApp newSor [x,y]
-  let falseBranch x y = Prop $ lift $ join $
-        mkEq <$> (mkApp newSor [x,y]) <*> (mkApp sor [x,y])
-  assertFOL $ forall_ $ \(Action x) -> forall_ $ \(Action y) -> prop $
-                ite_ (conditional x y) (trueBranch x y) (falseBranch x y)
-  soRel .= newSor
+  case sess of
+    Nothing -> return ()
+    Just sess -> do
+      ---------------------
+      -- Extend sessRel
+      ---------------------
+      sr <- use sessRel
+      newSr <- lift $ mkFreshFuncDecl sessRelStr [actSort] sessSort
+      -- ∀x. if (x = act) then (newSr act = sess) else (newSr x = sr x)
+      let trueBranch x = Prop $ lift $
+            mkApp newSr [unAct x] >>= mkEq (unSession sess)
+      let falseBranch x = Prop $ lift $ join $
+            mkEq <$> (mkApp newSr [unAct x]) <*> (mkApp sr [unAct x])
+      assertFOL $ forall_ $ \x -> prop $
+            ite_ (sameAct x (Action act)) (trueBranch x) (falseBranch x)
+      sessRel .= newSr
+
+      ---------------------
+      -- Extend soRel
+      ---------------------
+      sr <- use sessRel
+      sor <- use soRel
+      newSor <- lift $ mkFreshFuncDecl soRelStr [actSort, actSort] =<< mkBoolSort
+      -- ∀x.∀y. if (x ≠ y ∧ y = act ∧ sr(x) = sess) then newSor x y else sor x y
+      let conditional x y = Prop $ lift $ do
+                              c1 <- mkEq x y >>= mkNot
+                              c2 <- mkEq y act
+                              c3 <- mkEq (unSession sess) =<< mkApp sr [x]
+                              mkAnd [c1,c2,c3]
+      let trueBranch x y = Prop $ lift $ mkApp newSor [x,y]
+      let falseBranch x y = Prop $ lift $ join $
+            mkEq <$> (mkApp newSor [x,y]) <*> (mkApp sor [x,y])
+      assertFOL $ forall_ $ \(Action x) -> forall_ $ \(Action y) -> prop $
+                    ite_ (conditional x y) (trueBranch x y) (falseBranch x y)
+      soRel .= newSor
 
   ---------------------
   -- Extend evtRecgRel
@@ -723,10 +760,18 @@ assertBasicAxioms = do
       assertFOL $ forall_ $ \x -> forall_ $ \y -> forall_ $ \z -> prop $
         ((x `rel` y) `and_` (y `rel` z)) `implies_` (x `rel` z)
 
-checkConsistency :: FOL -> ECD Result
-checkConsistency (FOL fol) = do
+addAssertion :: FOL -> ECD Result
+addAssertion (FOL fol) = do
   exec <- get
   lift $ do
+    ast <- runReaderT fol exec
+    assertCnstr ast
+    check
+
+checkConsistencyAndIfSatDo :: ECD () -> FOL -> ECD Result
+checkConsistencyAndIfSatDo doOnSat (FOL fol) = do
+  exec <- get
+  r <- lift $ do
     push
     runReaderT assertBasicAxioms exec
     r <- check
@@ -737,12 +782,23 @@ checkConsistency (FOL fol) = do
     -- negate the given axiom and check its sat
     mkNot ast >>= assertCnstr
     -- we're looking for Unsat here
-    r <- check
+    check
+  when (r == Sat) doOnSat
+  lift $ do
     pop 1
     return r
 
+checkConsistency :: FOL -> ECD Result
+checkConsistency = checkConsistencyAndIfSatDo (return ())
+
 runECD :: EventType -> AttrType -> ECD a -> IO a
 runECD evtType attrType ecd = evalZ3 $ do
+  -- initialize parameters
+  p <- mkParams
+  s <- mkStringSymbol "model.compact"
+  paramsSetBool p s True
+  -- setParams p
+  -- make execution and run
   exec <- mkExec evtType attrType
   evalStateT ecd exec
 
@@ -751,3 +807,50 @@ doIO = lift . liftIO
 
 liftZ3 :: Z3 a -> ECD a
 liftZ3 = lift
+
+showModel :: ECD ()
+showModel = lift $ do
+  (r, maybeM) <- getModel
+  case maybeM of
+    Nothing -> liftIO $ putStrLn "showRel: Model does not exist"
+    Just m -> do
+      s <- Z3M.showModel m
+      liftIO $ putStrLn s
+
+showExec :: ECD ()
+showExec = do
+  exec <- get
+  doIO $ putStrLn $ show exec
+
+showRel :: FuncDecl -> Z3 ()
+showRel rel = do
+  (r, maybeM) <- getModel
+  case maybeM of
+    Nothing -> liftIO $ putStrLn "showRel: Model does not exist"
+    Just m -> do
+      maybefm <- evalFunc m rel
+      case maybefm of
+        Nothing -> liftIO $ putStrLn "showRel: FuncModel does not exist"
+        Just (FuncModel im ie) -> do
+          mapM (\(a:b:_,_) -> printPair a b) im
+          s <- astToString ie
+          liftIO $ putStrLn s
+  where
+    printFuncModel (FuncModel [] ie) = do
+
+    printPair a b = do
+      s1 <- astToString a
+      s2 <- astToString b
+      liftIO $ putStrLn $ "(" ++ s1 ++ ", " ++ s2 ++ ")"
+
+{-
+showVis :: ECD ()
+showVis = do
+  vis <- use visRel
+  lift $ showRel vis
+
+showSo :: ECD ()
+showSo = do
+  so <- use soRel
+  lift $ showRel so
+-}
