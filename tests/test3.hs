@@ -21,15 +21,16 @@ main = do
                     (isEventOf a Get) `implies_`
                     (isEventOf b Put `and_` sameAttr Key a b `and_`
                     sameAttr Value a b `and_` visTo b a)
+  let sameObj a b = sameAttr Key a b
   -----------------------------------------------------------------------------
   -- Test 1
   --
-  -- Expect Sat
-  putStrLn $ "Test 1: Expect Sat"
+  -- Expect Fail
+  putStrLn $ "Test 1: Expect Fail"
   let test = do
         r <- checkConsistency $ prop false_
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 2
@@ -41,15 +42,15 @@ main = do
         a <- newAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
         b <- newAction "b" Get [(Key,"x"), (Value,"1")] basicEventual s
 
-        doIO $ putStrLn "(1) Expect Unsat"
+        doIO $ putStrLn "(1) Expect Ok"
         r <- checkConsistency $ prop $ sameAttr Key a b
         tabIO $ print r
 
-        doIO $ putStrLn "(2) Expect Unsat"
+        doIO $ putStrLn "(2) Expect Ok"
         r <- checkConsistency $ prop $ sameAttr Value a b
         tabIO $ print r
 
-        doIO $ putStrLn "(3) Expect Sat"
+        doIO $ putStrLn "(3) Expect Fail"
         r <- checkConsistency $ exists_ $ \c -> prop $
           (inActSoup [c] `and_` distinctActs [a,b,c])
         tabIO $ print r
@@ -57,15 +58,15 @@ main = do
         c <- newAction "c" Put [(Key,"x"), (Value,"2")] basicEventual s
         d <- newAction "d" Get [(Key,"x"), (Value,"2")] basicEventual s
 
-        doIO $ putStrLn "(4) Expect Sat"
+        doIO $ putStrLn "(4) Expect Fail"
         r <- addAssertion readsFrom
         tabIO $ print r
 
-        doIO $ putStrLn "(5) Expect Sat"
+        doIO $ putStrLn "(5) Expect Fail"
         r <- checkConsistency{-AndIfFailDo showModel -} $ prop false_
         tabIO $ print r
 
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 3
@@ -78,15 +79,15 @@ main = do
         a <- newAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
         b <- newAction "b" Get [(Key,"x"), (Value,"2")] basicEventual s
 
-        doIO $ putStrLn "(1) Expect Sat"
+        doIO $ putStrLn "(1) Expect Fail"
         r <- addAssertion readsFrom
         tabIO $ print r
 
-        doIO $ putStrLn "(2) Expect Sat"
-        r <- checkConsistency{-AndIfFailDo showModel -} $ prop false_
+        doIO $ putStrLn "(2) Expect Fail"
+        r <- checkConsistency{- AndIfFailDo showModel -} $ prop false_
         tabIO $ print r
 
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 4
@@ -102,7 +103,7 @@ main = do
         c <- newAction "c" Get [(Key,"y"), (Value,"1")] basicEventual s2
         d <- newAction "d" Put [(Key,"x"), (Value,"1")] basicEventual s2
 
-        doIO $ putStrLn "(1) Expect Sat"
+        doIO $ putStrLn "(1) Expect Fail"
         r <- addAssertion readsFrom
         tabIO $ print r
 
@@ -110,8 +111,8 @@ main = do
         -- relation creates a cycle. ThinAir axiom fails. Hence the execution
         -- is impossible.
         doIO $ putStrLn "(2) Expect ExecImpossible"
-        r <- checkConsistencyAndIfFailDo showModel $ prop false_
+        r <- checkConsistency{- AndIfFailDo showModel -} $ prop false_
         tabIO $ print r
 
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 

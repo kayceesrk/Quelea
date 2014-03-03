@@ -1,7 +1,4 @@
-* Add thin air (so \cup vis)+ is acyclic.
-* Add sameobject relation to be taken as an argument to runECD. Should readsFrom also be supplied as argument?
-	* Modify: ryw to use sameobject
-	* Add mw and mr, which also use sameobject
+* Add mw and mr, which also use sameobject
 * Bolt-on consistency: Add explicit causal visibility (excv) relation: a --excv--> b. Add assertion:
     + hb = exec; vis; so*
 		+ hb \cap sameobject \subseteq vis

@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, GADTs, DeriveFunctor #-}
+{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, GADTs, DeriveFunctor, TypeSynonymInstances #-}
 
 module Tracer
 ( -- Types
@@ -158,6 +158,10 @@ data AttrInfo = AttrInfo {
                                 -- avoid conflicts.
 } deriving Show
 
+newtype SameObjRel = SameObjRel (Action -> Action -> Prop)
+
+instance Show SameObjRel where
+  show _ = ""
 
 data Exec = Exec { -- Soups
                    _actSoup   :: AST, -- Set Action
@@ -169,6 +173,7 @@ data Exec = Exec { -- Soups
                    _evtRecgRel  :: FuncDecl, -- Action -> Event -> Bool
                    _visRel      :: FuncDecl, -- Action -> Action -> Bool
                    _soRel       :: FuncDecl, -- Action -> Action -> Bool
+                   _sameObj     :: SameObjRel,
                    -- Sorts
                    _actSort     :: Sort,
                    _sessSort    :: Sort,
@@ -328,7 +333,8 @@ basicEventual _ = lift $ mkTrue
 
 readMyWrites :: ConsAnn
 readMyWrites x = do
-  let fol = forall_ $ \ y -> prop $ (y `sessOrd` x) `implies_` (y `visTo` x)
+  (SameObjRel sameObj) <- use sameObj
+  let fol = forall_ $ \ y -> prop $ ((y `sessOrd` x) `and_` (sameObj x y)) `implies_` (y `visTo` x)
   assertFOL fol
 
 strong :: ConsAnn
@@ -380,8 +386,11 @@ liftAttr t = do
 
 
 -- Make an empty execution.
-mkExec :: Z3 Sort -> Z3 (Sort, [Sort]) -> Z3 Exec
-mkExec mkEventSort mkAttrSorts = do
+mkExec :: Z3 Sort
+       -> Z3 (Sort, [Sort])
+       -> (Action -> Action -> Prop)
+       -> Z3 Exec
+mkExec mkEventSort mkAttrSorts sameObj = do
   --------
   -- Sorts
   --------
@@ -426,10 +435,10 @@ mkExec mkEventSort mkAttrSorts = do
   ------------
   -- Execution
   ------------
-  let exec :: Exec = Exec actionSoup sessionSoup strongSoup       -- Soups
-                     sessRel evtRecgRel visRel soRel              -- Relations
-                     actionSort sessionSort eventSort attrIdxSort -- Sorts
-                     attrInfoMap                                  -- attrInfoMap
+  let exec :: Exec = Exec actionSoup sessionSoup strongSoup               -- Soups
+                     sessRel evtRecgRel visRel soRel (SameObjRel sameObj) -- Relations
+                     actionSort sessionSort eventSort attrIdxSort         -- Sorts
+                     attrInfoMap                                          -- attrInfoMap
 
   -------------
   -- Assertions
@@ -709,10 +718,17 @@ getCons value sort = do
 
 assertBasicAxioms :: ReaderT Exec Z3 ()
 assertBasicAxioms = do
+  as <- view actSort
+  ss <- view strgSoup
+  (SameObjRel sameObj) <- view sameObj
   -------------
   -- Visibility
   -------------
   orderingAssertions visTo
+
+  -- Visibility only relates operations on same objects
+  assertFOL $ forall_ $ \ a -> forall_ $ \ b -> prop $
+       (a `visTo` b) `implies_` (sameObj a b)
 
   ----------------
   -- Session Order
@@ -734,7 +750,6 @@ assertBasicAxioms = do
   -----------------------------------
   -- Thinair visibility does not hold
   -----------------------------------
-  as <- view actSort
 
   tahbFunc <- lift $ do
     boolSort <- mkBoolSort
@@ -749,11 +764,10 @@ assertBasicAxioms = do
   ---------------------
   -- Strong Consistency
   ---------------------
-  ss <- view strgSoup
   assertFOL $ forall_ $ \ a -> forall_ $ \ b -> prop $
     ((Prop $ lift $ mkSetMember (unAct a) ss) `and_`
      (Prop $ lift $ mkSetMember (unAct b) ss) `and_`
-     (not_ $ sameAct a b)) `implies_`
+     (not_ $ sameAct a b) `and_` (sameObj a b)) `implies_`
     ((a `visTo` b) `or_` (b `visTo` a))
 
   where
@@ -815,15 +829,19 @@ checkConsistencyAndIfFailDo doOnFail (FOL fol) = do
 checkConsistency :: FOL -> ECD Result
 checkConsistency = checkConsistencyAndIfFailDo (return ())
 
-runECD :: EventType -> AttrType -> ECD a -> IO a
-runECD evtType attrType ecd = evalZ3 $ do
+runECD :: EventType -- Obtained using liftEvent
+       -> AttrType  -- Obtained using liftAttr
+       -> (Action -> Action -> Prop) -- Same object function
+       -> ECD a     -- Z3 computation
+       -> IO a
+runECD evtType attrType sameObj ecd = evalZ3 $ do
   -- initialize parameters
   p <- mkParams
   s <- mkStringSymbol "model.compact"
   paramsSetBool p s True
   -- setParams p
   -- make execution and run
-  exec <- mkExec evtType attrType
+  exec <- mkExec evtType attrType sameObj
   evalStateT ecd exec
 
 doIO :: IO a -> ECD a
