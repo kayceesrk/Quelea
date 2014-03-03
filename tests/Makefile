@@ -11,4 +11,4 @@ test3: test3.hs ../tracer/Tracer.hs
 
 
 clean:
-	rm -rf test1 test2 test3 *.o *~ *.hi
+	rm -rf test1 test2 test3 *.o *~ *.hi op

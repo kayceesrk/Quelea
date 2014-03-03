@@ -38,9 +38,9 @@ main = do
   putStrLn $ "Test 2"
 
   let test = do
-        s <- newSession "S"
-        a <- newAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
-        b <- newAction "b" Get [(Key,"x"), (Value,"1")] basicEventual s
+        s <- addSession "S"
+        a <- addAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
+        b <- addAction "b" Get [(Key,"x"), (Value,"1")] basicEventual s
 
         doIO $ putStrLn "(1) Expect Ok"
         r <- checkConsistency $ prop $ sameAttr Key a b
@@ -55,8 +55,8 @@ main = do
           (inActSoup [c] `and_` distinctActs [a,b,c])
         tabIO $ print r
 
-        c <- newAction "c" Put [(Key,"x"), (Value,"2")] basicEventual s
-        d <- newAction "d" Get [(Key,"x"), (Value,"2")] basicEventual s
+        c <- addAction "c" Put [(Key,"x"), (Value,"2")] basicEventual s
+        d <- addAction "d" Get [(Key,"x"), (Value,"2")] basicEventual s
 
         doIO $ putStrLn "(4) Expect Fail"
         r <- addAssertion readsFrom
@@ -74,10 +74,10 @@ main = do
   putStrLn $ "Test 3"
 
   let test = do
-        s <- newSession "S"
-        w0 <- newInitWrite "w0" Put [(Key,"x"), (Value,"2")]
-        a <- newAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
-        b <- newAction "b" Get [(Key,"x"), (Value,"2")] basicEventual s
+        s <- addSession "S"
+        w0 <- addInitWrite "w0" Put [(Key,"x"), (Value,"2")]
+        a <- addAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
+        b <- addAction "b" Get [(Key,"x"), (Value,"2")] basicEventual s
 
         doIO $ putStrLn "(1) Expect Fail"
         r <- addAssertion readsFrom
@@ -95,13 +95,13 @@ main = do
   putStrLn $ "Test 4"
 
   let test = do
-        s1 <- newSession "s1"
-        a <- newAction "a" Get [(Key,"x"), (Value,"1")] basicEventual s1
-        b <- newAction "b" Put [(Key,"y"), (Value,"1")] basicEventual s1
+        s1 <- addSession "s1"
+        a <- addAction "a" Get [(Key,"x"), (Value,"1")] basicEventual s1
+        b <- addAction "b" Put [(Key,"y"), (Value,"1")] basicEventual s1
 
-        s2 <- newSession "s2"
-        c <- newAction "c" Get [(Key,"y"), (Value,"1")] basicEventual s2
-        d <- newAction "d" Put [(Key,"x"), (Value,"1")] basicEventual s2
+        s2 <- addSession "s2"
+        c <- addAction "c" Get [(Key,"y"), (Value,"1")] basicEventual s2
+        d <- addAction "d" Put [(Key,"x"), (Value,"1")] basicEventual s2
 
         doIO $ putStrLn "(1) Expect Fail"
         r <- addAssertion readsFrom

@@ -42,9 +42,9 @@ module Tracer
   strong,
 
   -- Execution builder
-  newAction,
-  newSession,
-  newInitWrite,
+  addAction,
+  addSession,
+  addInitWrite,
   addAssertion,
 
   -- Execution checker
@@ -520,12 +520,12 @@ lookupAttrVal attr attrVal = do
 
 
 -- Make a new initial write
-newInitWrite :: (SolverEvent a, SolverAttr b)
+addInitWrite :: (SolverEvent a, SolverAttr b)
              => String
              -> a             -- Event
              -> [(b, String)] -- Attributes
              -> ECD Action    -- Returns the new action
-newInitWrite actStr evt attrList =
+addInitWrite actStr evt attrList =
   mkAction actStr evt attrList basicEventual Nothing
 
 -- Make a new action.
@@ -534,14 +534,14 @@ newInitWrite actStr evt attrList =
 --  (1) Actions are always added in session order.
 --  (2) The session to which the action belongs to is already in the session
 --      soup.
-newAction :: (SolverEvent a, SolverAttr b) =>
+addAction :: (SolverEvent a, SolverAttr b) =>
           String            -- Action name prefix
           -> a              -- Event
           -> [(b,String)]   -- Attributes
           -> ConsAnn        -- Consistency annotation
           -> Session        -- Session identifier
           -> ECD Action     -- Returns the new action
-newAction actStr evt attrList annFun sess =
+addAction actStr evt attrList annFun sess =
   mkAction actStr evt attrList annFun (Just sess)
 
 mkAction :: (SolverEvent a, SolverAttr b) =>
@@ -673,9 +673,9 @@ mkAction actStr evt attrList annFun sess = do
 
 
 -- Make a new session.
-newSession :: String      -- Session name prefix.
+addSession :: String      -- Session name prefix.
            -> ECD Session -- Return the new session identifier.
-newSession sessName = do
+addSession sessName = do
   ss <- use sessSort
   -- Allocate a new constant for the new session
   sess <- lift $ mkFreshConst sessName ss

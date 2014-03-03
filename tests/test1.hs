@@ -14,6 +14,7 @@ tabIO s = doIO $ (putStr "\t") >> s
 
 main = do
   let emptyAttr :: [(Attr,String)] = []
+  let sameObj a b = true_
   -----------------------------------------------------------------------------
   -- Test 1
   --
@@ -22,7 +23,7 @@ main = do
   let test = do
         r <- checkConsistency $ prop false_
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 2
@@ -32,7 +33,7 @@ main = do
   let test = do
         r <- checkConsistency $ prop true_
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 3
@@ -40,11 +41,11 @@ main = do
   -- Expect Unsat
   putStrLn $ "Test 3: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop true_
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 3.1
@@ -52,11 +53,11 @@ main = do
   -- Expect Unsat
   putStrLn $ "Test 3.1: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a a
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 3.2
@@ -64,13 +65,13 @@ main = do
   -- Expect Unsat
   putStrLn $ "Test 3.2: Expect Unsat, Sat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isEventOf a Deposit
         tabIO $ print r
         r <- checkConsistency $ prop $ isEventOf a Withdraw
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
 
   -----------------------------------------------------------------------------
@@ -79,12 +80,12 @@ main = do
   -- Expect UnSat.
   putStrLn $ "Test 4: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop true_
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 4.1
@@ -92,12 +93,12 @@ main = do
   -- Expect Sat -> Asserting (not false).
   putStrLn $ "Test 4.1: Expect Sat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop false_
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 4.2
@@ -105,12 +106,12 @@ main = do
   -- Expect Unsat.
   putStrLn $ "Test 4.2: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a b
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 4.3
@@ -118,12 +119,12 @@ main = do
   -- Expect Unsat.
   putStrLn $ "Test 4.3: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ a `sessOrd` b
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 4.4
@@ -131,10 +132,10 @@ main = do
   -- Expect Unsat.
   putStrLn $ "Test 4.4: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr basicEventual s
-        c <- newAction "c" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr basicEventual s
+        c <- addAction "c" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ prop $ isInSameSess a b
         tabIO $ print r
         r <- checkConsistency $ prop $ isInSameSess a c
@@ -147,7 +148,7 @@ main = do
         tabIO $ print r
         r <- checkConsistency $ prop $ b `sessOrd` c
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
 
   -----------------------------------------------------------------------------
@@ -161,12 +162,12 @@ main = do
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr basicEventual s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr basicEventual s
         r <- checkConsistency $ fol
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 6
@@ -174,12 +175,12 @@ main = do
   -- Expect Unsat.
   putStrLn $ "Test 6: Expect Unsat"
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr readMyWrites s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr readMyWrites s
         r <- checkConsistency $ prop $ a `visTo` b
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 7
@@ -191,12 +192,12 @@ main = do
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr readMyWrites s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr readMyWrites s
         r <- checkConsistency $ fol
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 8
@@ -210,12 +211,12 @@ main = do
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
-        s <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s
-        b <- newAction "b" Deposit emptyAttr readMyWrites s
+        s <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s
+        b <- addAction "b" Deposit emptyAttr readMyWrites s
         r <- checkConsistency $ fol
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 9
@@ -229,15 +230,15 @@ main = do
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
-        s1 <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s1
-        b <- newAction "b" Withdraw emptyAttr readMyWrites s1
-        s2 <- newSession "s2"
-        c <- newAction "c" Deposit emptyAttr basicEventual s2
-        d <- newAction "d" Withdraw emptyAttr readMyWrites s2
+        s1 <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s1
+        b <- addAction "b" Withdraw emptyAttr readMyWrites s1
+        s2 <- addSession "s2"
+        c <- addAction "c" Deposit emptyAttr basicEventual s2
+        d <- addAction "d" Withdraw emptyAttr readMyWrites s2
         r <- checkConsistency $ fol
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
   -----------------------------------------------------------------------------
   -- Test 10
@@ -251,12 +252,12 @@ main = do
               `implies_`
               ((x `visTo` y) `or_` (y `visTo` x))
   let test = do
-        s1 <- newSession "s1"
-        a <- newAction "a" Deposit emptyAttr basicEventual s1
-        b <- newAction "b" Withdraw emptyAttr strong s1
-        s2 <- newSession "s2"
-        c <- newAction "c" Deposit emptyAttr basicEventual s2
-        d <- newAction "d" Withdraw emptyAttr strong s2
+        s1 <- addSession "s1"
+        a <- addAction "a" Deposit emptyAttr basicEventual s1
+        b <- addAction "b" Withdraw emptyAttr strong s1
+        s2 <- addSession "s2"
+        c <- addAction "c" Deposit emptyAttr basicEventual s2
+        d <- addAction "d" Withdraw emptyAttr strong s2
         r <- checkConsistency $ prop $ isStrongAct b
         tabIO $ print r
         r <- checkConsistency $ prop $ isStrongAct d
@@ -271,4 +272,4 @@ main = do
         tabIO $ print r
         r <- checkConsistency fol
         tabIO $ print r
-  runECD $(liftEvent ''Event) $(liftAttr ''Attr)  test
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
