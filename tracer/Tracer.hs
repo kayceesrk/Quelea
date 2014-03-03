@@ -49,7 +49,7 @@ module Tracer
 
   -- Execution checker
   checkConsistency,
-  checkConsistencyAndIfSatDo,
+  checkConsistencyAndIfFailDo,
 
   -- Execution runner
   liftEvent,
@@ -134,7 +134,7 @@ class Show a => SolverEvent a
 class Show a => SolverAttr a
 
 type ECD a = StateT Exec Z3 a
-type Result = Z3M.Result
+data Result = Ok | Fail | ExecImpossible deriving (Show, Eq)
 type EventType = Z3 Sort
 type AttrType = Z3 (Sort, [Sort])
 type ConsAnn = (Action -> ECD AST)
@@ -781,36 +781,39 @@ assertBasicAxioms = do
         (x `rel` y) `implies_` (not_ $ y `rel` x)
 
 
+convertResult :: Z3M.Result -> Result
+convertResult Sat = Fail
+convertResult Unsat = Ok
+
 addAssertion :: FOL -> ECD Result
 addAssertion (FOL fol) = do
   exec <- get
   lift $ do
     ast <- runReaderT fol exec
     assertCnstr ast
-    check
+    convertResult <$> check
 
-checkConsistencyAndIfSatDo :: ECD () -> FOL -> ECD Result
-checkConsistencyAndIfSatDo doOnSat (FOL fol) = do
+checkConsistencyAndIfFailDo :: ECD () -> FOL -> ECD Result
+checkConsistencyAndIfFailDo doOnFail (FOL fol) = do
   exec <- get
   r <- lift $ do
     push
     runReaderT assertBasicAxioms exec
     r <- check
     case r of
-      Unsat -> liftIO $ putStrLn "Basic consistency axioms failed -- execution is impossible"
-      otherwise -> return ()
-    ast <- runReaderT fol exec
-    -- negate the given axiom and check its sat
-    mkNot ast >>= assertCnstr
-    -- we're looking for Unsat here
-    check
-  when (r == Sat) doOnSat
+      Unsat -> return ExecImpossible
+      otherwise -> do
+        ast <- runReaderT fol exec
+        -- negate the given axiom and check its sat
+        mkNot ast >>= assertCnstr
+        convertResult <$> check
+  when (r == Fail) doOnFail
   lift $ do
     pop 1
     return r
 
 checkConsistency :: FOL -> ECD Result
-checkConsistency = checkConsistencyAndIfSatDo (return ())
+checkConsistency = checkConsistencyAndIfFailDo (return ())
 
 runECD :: EventType -> AttrType -> ECD a -> IO a
 runECD evtType attrType ecd = evalZ3 $ do

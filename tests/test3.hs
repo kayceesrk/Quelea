@@ -62,7 +62,7 @@ main = do
         tabIO $ print r
 
         doIO $ putStrLn "(5) Expect Sat"
-        r <- checkConsistency{-AndIfSatDo showModel -} $ prop false_
+        r <- checkConsistency{-AndIfFailDo showModel -} $ prop false_
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
@@ -83,7 +83,7 @@ main = do
         tabIO $ print r
 
         doIO $ putStrLn "(2) Expect Sat"
-        r <- checkConsistency{-AndIfSatDo showModel -} $ prop false_
+        r <- checkConsistency{-AndIfFailDo showModel -} $ prop false_
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
@@ -106,8 +106,11 @@ main = do
         r <- addAssertion readsFrom
         tabIO $ print r
 
-        doIO $ putStrLn "(2) Expect Unsat"
-        r <- checkConsistencyAndIfSatDo showModel $ prop false_
+        -- In this example, the only possible assignment for the visibility
+        -- relation creates a cycle. ThinAir axiom fails. Hence the execution
+        -- is impossible.
+        doIO $ putStrLn "(2) Expect ExecImpossible"
+        r <- checkConsistencyAndIfFailDo showModel $ prop false_
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
