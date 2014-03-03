@@ -62,7 +62,7 @@ main = do
         tabIO $ print r
 
         doIO $ putStrLn "(5) Expect Sat"
-        r <- checkConsistency {-AndIfSatDo showModel -} $ prop false_
+        r <- checkConsistency{-AndIfSatDo showModel -} $ prop false_
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
@@ -83,7 +83,31 @@ main = do
         tabIO $ print r
 
         doIO $ putStrLn "(2) Expect Sat"
-        r <- checkConsistencyAndIfSatDo showModel  $ prop false_
+        r <- checkConsistency{-AndIfSatDo showModel -} $ prop false_
+        tabIO $ print r
+
+  runECD $(liftEvent ''Event) $(liftAttr ''Attr) test
+
+  -----------------------------------------------------------------------------
+  -- Test 4
+  --
+  putStrLn $ "Test 4"
+
+  let test = do
+        s1 <- newSession "s1"
+        a <- newAction "a" Get [(Key,"x"), (Value,"1")] basicEventual s1
+        b <- newAction "b" Put [(Key,"y"), (Value,"1")] basicEventual s1
+
+        s2 <- newSession "s2"
+        c <- newAction "c" Get [(Key,"y"), (Value,"1")] basicEventual s2
+        d <- newAction "d" Put [(Key,"x"), (Value,"1")] basicEventual s2
+
+        doIO $ putStrLn "(1) Expect Sat"
+        r <- addAssertion readsFrom
+        tabIO $ print r
+
+        doIO $ putStrLn "(2) Expect Unsat"
+        r <- checkConsistencyAndIfSatDo showModel $ prop false_
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) test

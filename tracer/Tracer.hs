@@ -270,6 +270,9 @@ visTo (Action a1) (Action a2) = Prop $ do
   vr <- view visRel
   lift $ mkApp vr [a1,a2]
 
+mkOrdRel :: FuncDecl -> Action -> Action -> Prop
+mkOrdRel rel (Action a1) (Action a2) = Prop $ lift $ mkApp rel [a1,a2]
+
 sessOrd :: Action -> Action -> Prop
 sessOrd (Action a1) (Action a2) = Prop $ do
   so <- view soRel
@@ -725,6 +728,24 @@ assertBasicAxioms = do
     ((isInSameSess a b) `and_` (not_ $ sameAct a b)) `implies_`
     ((a `sessOrd` b) `or_` (b `sessOrd` a))
 
+  -- session order is transitive
+  isTransitive sessOrd
+
+  -----------------------------------
+  -- Thinair visibility does not hold
+  -----------------------------------
+  as <- view actSort
+
+  tahbFunc <- lift $ do
+    boolSort <- mkBoolSort
+    mkFreshFuncDecl "tahb" [as, as] boolSort
+  let tahbRel = mkOrdRel tahbFunc
+
+  assertFOL $ forall_ $ \a -> forall_ $ \b -> prop $
+    ((a `sessOrd` b) `or_` (a `visTo` b)) `implies_` (a `tahbRel` b)
+  isTransitive tahbRel
+  orderingAssertions tahbRel -- asserts acyclicity
+
   ---------------------
   -- Strong Consistency
   ---------------------
@@ -737,8 +758,11 @@ assertBasicAxioms = do
 
   where
     assertFOL = unFOL >=> (lift . assertCnstr)
-    orderingAssertions :: (Action -> Action -> Prop) -- Ordering relation
-                       -> ReaderT Exec Z3 ()
+
+    isTransitive rel = do
+      assertFOL $ forall_ $ \x -> forall_ $ \y -> forall_ $ \z -> prop $
+        ((x `rel` y) `and_` (y `rel` z)) `implies_` (x `rel` z)
+
     orderingAssertions rel = do
       actSoup <- view actSoup
 
@@ -756,9 +780,6 @@ assertBasicAxioms = do
       assertFOL $ forall_ $ \x -> forall_ $ \y -> prop $
         (x `rel` y) `implies_` (not_ $ y `rel` x)
 
-      -- relation is transitive
-      assertFOL $ forall_ $ \x -> forall_ $ \y -> forall_ $ \z -> prop $
-        ((x `rel` y) `and_` (y `rel` z)) `implies_` (x `rel` z)
 
 addAssertion :: FOL -> ECD Result
 addAssertion (FOL fol) = do
@@ -776,7 +797,7 @@ checkConsistencyAndIfSatDo doOnSat (FOL fol) = do
     runReaderT assertBasicAxioms exec
     r <- check
     case r of
-      Unsat -> liftIO $ putStrLn "Basic consistency axioms failed"
+      Unsat -> liftIO $ putStrLn "Basic consistency axioms failed -- execution is impossible"
       otherwise -> return ()
     ast <- runReaderT fol exec
     -- negate the given axiom and check its sat
@@ -836,8 +857,6 @@ showRel rel = do
           s <- astToString ie
           liftIO $ putStrLn s
   where
-    printFuncModel (FuncModel [] ie) = do
-
     printPair a b = do
       s1 <- astToString a
       s2 <- astToString b
