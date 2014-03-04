@@ -1,8 +1,9 @@
 {-# Language TemplateHaskell, ScopedTypeVariables #-}
 
-import Tracer hiding (inActSoup)
+import Tracer hiding (inActSoup, checkConsistency, addAssertion)
 import qualified Tracer as T
 import Language.Haskell.TH
+import Control.Monad
 
 data Event = Put | Get deriving Show
 instance SolverEvent Event
@@ -11,6 +12,14 @@ data Attr = Key | Value deriving Show
 instance SolverAttr Attr
 
 tabIO s = doIO $ (putStr "\t") >> s
+
+checkResult foo fol testID expect = do
+  r <- foo fol
+  when (r /= expect) (tabIO $ print $ testID ++ " failed!")
+  return r
+
+checkConsistency = checkResult T.checkConsistency
+addAssertion = checkResult T.addAssertion
 
 inActSoup :: [Action] -> Prop
 inActSoup [] = true_
@@ -28,7 +37,7 @@ main = do
   -- Expect Fail
   putStrLn $ "Test 1: Expect Fail"
   let test = do
-        r <- checkConsistency $ prop false_
+        r <- checkConsistency (prop false_) "1" Fail
         tabIO $ print r
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
 
@@ -43,27 +52,27 @@ main = do
         b <- addAction "b" Get [(Key,"x"), (Value,"1")] basicEventual s
 
         doIO $ putStrLn "(1) Expect Ok"
-        r <- checkConsistency $ prop $ sameAttr Key a b
+        r <- checkConsistency (prop $ sameAttr Key a b) "2.1" Ok
         tabIO $ print r
 
         doIO $ putStrLn "(2) Expect Ok"
-        r <- checkConsistency $ prop $ sameAttr Value a b
+        r <- checkConsistency (prop $ sameAttr Value a b) "2.2" Ok
         tabIO $ print r
 
         doIO $ putStrLn "(3) Expect Fail"
-        r <- checkConsistency $ exists_ $ \c -> prop $
-          (inActSoup [c] `and_` distinctActs [a,b,c])
+        r <- checkConsistency (exists_ $ \c -> prop $
+          (inActSoup [c] `and_` distinctActs [a,b,c])) "2.3" Fail
         tabIO $ print r
 
         c <- addAction "c" Put [(Key,"x"), (Value,"2")] basicEventual s
         d <- addAction "d" Get [(Key,"x"), (Value,"2")] basicEventual s
 
-        doIO $ putStrLn "(4) Expect Fail"
-        r <- addAssertion readsFrom
+        doIO $ putStrLn "(4) Expect Ok"
+        r <- addAssertion readsFrom "2.4" Ok
         tabIO $ print r
 
         doIO $ putStrLn "(5) Expect Fail"
-        r <- checkConsistency{-AndIfFailDo showModel -} $ prop false_
+        r <- checkConsistency{-AndIfFailDo showModel -} (prop false_) "2.5" Fail
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
@@ -79,12 +88,12 @@ main = do
         a <- addAction "a" Put [(Key,"x"), (Value,"1")] basicEventual s
         b <- addAction "b" Get [(Key,"x"), (Value,"2")] basicEventual s
 
-        doIO $ putStrLn "(1) Expect Fail"
-        r <- addAssertion readsFrom
+        doIO $ putStrLn "(1) Expect Ok"
+        r <- addAssertion readsFrom "3.1" Ok
         tabIO $ print r
 
         doIO $ putStrLn "(2) Expect Fail"
-        r <- checkConsistency{- AndIfFailDo showModel -} $ prop false_
+        r <- checkConsistency{- AndIfFailDo showModel -} (prop false_) "3.2" Fail
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test
@@ -103,15 +112,15 @@ main = do
         c <- addAction "c" Get [(Key,"y"), (Value,"1")] basicEventual s2
         d <- addAction "d" Put [(Key,"x"), (Value,"1")] basicEventual s2
 
-        doIO $ putStrLn "(1) Expect Fail"
-        r <- addAssertion readsFrom
+        doIO $ putStrLn "(1) Expect Ok"
+        r <- addAssertion readsFrom "4.1" Ok
         tabIO $ print r
 
         -- In this example, the only possible assignment for the visibility
         -- relation creates a cycle. ThinAir axiom fails. Hence the execution
         -- is impossible.
         doIO $ putStrLn "(2) Expect ExecImpossible"
-        r <- checkConsistency{- AndIfFailDo showModel -} $ prop false_
+        r <- checkConsistency{- AndIfFailDo showModel -} (prop false_) "4.2" ExecImpossible
         tabIO $ print r
 
   runECD $(liftEvent ''Event) $(liftAttr ''Attr) sameObj test

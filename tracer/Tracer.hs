@@ -805,7 +805,15 @@ addAssertion (FOL fol) = do
   lift $ do
     ast <- runReaderT fol exec
     assertCnstr ast
-    convertResult <$> check
+    {-
+     - Since we are looking for Sat here, we need to interpret the result of
+     - checking satisfiability differently when compared to checking
+     - consistency -> Sat is Ok, and Unsat is Fail.
+     -}
+    interpResult <$> check
+  where
+    interpResult Sat = Ok
+    interpResult Unsat = Fail
 
 checkConsistencyAndIfFailDo :: ECD () -> FOL -> ECD Result
 checkConsistencyAndIfFailDo doOnFail (FOL fol) = do
