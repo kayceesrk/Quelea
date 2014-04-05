@@ -17,7 +17,7 @@ tabIO s = doIO $ (putStr "\t") >> s
 
 checkConsistency fol testID expect = do
   r <- T.checkConsistency fol
-  when (r /= expect) (tabIO $ print $ testID ++ " failed!")
+  when (r /= expect) (tabIO $ putStrLn $ testID ++ " failed! (╯°□°)╯ ︵ ┻━┻ ")
   return r
 
 main = do

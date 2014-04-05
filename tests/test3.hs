@@ -15,7 +15,7 @@ tabIO s = doIO $ (putStr "\t") >> s
 
 checkResult foo fol testID expect = do
   r <- foo fol
-  when (r /= expect) (tabIO $ print $ testID ++ " failed!")
+  when (r /= expect) (tabIO $ putStrLn $ testID ++ " failed!")
   return r
 
 checkConsistency = checkResult T.checkConsistency
