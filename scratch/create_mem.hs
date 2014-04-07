@@ -31,19 +31,6 @@ instance CasType Link where
     return $ Link x y
   casType _ = CBlob
 
-{- createMemory :: Query Schema () ()
-createMemory = "create table memory\
-                  \ (key uuid,\
-                  \ sess uuid,\
-                  \ at timeuuid,\
-                  \ event text,\
-                  \ value int,\
-                  \ visSessList list<uuid>,\
-                  \ visAtList list<timeuuid>,\
-                  \ attrLabelList list<text>,\
-                  \ attrValList list<int>,\
-                  \ primary key (key, sess, at))" -}
-
 createMemory :: Query Schema () ()
 createMemory = "create table memory\
                   \ (key uuid,\
