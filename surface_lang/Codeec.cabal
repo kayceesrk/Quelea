@@ -1,0 +1,22 @@
+Name:           Codeec
+Version:        0.0.1
+Cabal-Version:  >= 1.2
+License:        BSD3
+License-File:   LICENSE
+Author:         KC Sivaramakrishnan
+Category:       Experimental
+Synopsis:       Programming with eventually consistent memory on top of Cassandra.
+
+Library
+  Build-Depends:
+    base,
+    cassandra-cql,
+    containers,
+    monads-tf,
+    lens,
+    z3,
+    template-haskell,
+    fgl
+  Exposed-modules:
+    Codeec, SpecCheck
+  Extensions: CPP
