@@ -74,7 +74,7 @@ data ProcState = ProcState {
 
 makeLenses ''ProcState
 
-data Proc a b = Proc { unProc :: StateT ProcState CQL.Cas b }
+type Proc a b = StateT ProcState CQL.Cas b
 
 instance CQL.CasType Link where
   putCas (Link x y) = do
@@ -85,13 +85,6 @@ instance CQL.CasType Link where
     y <- fromIntegral <$> getWord64be
     return $ Link x y
   casType _ = CQL.CBlob
-
-instance Monad (Proc a) where
-  Proc r >>= f = Proc $ r >>= \s -> do { liftIO $ print "!!!!"; unProc $ f s }
-  return = return
-
-instance MonadIO (Proc a) where
-  liftIO = Proc . liftIO
 
 class CQL.CasType a => Effect a where
 
@@ -113,7 +106,7 @@ performIO :: IO a -> Proc b a
 performIO = liftIO
 
 effect :: (Effect a) => a -> Proc a ()
-effect value = Proc $ do
+effect value = do
   k <- use key
   v <- use vis
   s <- use sess
@@ -139,7 +132,7 @@ performOp core tname k args = do
   liftIO $ putStrLn "4"
   let !ps = ProcState tname k (S.fromList [Link sess 0]) sess (0::Int64)
   liftIO $ putStrLn "5"
-  res <- evalStateT (unProc $ core ctxt args) ps
+  res <- evalStateT (core ctxt args) ps
   liftIO $ putStrLn $ "HERE" ++ show res
   return res
   where

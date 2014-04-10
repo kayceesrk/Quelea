@@ -16,12 +16,12 @@ deposit :: Ctxt Int -> Int -> Proc Int ()
 deposit _ amt = effect amt
 
 getBalance :: Ctxt Int -> () -> Proc Int Int
-getBalance _ () = return 0 {- do
+getBalance ops () = do
   let v = foldl acc 0 $ labNodes ops
   performIO $ print v
   return v
   where
-    acc s (_::Int, Deposit i) = s + i -}
+    acc s (_::Int, i) = s + i
 --    acc s (_::Int, Withdraw i) = s - i
 
 main = do
@@ -29,6 +29,8 @@ main = do
   x <- randomIO
   runEC pool $ do
     createTable "BankAccount"
+    performOp deposit "BankAccount" x 100
+    performOp deposit "BankAccount" x 200
     performOp getBalance "BankAccount" x ()
     liftIO $ print "HERE--222"
 
