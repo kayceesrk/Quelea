@@ -16,7 +16,12 @@ Library
     lens,
     z3,
     template-haskell,
-    fgl
+    fgl,
+    uuid,
+    transformers,
+    cereal,
+    text,
+    random
   Exposed-modules:
     Codeec, SpecCheck
   Extensions: CPP
