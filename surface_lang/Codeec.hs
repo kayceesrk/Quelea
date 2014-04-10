@@ -7,15 +7,16 @@ module Codeec (
 
 EC,
 Proc,
-
-Effect,
+Effect(..),
 Ctxt,
 Key,
-
 Table,
 
 createTable,
 performOp,
+runEC,
+effect,
+performIO
 
 )
 where
@@ -55,6 +56,7 @@ import Data.Int (Int64)
 import Control.Monad.Trans (liftIO)
 import Control.Monad (zipWithM)
 import System.Random
+import Control.Monad.IO.Class
 
 type EC a = CQL.Cas a
 type Key  = UUID
@@ -85,23 +87,30 @@ instance CQL.CasType Link where
   casType _ = CQL.CBlob
 
 instance Monad (Proc a) where
-  Proc r >>= f = Proc $ r >>= unProc . f
+  Proc r >>= f = Proc $ r >>= \s -> do { liftIO $ print "!!!!"; unProc $ f s }
   return = return
 
-class CQL.CasType a => Effect a
+instance MonadIO (Proc a) where
+  liftIO = Proc . liftIO
+
+class CQL.CasType a => Effect a where
+
 type Ctxt a = Gr a ()
 
 mkCreateTable :: Table -> CQL.Query CQL.Schema () ()
-mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at int, value blob, vis set<blob>)"
+mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at bigint, vis set<blob>, value int, primary key (key, sess, at)) "
 
-mkInsert :: Table -> CQL.Query CQL.Write (Key, Sess, Int64, a, S.Set Link) ()
-mkInsert tname = CQL.query $ pack $ "insert into " ++ tname ++ " (key, sess, at, value, vis) values (?, ?, ?, ?, ?)"
+mkInsert :: Table -> CQL.Query CQL.Write (Key, Sess, Int64, S.Set Link, a) ()
+mkInsert tname = CQL.query $ pack $ "insert into " ++ tname ++ " (key, sess, at, vis, value) values (?, ?, ?, ?, ?)"
 
-mkRead :: Table -> CQL.Query CQL.Rows (Key) (Key, Sess, Int64, a, S.Set Link)
-mkRead tname = CQL.query $ pack $ "select * from " ++ tname ++ " where key=?"
+mkRead :: Table -> CQL.Query CQL.Rows (Key) (Key, Sess, Int64, S.Set Link, a)
+mkRead tname = CQL.query $ pack $ "select key, sess, at, vis, value from " ++ tname ++ " where key=?"
 
 createTable :: Table -> EC ()
 createTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkCreateTable tname) ()
+
+performIO :: IO a -> Proc b a
+performIO = liftIO
 
 effect :: (Effect a) => a -> Proc a ()
 effect value = Proc $ do
@@ -111,9 +120,9 @@ effect value = Proc $ do
   a <- use actid
   t <- use table
   actid += 1
-  CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, value, v)
+  liftIO . print =<< CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
 
-performOp :: Effect a
+performOp :: (Effect a, Show res)
           => (Ctxt a -> arg -> Proc a res)
           -> Table
           -> Key
@@ -121,12 +130,20 @@ performOp :: Effect a
           -> EC res
 performOp core tname k args = do
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
-  nodes <- zipWithM foo rows [1..(length rows)]
-  let ctxt = mkGraph nodes []
+  liftIO $ putStrLn "1"
+  !nodes <- zipWithM foo rows [0..(length rows)]
+  liftIO $ putStrLn $ "2  " ++ (show $ length rows)
+  let !ctxt = mkGraph nodes []
+  liftIO $ putStrLn "3"
   sess <- liftIO randomIO
-  let ps = ProcState tname k S.empty sess 1
-  (res, _) <- runStateT (unProc $ core ctxt args) ps
+  liftIO $ putStrLn "4"
+  let !ps = ProcState tname k (S.fromList [Link sess 0]) sess (0::Int64)
+  liftIO $ putStrLn "5"
+  res <- evalStateT (unProc $ core ctxt args) ps
+  liftIO $ putStrLn $ "HERE" ++ show res
   return res
   where
-    foo (_, _, _, value, _) (i :: Node) = return (i, value)
+    foo (_, _, _, _, value) (i :: Node) = return (i, value)
 
+runEC :: CQL.Pool -> EC a -> IO a
+runEC = CQL.runCas

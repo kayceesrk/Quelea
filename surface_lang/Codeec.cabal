@@ -6,6 +6,7 @@ License-File:   LICENSE
 Author:         KC Sivaramakrishnan
 Category:       Experimental
 Synopsis:       Programming with eventually consistent memory on top of Cassandra.
+build-type:     Simple
 
 Library
   Build-Depends:
