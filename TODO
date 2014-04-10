@@ -1,7 +1,1 @@
-* Add mw and mr, which also use sameobject
-* Bolt-on consistency: Add explicit causal visibility (excv) relation: a --excv--> b. Add assertion:
-    + hb = excv; vis; so*
-		+ hb \cap sameobject \subseteq vis
-	* Add hb from (forall_ a in initWrites) to (forall_ a notin initwrites)
-	* Add hb clause for readsFrom
-* Add transaction support.
+
