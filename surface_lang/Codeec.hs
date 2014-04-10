@@ -91,7 +91,7 @@ class CQL.CasType a => Effect a where
 type Ctxt a = Gr a ()
 
 mkCreateTable :: Table -> CQL.Query CQL.Schema () ()
-mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at bigint, vis set<blob>, value int, primary key (key, sess, at)) "
+mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at bigint, vis set<blob>, value blob, primary key (key, sess, at)) "
 
 mkInsert :: Table -> CQL.Query CQL.Write (Key, Sess, Int64, S.Set Link, a) ()
 mkInsert tname = CQL.query $ pack $ "insert into " ++ tname ++ " (key, sess, at, vis, value) values (?, ?, ?, ?, ?)"
@@ -113,7 +113,7 @@ effect value = do
   a <- use actid
   t <- use table
   actid += 1
-  liftIO . print =<< CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
+  CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
 
 performOp :: (Effect a, Show res)
           => (Ctxt a -> arg -> Proc a res)
@@ -123,17 +123,11 @@ performOp :: (Effect a, Show res)
           -> EC res
 performOp core tname k args = do
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
-  liftIO $ putStrLn "1"
-  !nodes <- zipWithM foo rows [0..(length rows)]
-  liftIO $ putStrLn $ "2  " ++ (show $ length rows)
-  let !ctxt = mkGraph nodes []
-  liftIO $ putStrLn "3"
+  nodes <- zipWithM foo rows [0..(length rows)]
+  let ctxt = mkGraph nodes []
   sess <- liftIO randomIO
-  liftIO $ putStrLn "4"
-  let !ps = ProcState tname k (S.fromList [Link sess 0]) sess (0::Int64)
-  liftIO $ putStrLn "5"
+  let ps = ProcState tname k (S.fromList [Link sess 0]) sess (0::Int64)
   res <- evalStateT (core ctxt args) ps
-  liftIO $ putStrLn $ "HERE" ++ show res
   return res
   where
     foo (_, _, _, _, value) (i :: Node) = return (i, value)
