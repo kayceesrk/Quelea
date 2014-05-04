@@ -13,7 +13,7 @@ Key,
 Table,
 
 createTable,
-performOp,
+doProc,
 runEC,
 effect,
 performIO
@@ -57,8 +57,8 @@ import Control.Monad.Trans (liftIO)
 import Control.Monad (zipWithM)
 import System.Random
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Class (lift)
 
-type EC a = CQL.Cas a
 type Key  = UUID
 type Sess = UUID
 type Table = String
@@ -68,13 +68,22 @@ data ProcState = ProcState {
                   _table :: String,
                   _key   :: Key,
                   _vis   :: S.Set Link,
-                  _sess  :: Sess,
-                  _actid :: Int64
+                  _sess_PS  :: Sess,
+                  _actid_PS :: Int64
                 }
 
 makeLenses ''ProcState
 
 type Proc a b = StateT ProcState CQL.Cas b
+
+data ECState = ECState {
+                 _sess_EC  :: Sess,
+                 _actid_EC :: Int64
+               }
+
+makeLenses ''ECState
+
+type EC a = StateT ECState CQL.Cas a
 
 instance CQL.CasType Link where
   putCas (Link x y) = do
@@ -109,28 +118,37 @@ effect :: (Effect a) => a -> Proc a ()
 effect value = do
   k <- use key
   v <- use vis
-  s <- use sess
-  a <- use actid
+  s <- use sess_PS
+  a <- use actid_PS
   t <- use table
-  actid += 1
+  actid_PS += 1
   CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
 
-performOp :: (Effect a, Show res)
-          => (Ctxt a -> arg -> Proc a res)
-          -> Table
-          -> Key
-          -> arg
-          -> EC res
-performOp core tname k args = do
+doProc :: (Effect a, Show res)
+       => (Ctxt a -> arg -> Proc a res)
+       -> Table
+       -> Key
+       -> arg
+       -> EC res
+doProc core tname k args = do
+  -- Create the context
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
   nodes <- zipWithM foo rows [0..(length rows)]
   let ctxt = mkGraph nodes []
-  sess <- liftIO randomIO
-  let ps = ProcState tname k (S.fromList [Link sess 0]) sess (0::Int64)
-  res <- evalStateT (core ctxt args) ps
+  -- Create the state for the stored procedure and execute it
+  s <- use sess_EC
+  a <- use actid_EC
+  let ps = ProcState tname k (S.fromList [Link s 0]) s a
+  (res, ps) <- lift $ runStateT (core ctxt args) ps
+  -- Update the actid in EC monad
+  actid_EC .= ps^.actid_PS
   return res
   where
     foo (_, _, _, _, value) (i :: Node) = return (i, value)
 
 runEC :: CQL.Pool -> EC a -> IO a
-runEC = CQL.runCas
+runEC pool ec = do
+  sess <- liftIO randomIO
+  let ecst = ECState sess (0::Int64)
+  let cas = evalStateT ec ecst
+  CQL.runCas pool cas
