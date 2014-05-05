@@ -41,6 +41,7 @@ where
  * Tie together (3) and (4) with (1) and (2).
  -}
 
+import Debug.Trace
 import Data.Text (Text, pack)
 import Language.Haskell.TH
 import qualified Database.Cassandra.CQL as CQL
@@ -52,15 +53,17 @@ import Control.Lens hiding (Action)
 import Control.Monad.Trans.State
 import Data.Data
 import qualified Data.Set as S
+import qualified Data.Map as M
 import Data.Maybe
-import Data.Serialize
+import Data.Serialize hiding (get, put)
 import Control.Applicative
 import Data.Int (Int64)
 import Control.Monad.Trans (liftIO)
-import Control.Monad (zipWithM)
+import Control.Monad (zipWithM, foldM)
 import System.Random
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class (lift)
+import Data.Foldable
 
 type Key  = UUID
 type Sess = UUID
@@ -136,13 +139,50 @@ effect value = do
   actid_PS += 1
   CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
 
+data MkCtxtState a = MkCtxtState {
+                     _hashMap :: M.Map Addr Node,
+                     _ctxt :: Ctxt a
+                    }
 
-mkCtxt :: [RowValue a] -> Ctxt a
-mkCtxt rows = do
-  nodes <- zipWithM foo rows [0..(length rows)]
-  return $ mkGraph nodes []
+makeLenses ''MkCtxtState
+
+-- Traverse helper
+traverseAt :: (Applicative f, Ord k) => k -> (v -> f v) -> M.Map k v -> f (M.Map k v)
+traverseAt k = at k . traverse
+
+mkCtxtLoadNodes :: [RowValue a] -> State (MkCtxtState a) ()
+mkCtxtLoadNodes [] = return ()
+mkCtxtLoadNodes (x:xs) = do
+  let (_, sess, aid, vis, value) = x
+  let addr = Addr sess aid
+  hm <- use hashMap
+  x <- use ctxt
+  let newId = M.size hm
+  hashMap .= (at addr ?~ newId $ hm)
+  ctxt .= insNode (newId, (sess, aid, value)) x
+  mkCtxtLoadNodes xs
+
+mkCtxtLoadEdges :: [RowValue a] -> State (MkCtxtState a) ()
+mkCtxtLoadEdges [] = return ()
+mkCtxtLoadEdges (x:xs) = do
+  let (_,sess,aid,vis,_) = x
+  let curAddr = Addr sess aid
+  forM_ vis (\a -> processEdge a curAddr)
+  mkCtxtLoadEdges xs
   where
-    foo (_, sess, at, _, value) (i :: Node) = return (i, (sess, at, value))
+    processEdge :: Addr -> Addr -> State (MkCtxtState a) ()
+    processEdge a b = do
+      hm <- use hashMap
+      x <- use ctxt
+      case (hm ^.at a, hm ^.at b) of
+        (Just ai, Just bi) -> ctxt .= insEdge (ai, bi, ()) x
+        otherwise -> return ()
+
+mkCtxt :: Effect a => [RowValue a] -> Ctxt a
+mkCtxt rows =
+  let comp = mkCtxtLoadNodes rows >> mkCtxtLoadEdges rows
+      MkCtxtState _ ctxt = execState comp (MkCtxtState M.empty $ mkGraph [] [])
+  in ctxt
 
 mkVisSet :: Ctxt a -> Sess -> S.Set Addr
 mkVisSet ctxt sess =
@@ -160,7 +200,7 @@ doProc :: (Effect a, Show res)
 doProc core tname k args = do
   -- Create the context
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
-  ctxt <- mkCtxt rows
+  let ctxt = mkCtxt rows
   -- Create the state for the stored procedure and execute it
   s <- use sess_EC
   a <- use actid_EC
@@ -173,7 +213,7 @@ doProc core tname k args = do
 printCtxt :: Effect a => Table -> Key -> (Ctxt a -> Ctxt a) -> EC ()
 printCtxt tname k f = do
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
-  ctxt <- mkCtxt rows
+  let ctxt = mkCtxt rows
   liftIO $ print $ f ctxt
 
 runEC :: CQL.Pool -> EC a -> IO a
