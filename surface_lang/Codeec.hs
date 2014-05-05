@@ -234,5 +234,3 @@ runEC pool ec = do
   let ecst = ECState sess (0::ActId)
   let cas = evalStateT ec ecst
   CQL.runCas pool cas
-
-
