@@ -9,6 +9,8 @@ test2: test2.hs
 test3: test3.hs ../tracer/Tracer.hs
 	ghc -cpp test3.hs ../tracer/Tracer.hs
 
+db_test: db_test.hs
+	ghc -cpp db_test.hs
 
 clean:
-	rm -rf test1 test2 test3 *.o *~ *.hi op
+	rm -rf test1 test2 test3 *.o *~ *.hi op db_test

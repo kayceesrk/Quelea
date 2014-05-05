@@ -13,10 +13,13 @@ Key,
 Table,
 
 createTable,
+dropTable,
 doProc,
 runEC,
 effect,
-performIO
+
+performIO,
+printCtxt
 
 )
 where
@@ -62,14 +65,15 @@ import Control.Monad.Trans.Class (lift)
 type Key  = UUID
 type Sess = UUID
 type Table = String
-data Link = Link UUID Int64 deriving (Eq, Ord, Read, Show)
+type ActId = Int64
+data Addr = Addr Sess ActId deriving (Eq, Ord, Read, Show)
 
 data ProcState = ProcState {
                   _table :: String,
                   _key   :: Key,
-                  _vis   :: S.Set Link,
+                  _vis   :: S.Set Addr,
                   _sess_PS  :: Sess,
-                  _actid_PS :: Int64
+                  _actid_PS :: ActId
                 }
 
 makeLenses ''ProcState
@@ -78,38 +82,46 @@ type Proc a b = StateT ProcState CQL.Cas b
 
 data ECState = ECState {
                  _sess_EC  :: Sess,
-                 _actid_EC :: Int64
+                 _actid_EC :: ActId
                }
 
 makeLenses ''ECState
 
 type EC a = StateT ECState CQL.Cas a
 
-instance CQL.CasType Link where
-  putCas (Link x y) = do
+instance CQL.CasType Addr where
+  putCas (Addr x y) = do
     putLazyByteString $ toByteString x
     (putWord64be . fromIntegral) y
   getCas = do
     x <- fromJust . fromByteString <$> getLazyByteString 16
     y <- fromIntegral <$> getWord64be
-    return $ Link x y
+    return $ Addr x y
   casType _ = CQL.CBlob
 
-class CQL.CasType a => Effect a where
+class (CQL.CasType a, Show a) => Effect a where
 
-type Ctxt a = Gr a ()
+type Ctxt a = Gr (Sess, ActId, a) ()
+
+type RowValue a = (Key, Sess, ActId, S.Set Addr, a)
 
 mkCreateTable :: Table -> CQL.Query CQL.Schema () ()
 mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at bigint, vis set<blob>, value blob, primary key (key, sess, at)) "
 
-mkInsert :: Table -> CQL.Query CQL.Write (Key, Sess, Int64, S.Set Link, a) ()
+mkDropTable :: Table -> CQL.Query CQL.Schema () ()
+mkDropTable tname = CQL.query $ pack $ "drop table " ++ tname
+
+mkInsert :: Table -> CQL.Query CQL.Write (RowValue a) ()
 mkInsert tname = CQL.query $ pack $ "insert into " ++ tname ++ " (key, sess, at, vis, value) values (?, ?, ?, ?, ?)"
 
-mkRead :: Table -> CQL.Query CQL.Rows (Key) (Key, Sess, Int64, S.Set Link, a)
+mkRead :: Table -> CQL.Query CQL.Rows (Key) (RowValue a)
 mkRead tname = CQL.query $ pack $ "select key, sess, at, vis, value from " ++ tname ++ " where key=?"
 
 createTable :: Table -> EC ()
 createTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkCreateTable tname) ()
+
+dropTable :: Table -> EC ()
+dropTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkDropTable tname) ()
 
 performIO :: IO a -> Proc b a
 performIO = liftIO
@@ -124,6 +136,21 @@ effect value = do
   actid_PS += 1
   CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
 
+
+mkCtxt :: [RowValue a] -> Ctxt a
+mkCtxt rows = do
+  nodes <- zipWithM foo rows [0..(length rows)]
+  return $ mkGraph nodes []
+  where
+    foo (_, sess, at, _, value) (i :: Node) = return (i, (sess, at, value))
+
+mkVisSet :: Ctxt a -> Sess -> S.Set Addr
+mkVisSet ctxt sess =
+  let visSet = S.fromList $ map (\(_,(sess, at, _)) -> Addr sess at) $ labNodes ctxt
+  in if S.size(visSet) == 0 then
+       S.fromList [Addr sess 0]
+     else visSet
+
 doProc :: (Effect a, Show res)
        => (Ctxt a -> arg -> Proc a res)
        -> Table
@@ -133,22 +160,25 @@ doProc :: (Effect a, Show res)
 doProc core tname k args = do
   -- Create the context
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
-  nodes <- zipWithM foo rows [0..(length rows)]
-  let ctxt = mkGraph nodes []
+  ctxt <- mkCtxt rows
   -- Create the state for the stored procedure and execute it
   s <- use sess_EC
   a <- use actid_EC
-  let ps = ProcState tname k (S.fromList [Link s 0]) s a
+  let ps = ProcState tname k (mkVisSet ctxt s) s a
   (res, ps) <- lift $ runStateT (core ctxt args) ps
   -- Update the actid in EC monad
   actid_EC .= ps^.actid_PS
   return res
-  where
-    foo (_, _, _, _, value) (i :: Node) = return (i, value)
+
+printCtxt :: Effect a => Table -> Key -> (Ctxt a -> Ctxt a) -> EC ()
+printCtxt tname k f = do
+  rows <- CQL.executeRows CQL.ONE (mkRead tname) k
+  ctxt <- mkCtxt rows
+  liftIO $ print $ f ctxt
 
 runEC :: CQL.Pool -> EC a -> IO a
 runEC pool ec = do
   sess <- liftIO randomIO
-  let ecst = ECState sess (0::Int64)
+  let ecst = ECState sess (0::ActId)
   let cas = evalStateT ec ecst
   CQL.runCas pool cas

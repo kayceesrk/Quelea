@@ -51,8 +51,11 @@ getBalance ops () = do
   let v = foldl acc 0 $ labNodes ops
   return v
   where
-    acc s (_::Int, Deposit i) = s + i
-    acc s (_::Int, Withdraw i) = s - i
+    acc s (_::Int, (_,_,Deposit i)) = s + i
+    acc s (_::Int, (_,_,Withdraw i)) = s - i
+
+foo :: Ctxt BankAccount -> Ctxt BankAccount
+foo = id
 
 main = do
   pool <- newPool [("localhost", "9042")] "test"
@@ -60,18 +63,32 @@ main = do
   runEC pool $ do
     createTable "BankAccount"
 
-    performOp deposit "BankAccount" x 100
-    v <- performOp getBalance "BankAccount" x ()
+    doProc deposit "BankAccount" x 100
+    v <- doProc getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After deposit 100. Balance = " ++ show v
 
-    performOp deposit "BankAccount" x 200
-    v <- performOp getBalance "BankAccount" x ()
+    printCtxt "BankAccount" x foo
+    liftIO $ putStrLn ""
+
+    doProc deposit "BankAccount" x 200
+    v <- doProc getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After deposit 200. Balance = " ++ show v
 
-    s <- performOp withdraw "BankAccount" x 200
-    v <- performOp getBalance "BankAccount" x ()
+    printCtxt "BankAccount" x foo
+    liftIO $ putStrLn ""
+
+    s <- doProc withdraw "BankAccount" x 200
+    v <- doProc getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After withdraw 200. Success? = "++ show s ++ ". Balance = " ++ show v
 
-    s <- performOp withdraw "BankAccount" x 200
-    v <- performOp getBalance "BankAccount" x ()
+    printCtxt "BankAccount" x foo
+    liftIO $ putStrLn ""
+
+    s <- doProc withdraw "BankAccount" x 200
+    v <- doProc getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After withdraw 200. Success? = "++ show s ++ ". Balance = " ++ show v
+
+    printCtxt "BankAccount" x foo
+    liftIO $ putStrLn ""
+
+    -- dropTable "BankAccount"
