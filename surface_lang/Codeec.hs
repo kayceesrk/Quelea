@@ -65,6 +65,10 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class (lift)
 import Data.Foldable
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
+
 type Key  = UUID
 type Sess = UUID
 type Table = String
@@ -108,43 +112,16 @@ type Ctxt a = Gr (Sess, ActId, a) ()
 
 type RowValue a = (Key, Sess, ActId, S.Set Addr, a)
 
-mkCreateTable :: Table -> CQL.Query CQL.Schema () ()
-mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at bigint, vis set<blob>, value blob, primary key (key, sess, at)) "
-
-mkDropTable :: Table -> CQL.Query CQL.Schema () ()
-mkDropTable tname = CQL.query $ pack $ "drop table " ++ tname
-
-mkInsert :: Table -> CQL.Query CQL.Write (RowValue a) ()
-mkInsert tname = CQL.query $ pack $ "insert into " ++ tname ++ " (key, sess, at, vis, value) values (?, ?, ?, ?, ?)"
-
-mkRead :: Table -> CQL.Query CQL.Rows (Key) (RowValue a)
-mkRead tname = CQL.query $ pack $ "select key, sess, at, vis, value from " ++ tname ++ " where key=?"
-
-createTable :: Table -> EC ()
-createTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkCreateTable tname) ()
-
-dropTable :: Table -> EC ()
-dropTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkDropTable tname) ()
-
-performIO :: IO a -> Proc b a
-performIO = liftIO
-
-effect :: (Effect a) => a -> Proc a ()
-effect value = do
-  k <- use key
-  v <- use vis
-  s <- use sess_PS
-  a <- use actid_PS
-  t <- use table
-  actid_PS += 1
-  CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
-
 data MkCtxtState a = MkCtxtState {
                      _hashMap :: M.Map Addr Node,
                      _ctxt :: Ctxt a
                     }
 
 makeLenses ''MkCtxtState
+
+-------------------------------------------------------------------------------
+-- Internal
+-------------------------------------------------------------------------------
 
 -- Traverse helper
 traverseAt :: (Applicative f, Ord k) => k -> (v -> f v) -> M.Map k v -> f (M.Map k v)
@@ -191,6 +168,41 @@ mkVisSet ctxt sess =
        S.fromList [Addr sess 0]
      else visSet
 
+-------------------------------------------------------------------------------
+-- Core
+-------------------------------------------------------------------------------
+
+mkCreateTable :: Table -> CQL.Query CQL.Schema () ()
+mkCreateTable tname = CQL.query $ pack $ "create table " ++ tname ++ " (key uuid, sess uuid, at bigint, vis set<blob>, value blob, primary key (key, sess, at)) "
+
+mkDropTable :: Table -> CQL.Query CQL.Schema () ()
+mkDropTable tname = CQL.query $ pack $ "drop table " ++ tname
+
+mkInsert :: Table -> CQL.Query CQL.Write (RowValue a) ()
+mkInsert tname = CQL.query $ pack $ "insert into " ++ tname ++ " (key, sess, at, vis, value) values (?, ?, ?, ?, ?)"
+
+mkRead :: Table -> CQL.Query CQL.Rows (Key) (RowValue a)
+mkRead tname = CQL.query $ pack $ "select key, sess, at, vis, value from " ++ tname ++ " where key=?"
+
+createTable :: Table -> EC ()
+createTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkCreateTable tname) ()
+
+dropTable :: Table -> EC ()
+dropTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkDropTable tname) ()
+
+performIO :: IO a -> Proc b a
+performIO = liftIO
+
+effect :: (Effect a) => a -> Proc a ()
+effect value = do
+  k <- use key
+  v <- use vis
+  s <- use sess_PS
+  a <- use actid_PS
+  t <- use table
+  actid_PS += 1
+  CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
+
 doProc :: (Effect a, Show res)
        => (Ctxt a -> arg -> Proc a res)
        -> Table
@@ -222,3 +234,5 @@ runEC pool ec = do
   let ecst = ECState sess (0::ActId)
   let cas = evalStateT ec ecst
   CQL.runCas pool cas
+
+
