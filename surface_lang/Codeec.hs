@@ -6,7 +6,6 @@ module Codeec (
 ---------
 
 EC,
-Proc,
 Effect(..),
 Ctxt,
 Key,
@@ -14,11 +13,9 @@ Table,
 
 createTable,
 dropTable,
-doProc,
+mkEC,
 runEC,
-effect,
 
-performIO,
 printCtxt
 
 )
@@ -74,18 +71,6 @@ type Sess = UUID
 type Table = String
 type ActId = Int64
 data Addr = Addr Sess ActId deriving (Eq, Ord, Read, Show)
-
-data ProcState = ProcState {
-                  _table :: String,
-                  _key   :: Key,
-                  _vis   :: S.Set Addr,
-                  _sess_PS  :: Sess,
-                  _actid_PS :: ActId
-                }
-
-makeLenses ''ProcState
-
-type Proc a b = StateT ProcState CQL.Cas b
 
 data ECState = ECState {
                  _sess_EC  :: Sess,
@@ -190,36 +175,26 @@ createTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkCreateTable 
 dropTable :: Table -> EC ()
 dropTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkDropTable tname) ()
 
-performIO :: IO a -> Proc b a
-performIO = liftIO
-
-effect :: (Effect a) => a -> Proc a ()
-effect value = do
-  k <- use key
-  v <- use vis
-  s <- use sess_PS
-  a <- use actid_PS
-  t <- use table
-  actid_PS += 1
-  CQL.executeWrite CQL.ONE (mkInsert t) (k, s, a + 1, v, value)
-
-doProc :: (Effect a, Show res)
-       => (Ctxt a -> arg -> Proc a res)
-       -> Table
-       -> Key
-       -> arg
-       -> EC res
-doProc core tname k args = do
+mkEC :: (Effect a, Show res)
+      => (Ctxt a -> arg -> (res, Maybe a))
+      -> Table
+      -> Key
+      -> arg
+      -> EC res
+mkEC core tname k args = do
   -- Create the context
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
   let ctxt = mkCtxt rows
   -- Create the state for the stored procedure and execute it
   s <- use sess_EC
   a <- use actid_EC
-  let ps = ProcState tname k (mkVisSet ctxt s) s a
-  (res, ps) <- lift $ runStateT (core ctxt args) ps
-  -- Update the actid in EC monad
-  actid_EC .= ps^.actid_PS
+  let (res, eff) = core ctxt args
+  -- Produce effect
+  case eff of
+    Nothing -> return ()
+    Just eff -> do
+      CQL.executeWrite CQL.ONE (mkInsert tname) (k, s, a + 1, mkVisSet ctxt s, eff)
+      actid_EC += 1
   return res
 
 printCtxt :: Effect a => Table -> Key -> (Ctxt a -> Ctxt a) -> EC ()

@@ -33,23 +33,22 @@ instance CasType BankAccount where
 
 instance Effect BankAccount
 
-deposit :: Ctxt BankAccount -> Int -> Proc BankAccount ()
-deposit _ amt = effect $ Deposit amt
+type Res a = (a, Maybe BankAccount)
 
-withdraw :: Ctxt BankAccount -> Int -> Proc BankAccount Bool
-withdraw ctxt amt = do
-  bal <- getBalance ctxt ()
-  if bal > amt
-  then do
-    effect $ Withdraw amt
-    return True
-  else do
-    return False
+deposit :: Ctxt BankAccount -> Int -> Res ()
+deposit _ amt = ((), Just $ Deposit amt)
 
-getBalance :: Ctxt BankAccount -> () -> Proc BankAccount Int
-getBalance ops () = do
+withdraw :: Ctxt BankAccount -> Int -> Res Bool
+withdraw ctxt amt =
+  let (bal, _) = getBalance ctxt ()
+  in if bal > amt
+     then (True, Just $ Withdraw amt)
+     else (False, Nothing)
+
+getBalance :: Ctxt BankAccount -> () -> Res Int
+getBalance ops () =
   let v = foldl acc 0 $ labNodes ops
-  return v
+  in (v, Nothing)
   where
     acc s (_::Int, (_,_,Deposit i)) = s + i
     acc s (_::Int, (_,_,Withdraw i)) = s - i
@@ -63,29 +62,29 @@ main = do
   runEC pool $ do
     createTable "BankAccount"
 
-    doProc deposit "BankAccount" x 100
-    v <- doProc getBalance "BankAccount" x ()
+    mkEC deposit "BankAccount" x 100
+    v <- mkEC getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After deposit 100. Balance = " ++ show v
 
     printCtxt "BankAccount" x foo
     liftIO $ putStrLn ""
 
-    doProc deposit "BankAccount" x 200
-    v <- doProc getBalance "BankAccount" x ()
+    mkEC deposit "BankAccount" x 200
+    v <- mkEC getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After deposit 200. Balance = " ++ show v
 
     printCtxt "BankAccount" x foo
     liftIO $ putStrLn ""
 
-    s <- doProc withdraw "BankAccount" x 200
-    v <- doProc getBalance "BankAccount" x ()
+    s <- mkEC withdraw "BankAccount" x 200
+    v <- mkEC getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After withdraw 200. Success? = "++ show s ++ ". Balance = " ++ show v
 
     printCtxt "BankAccount" x foo
     liftIO $ putStrLn ""
 
-    s <- doProc withdraw "BankAccount" x 200
-    v <- doProc getBalance "BankAccount" x ()
+    s <- mkEC withdraw "BankAccount" x 200
+    v <- mkEC getBalance "BankAccount" x ()
     liftIO $ putStrLn $ "After withdraw 200. Success? = "++ show s ++ ". Balance = " ++ show v
 
     printCtxt "BankAccount" x foo
