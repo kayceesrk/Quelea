@@ -12,5 +12,8 @@ test3: test3.hs ../tracer/Tracer.hs
 db_test: db_test.hs
 	ghc -cpp db_test.hs
 
+analysis: analysis.hs
+	ghc analysis.hs
+
 clean:
-	rm -rf test1 test2 test3 *.o *~ *.hi op db_test
+	rm -rf test1 test2 test3 *.o *~ *.hi op db_test analysis

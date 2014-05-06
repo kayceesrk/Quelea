@@ -12,6 +12,7 @@ module Spec
   -- Queries
   isAvailable,
   isCoordFree,
+  isWellTyped
 ) where
 
 import Language.Haskell.TH
@@ -70,6 +71,11 @@ type Spec = Effect -> Prop
 
 -------------------------------------------------------------------------------
 -- Proposition builder
+
+mkEffectConst :: ReaderT PropState Z3 Effect
+mkEffectConst = do
+  as <- view effSort
+  lift $ Effect <$> mkFreshConst "Eff_" as
 
 forall_ :: (Effect -> Prop) -> Prop
 forall_ f = Prop $ do
@@ -208,9 +214,11 @@ ite (Prop p1) (Prop p2) (Prop p3) = Prop $ do
 -------------------------------------------------------------------------------
 -- Queries
 
+assertProp :: Prop -> ReaderT PropState Z3 ()
+assertProp = unProp >=> (lift . assertCnstr)
+
 assertBasicAxioms :: ReaderT PropState Z3 ()
 assertBasicAxioms = do
-  let assertProp = unProp >=> (lift . assertCnstr)
 
   -- Visibility is asymmetric
   assertProp $ forall_ $ \ x -> forall_ $ \ y -> vis x y ==> (not_ $ vis y x)
@@ -238,7 +246,7 @@ assertBasicAxioms = do
   -- same session, with an index that is one less, and which precedes the
   -- original action in session order.
   assertProp $ forall_ $ \ a ->
-    (idxOf a >* _1) ==> (exists_ $ \b -> (isInSameSess a b /\ (idxOf b ==* (idxOf a -* _1)) /\ so a b))
+    (idxOf a >* _1) ==> (exists_ $ \b -> (isInSameSess a b /\ (idxOf b ==* (idxOf a -* _1)) /\ so b a))
 
   -- If two actions are ordered by so, then their indices are ordered by <
   assertProp $ forall_ $ \a -> forall_ $ \b -> (so a b) ==> (idxOf a <* idxOf b)
@@ -263,10 +271,87 @@ assertBasicAxioms = do
   assertProp $ forall_ $ \ x -> forall_ $ \ y -> hb x y ==> (not_ $ hb y x)
 
 
-isAvailable :: Spec -> Bool
-isAvailable s = undefined
+mkPropState :: Z3 PropState
+mkPropState = do
+  effectSort <- mkUninterpretedSort =<< mkStringSymbol "Effect"
+  sessSort <- mkUninterpretedSort =<< mkStringSymbol "Session"
+  boolSort <- mkBoolSort
+  intSort <- mkIntSort
 
-isCoordFree :: Spec -> Bool
-isCoordFree s = undefined
+  visRel <- mkFreshFuncDecl "vis" [effectSort, effectSort] boolSort
+  soRel <- mkFreshFuncDecl "so" [effectSort, effectSort] boolSort
+  sessRel <- mkFreshFuncDecl "sess" [effectSort] sessSort
+  idxRel <- mkFreshFuncDecl "idx" [effectSort] intSort
 
+  return $ PropState effectSort sessSort visRel soRel sessRel idxRel
 
+res2Bool :: Z3M.Result -> Bool
+res2Bool Unsat = True
+res2Bool Sat = False
+
+isAvailable :: Spec -> IO Bool
+isAvailable s = evalZ3 $ do
+  ps <- mkPropState
+  runReaderT core ps
+  where
+    core = do
+      -- assert basic axioms
+      assertBasicAxioms
+
+      -- Declare transitive visibility relation
+      es <- view effSort
+      tvisFD <- lift $ do
+        boolSort <- mkBoolSort
+        mkFreshFuncDecl "tvis" [es, es] boolSort
+      let tvis (Effect a) (Effect b) = Prop $ lift $ mkApp tvisFD [a,b]
+
+      -- tvis follows vis
+      assertProp $ forall_ $ \a -> forall_ $ \b -> vis a b ==> tvis a b
+      -- tvis is transitive
+      assertProp $ forall_ $ \a -> forall_ $ \b -> forall_ $ \c ->
+        (tvis a b /\ tvis b c) ==> (tvis a c)
+
+      -- Key axiom for availability check : tvis ==> vis
+      assertProp $ forall_ $ \a -> forall_ $ \b -> tvis a b ==> vis a b
+
+      eff <- mkEffectConst
+      assertProp . not_ . s $ eff
+      lift $ res2Bool <$> check
+
+isCoordFree :: Spec -> IO Bool
+isCoordFree s = evalZ3 $ do
+  ps <- mkPropState
+  runReaderT core ps
+  where
+    core = do
+      -- assert basic axioms
+      assertBasicAxioms
+
+      -- Declare a happens-before relation
+      es <- view effSort
+      hbFuncDecl <- lift $ do
+        boolSort <- mkBoolSort
+        mkFreshFuncDecl "hb" [es, es] boolSort
+      let hb (Effect a1) (Effect a2) = Prop $ lift $ mkApp hbFuncDecl [a1,a2]
+
+      -- Happens-before follows visibility and session order
+      assertProp $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
+      -- Happens-before is transitive
+      assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
+        (hb x y /\ hb y z) ==> (hb x z)
+      -- Key axiom for CoordFree check : hb ==> vis
+      assertProp $ forall_ $ \a -> forall_ $ \b -> hb a b ==> vis a b
+
+      eff <- mkEffectConst
+      assertProp . not_ . s $ eff
+      lift $ res2Bool <$> check
+
+isWellTyped :: Spec -> IO Bool
+isWellTyped s = evalZ3 $ do
+  ps <- mkPropState
+  runReaderT core ps
+  where
+    core = do
+      assertBasicAxioms
+      assertProp $ forall_ s
+      lift $ res2Bool <$> check
