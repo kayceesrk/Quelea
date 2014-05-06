@@ -31,7 +31,7 @@ instance CasType BankAccount where
   putCas = putCas . Blob . encode
   casType _ = CBlob
 
-instance Effect BankAccount
+instance Storable BankAccount
 
 type Res a = (a, Maybe BankAccount)
 

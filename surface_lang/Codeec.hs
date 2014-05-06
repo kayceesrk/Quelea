@@ -3,20 +3,15 @@
 
 module Codeec (
 -- Types
----------
+EC, Storable(..), Ctxt, Key, Table,
+Prop, Effect, Spec,
 
-EC,
-Storable(..),
-Ctxt,
-Key,
-Table,
+-- Table operations
+createTable, dropTable, mkEC, runEC, printCtxt,
 
-createTable,
-dropTable,
-mkEC,
-runEC,
-
-printCtxt
+-- Spec builders
+forall_, exists_, true, false, not_, (/\), (\/), (==>), sameEffect, vis, so,
+sortOf, ite, sameAttr, distinctEffects, isInSameSess,
 
 )
 where
@@ -177,11 +172,12 @@ dropTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkDropTable tnam
 
 mkEC :: (Storable a, Show res)
       => (Ctxt a -> arg -> (res, Maybe a))
+      -> Spec
       -> Table
       -> Key
       -> arg
       -> EC res
-mkEC core tname k args = do
+mkEC core spec tname k args = do
   -- Create the context
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
   let ctxt = mkCtxt rows
