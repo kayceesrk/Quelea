@@ -6,7 +6,7 @@ module Codeec (
 ---------
 
 EC,
-Effect(..),
+Storable(..),
 Ctxt,
 Key,
 Table,
@@ -44,8 +44,8 @@ import Language.Haskell.TH
 import qualified Database.Cassandra.CQL as CQL
 import Data.Graph.Inductive.Tree
 import Data.Graph.Inductive.Graph
-import SpecCheck
 import Data.UUID
+import Spec
 import Control.Lens hiding (Action)
 import Control.Monad.Trans.State
 import Data.Data
@@ -91,7 +91,7 @@ instance CQL.CasType Addr where
     return $ Addr x y
   casType _ = CQL.CBlob
 
-class (CQL.CasType a, Show a) => Effect a where
+class (CQL.CasType a, Show a) => Storable a where
 
 type Ctxt a = Gr (Sess, ActId, a) ()
 
@@ -140,7 +140,7 @@ mkCtxtLoadEdges (x:xs) = do
         (Just ai, Just bi) -> ctxt .= insEdge (ai, bi, ()) x
         otherwise -> return ()
 
-mkCtxt :: Effect a => [RowValue a] -> Ctxt a
+mkCtxt :: Storable a => [RowValue a] -> Ctxt a
 mkCtxt rows =
   let comp = mkCtxtLoadNodes rows >> mkCtxtLoadEdges rows
       MkCtxtState _ ctxt = execState comp (MkCtxtState M.empty $ mkGraph [] [])
@@ -175,7 +175,7 @@ createTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkCreateTable 
 dropTable :: Table -> EC ()
 dropTable tname = liftIO . print =<< CQL.executeSchema CQL.ALL (mkDropTable tname) ()
 
-mkEC :: (Effect a, Show res)
+mkEC :: (Storable a, Show res)
       => (Ctxt a -> arg -> (res, Maybe a))
       -> Table
       -> Key
@@ -197,7 +197,7 @@ mkEC core tname k args = do
       actid_EC += 1
   return res
 
-printCtxt :: Effect a => Table -> Key -> (Ctxt a -> Ctxt a) -> EC ()
+printCtxt :: Storable a => Table -> Key -> (Ctxt a -> Ctxt a) -> EC ()
 printCtxt tname k f = do
   rows <- CQL.executeRows CQL.ONE (mkRead tname) k
   let ctxt = mkCtxt rows
