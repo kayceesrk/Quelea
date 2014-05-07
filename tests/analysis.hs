@@ -12,7 +12,11 @@ tv z = forall_ $ \x -> forall_ $ \y -> vis x y /\ vis y z ==> vis x z
 tv2 :: Spec
 tv2 x = forall_ $ \y -> forall_ $ \z -> vis x y /\ vis y z ==> vis x z
 
+mw :: Spec
+mw x = forall_ $ \a -> forall_ $ \b -> so a b /\ vis b x ==> vis a x
+
 main = do
+  -- show <$> isCoordFree (\_ -> true) >>= putStrLn
   putStrLn "Read-my-writes (RMW) is coordination-free but not available."
   putStr "available(RMW) = "
   show <$> isAvailable rmw >>= putStrLn
@@ -27,7 +31,19 @@ main = do
 
   putStrLn "Tv2. Expect False, False."
   putStr "available(TV2) = "
-  show <$> isAvailable tv >>= putStrLn
+  show <$> isAvailable tv2 >>= putStrLn
   putStr "coordFree(TV2) = "
-  show <$> isCoordFree tv >>= putStrLn
+  show <$> isCoordFree tv2 >>= putStrLn
+
+  putStrLn "MW is available (and coordination free)"
+  putStr "available(MW) = "
+  show <$> isAvailable mw >>= putStrLn
+
+  show <$> isWellTyped (\x -> true) >>= putStrLn    -- Expect True
+  show <$> isWellTyped rmw >>= putStrLn             -- Expect True
+  show <$> isWellTyped tv >>= putStrLn              -- Expect True
+  show <$> isWellTyped tv2 >>= putStrLn             -- Expect True
+  show <$> isWellTyped (\x -> false) >>= putStrLn   -- Expect False
+  show <$> isWellTyped (\x -> vis x x) >>= putStrLn -- Expect False
+  show <$> isWellTyped (\x -> forall_ $ \y -> so y x ==> vis x y) >>= putStrLn -- Expect False
 

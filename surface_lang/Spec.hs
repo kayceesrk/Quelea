@@ -289,6 +289,8 @@ res2Bool :: Z3M.Result -> Bool
 res2Bool Unsat = True
 res2Bool Sat = False
 
+
+-- http://rise4fun.com/Z3/v6jF
 isAvailable :: Spec -> IO Bool
 isAvailable s = evalZ3 $ do
   ps <- mkPropState
@@ -300,24 +302,22 @@ isAvailable s = evalZ3 $ do
 
       -- Declare transitive visibility relation
       es <- view effSort
-      tvisFD <- lift $ do
+
+      avrFD <- lift $ do
         boolSort <- mkBoolSort
-        mkFreshFuncDecl "tvis" [es, es] boolSort
-      let tvis (Effect a) (Effect b) = Prop $ lift $ mkApp tvisFD [a,b]
-
-      -- tvis follows vis
-      assertProp $ forall_ $ \a -> forall_ $ \b -> vis a b ==> tvis a b
-      -- tvis is transitive
-      assertProp $ forall_ $ \a -> forall_ $ \b -> forall_ $ \c ->
-        (tvis a b /\ tvis b c) ==> (tvis a c)
-
-      -- Key axiom for availability check : tvis ==> vis
-      assertProp $ forall_ $ \a -> forall_ $ \b -> tvis a b ==> vis a b
+        mkFreshFuncDecl "avr" [es, es] boolSort
+      let avr (Effect a) (Effect b) = Prop $ lift $ mkApp avrFD [a,b]
 
       eff <- mkEffectConst
+
+      assertProp $ forall_ $ \a -> forall_ $ \b -> vis a eff ==> avr a eff
+      assertProp $ forall_ $ \a -> forall_ $ \b -> ((vis a b \/ so a b) /\ avr b eff) ==> (avr a eff)
+      assertProp $ forall_ $ \a -> avr a eff ==> vis a eff
+
       assertProp . not_ . s $ eff
       lift $ res2Bool <$> check
 
+-- http://rise4fun.com/Z3/v6jF
 isCoordFree :: Spec -> IO Bool
 isCoordFree s = evalZ3 $ do
   ps <- mkPropState
@@ -329,20 +329,18 @@ isCoordFree s = evalZ3 $ do
 
       -- Declare a happens-before relation
       es <- view effSort
+
       hbFuncDecl <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "hb" [es, es] boolSort
       let hb (Effect a1) (Effect a2) = Prop $ lift $ mkApp hbFuncDecl [a1,a2]
 
-      -- Happens-before follows visibility and session order
-      assertProp $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
-      -- Happens-before is transitive
-      assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
-        (hb x y /\ hb y z) ==> (hb x z)
-      -- Key axiom for CoordFree check : hb ==> vis
-      assertProp $ forall_ $ \a -> forall_ $ \b -> hb a b ==> vis a b
-
       eff <- mkEffectConst
+
+      assertProp $ forall_ $ \a -> (vis a eff \/ so a eff) ==> hb a eff
+      assertProp $ forall_ $ \a -> forall_ $ \b -> ((so a b \/ vis a b) /\ hb b eff) ==> hb a eff
+      assertProp $ forall_ $ \a -> hb a eff ==> vis a eff
+
       assertProp . not_ . s $ eff
       lift $ res2Bool <$> check
 
@@ -352,6 +350,19 @@ isWellTyped s = evalZ3 $ do
   runReaderT core ps
   where
     core = do
+      -- assert basic axioms
       assertBasicAxioms
-      assertProp $ forall_ s
+
+      -- Declare a happens-before relation
+      es <- view effSort
+      toFuncDecl <- lift $ do
+        boolSort <- mkBoolSort
+        mkFreshFuncDecl "to" [es, es] boolSort
+      let to (Effect a1) (Effect a2) = Prop $ lift $ mkApp toFuncDecl [a1,a2]
+
+      assertProp $ forall_ $ \a -> forall_ $ \b -> to a b \/ to b a \/ sameEffect a b
+      assertProp $ forall_ $ \a -> forall_ $ \b -> so a b ==> to a b
+      assertProp $ forall_ $ \a -> forall_ $ \b -> to a b ==> vis a b
+
+      assertProp . not_ . forall_ $ s
       lift $ res2Bool <$> check
