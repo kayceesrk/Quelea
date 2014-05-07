@@ -1,7 +1,7 @@
 EC Debug
 ========
 
-Debugging eventually consistent programs.
+Declarative programming over eventually consistent stores ([Cassandra](http://cassandra.apache.org/) to be precise).
 
 Requirements
 ------------
