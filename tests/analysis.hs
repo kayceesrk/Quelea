@@ -38,6 +38,8 @@ main = do
   putStrLn "MW is available (and coordination free)"
   putStr "available(MW) = "
   show <$> isAvailable mw >>= putStrLn
+  putStr "coordFree(MW) = "
+  show <$> isCoordFree mw >>= putStrLn
 
   show <$> isWellTyped (\x -> true) >>= putStrLn    -- Expect True
   show <$> isWellTyped rmw >>= putStrLn             -- Expect True
@@ -46,4 +48,3 @@ main = do
   show <$> isWellTyped (\x -> false) >>= putStrLn   -- Expect False
   show <$> isWellTyped (\x -> vis x x) >>= putStrLn -- Expect False
   show <$> isWellTyped (\x -> forall_ $ \y -> so y x ==> vis x y) >>= putStrLn -- Expect False
-

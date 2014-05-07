@@ -289,7 +289,6 @@ res2Bool :: Z3M.Result -> Bool
 res2Bool Unsat = True
 res2Bool Sat = False
 
-
 -- http://rise4fun.com/Z3/v6jF
 isAvailable :: Spec -> IO Bool
 isAvailable s = evalZ3 $ do
@@ -300,20 +299,22 @@ isAvailable s = evalZ3 $ do
       -- assert basic axioms
       assertBasicAxioms
 
-      -- Declare transitive visibility relation
+      -- Declare availability relation
       es <- view effSort
-
       avrFD <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "avr" [es, es] boolSort
       let avr (Effect a) (Effect b) = Prop $ lift $ mkApp avrFD [a,b]
 
+      -- Make an effect
       eff <- mkEffectConst
 
+      -- Build availability relation and extend visibility
       assertProp $ forall_ $ \a -> forall_ $ \b -> vis a eff ==> avr a eff
       assertProp $ forall_ $ \a -> forall_ $ \b -> ((vis a b \/ so a b) /\ avr b eff) ==> (avr a eff)
       assertProp $ forall_ $ \a -> avr a eff ==> vis a eff
 
+      -- Assert validity of the given specification under the extended context
       assertProp . not_ . s $ eff
       lift $ res2Bool <$> check
 
@@ -329,18 +330,20 @@ isCoordFree s = evalZ3 $ do
 
       -- Declare a happens-before relation
       es <- view effSort
-
       hbFuncDecl <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "hb" [es, es] boolSort
       let hb (Effect a1) (Effect a2) = Prop $ lift $ mkApp hbFuncDecl [a1,a2]
 
+      -- Make an effect
       eff <- mkEffectConst
 
+      -- Build happens-before relation and extend visibility (causal visibility)
       assertProp $ forall_ $ \a -> (vis a eff \/ so a eff) ==> hb a eff
       assertProp $ forall_ $ \a -> forall_ $ \b -> ((so a b \/ vis a b) /\ hb b eff) ==> hb a eff
       assertProp $ forall_ $ \a -> hb a eff ==> vis a eff
 
+      -- Assert validity of the given specification under causal visibility
       assertProp . not_ . s $ eff
       lift $ res2Bool <$> check
 
@@ -353,16 +356,18 @@ isWellTyped s = evalZ3 $ do
       -- assert basic axioms
       assertBasicAxioms
 
-      -- Declare a happens-before relation
+      -- Declare a total order relation
       es <- view effSort
       toFuncDecl <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "to" [es, es] boolSort
       let to (Effect a1) (Effect a2) = Prop $ lift $ mkApp toFuncDecl [a1,a2]
 
+      -- Build the total order relation and extend visibility (sequential consistency)
       assertProp $ forall_ $ \a -> forall_ $ \b -> to a b \/ to b a \/ sameEffect a b
       assertProp $ forall_ $ \a -> forall_ $ \b -> so a b ==> to a b
       assertProp $ forall_ $ \a -> forall_ $ \b -> to a b ==> vis a b
 
+      -- Assert the validity of the given specification under sequential consistency
       assertProp . not_ . forall_ $ s
       lift $ res2Bool <$> check
