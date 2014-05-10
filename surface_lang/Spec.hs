@@ -318,7 +318,7 @@ isAvailable s = evalZ3 $ do
       assertProp . not_ . s $ eff
       lift $ res2Bool <$> check
 
--- http://rise4fun.com/Z3/v6jF
+-- http://rise4fun.com/Z3/fEkNc
 isCoordFree :: Spec -> IO Bool
 isCoordFree s = evalZ3 $ do
   ps <- mkPropState
