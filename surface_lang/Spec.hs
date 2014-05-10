@@ -289,7 +289,6 @@ res2Bool :: Z3M.Result -> Bool
 res2Bool Unsat = True
 res2Bool Sat = False
 
--- http://rise4fun.com/Z3/v6jF
 isAvailable :: Spec -> IO Bool
 isAvailable s = evalZ3 $ do
   ps <- mkPropState
