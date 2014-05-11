@@ -263,7 +263,7 @@ assertBasicAxioms = do
   let hb (Effect a1) (Effect a2) = Prop $ lift $ mkApp hbFuncDecl [a1,a2]
 
   -- Happens-before follows visibility and session order
-  assertProp $ forall_ $ \a -> forall_ $ \b -> ite (vis a b \/ so a b) (hb a b) (not_ $ hb a b)
+  assertProp $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
   -- Happens-before is transitive
   assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
     (hb x y /\ hb y z) ==> (hb x z)
@@ -289,6 +289,7 @@ res2Bool :: Z3M.Result -> Bool
 res2Bool Unsat = True
 res2Bool Sat = False
 
+-- http://rise4fun.com/Z3/v6jF
 isAvailable :: Spec -> IO Bool
 isAvailable s = evalZ3 $ do
   ps <- mkPropState
@@ -317,7 +318,7 @@ isAvailable s = evalZ3 $ do
       assertProp . not_ . s $ eff
       lift $ res2Bool <$> check
 
--- http://rise4fun.com/Z3/fEkNc
+-- http://rise4fun.com/Z3/v6jF
 isCoordFree :: Spec -> IO Bool
 isCoordFree s = evalZ3 $ do
   ps <- mkPropState
