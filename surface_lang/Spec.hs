@@ -263,7 +263,7 @@ assertBasicAxioms = do
   let hb (Effect a1) (Effect a2) = Prop $ lift $ mkApp hbFuncDecl [a1,a2]
 
   -- Happens-before follows visibility and session order
-  assertProp $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
+  assertProp $ forall_ $ \a -> forall_ $ \b -> ite (vis a b \/ so a b) (hb a b) (not_ $ hb a b)
   -- Happens-before is transitive
   assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
     (hb x y /\ hb y z) ==> (hb x z)
