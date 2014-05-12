@@ -26,6 +26,7 @@ import Control.Monad.State
 import Data.Maybe (fromJust)
 import Data.Map as Map hiding (map)
 import qualified Data.Set as Set
+import Types
 
 -------------------------------------------------------------------------------
 -- Types

@@ -40,7 +40,6 @@ import qualified Database.Cassandra.CQL as CQL
 import Data.Graph.Inductive.Tree
 import Data.Graph.Inductive.Graph
 import Data.UUID
-import Spec
 import Control.Lens hiding (Action)
 import Control.Monad.Trans.State
 import Data.Data
@@ -56,16 +55,15 @@ import System.Random
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class (lift)
 import Data.Foldable
+import Types
+import Spec
+
 
 -------------------------------------------------------------------------------
 -- Types
 -------------------------------------------------------------------------------
 
-type Key  = UUID
-type Sess = UUID
 type Table = String
-type ActId = Int64
-data Addr = Addr Sess ActId deriving (Eq, Ord, Read, Show)
 
 data ECState = ECState {
                  _sess_EC  :: Sess,

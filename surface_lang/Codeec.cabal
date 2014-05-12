@@ -25,4 +25,6 @@ Library
     random
   Exposed-modules:
     Codeec, SpecCheck, Spec
+  Other-modules:
+    Types
   Extensions: CPP
