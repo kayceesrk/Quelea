@@ -1,5 +1,5 @@
-{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, GADTs, DeriveFunctor,
-             TypeSynonymInstances, EmptyDataDecls #-}
+{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, GADTs, DeriveFunctor, RankNTypes,
+             TypeSynonymInstances, EmptyDataDecls, DoAndIfThenElse #-}
 
 module Spec
 (
@@ -12,7 +12,8 @@ module Spec
   -- Queries
   isAvailable,
   isCoordFree,
-  isWellTyped
+  isWellTyped,
+  isContextReady
 ) where
 
 import Language.Haskell.TH
@@ -24,8 +25,8 @@ import Control.Lens hiding (Effect)
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Maybe (fromJust)
-import Data.Map as Map hiding (map)
-import qualified Data.Set as Set
+import qualified Data.Map as M
+import qualified Data.Set as S
 import Types
 
 -------------------------------------------------------------------------------
@@ -43,8 +44,12 @@ data PropState = PropState {
   ------------
   -- Relations
   ------------
+  -- Visibility relation
   _visRel  :: FuncDecl, -- Effect -> Effect -> Bool
+  -- Session order relation
   _soRel   :: FuncDecl, -- Effect -> Effect -> Bool
+  -- Happens-before relation
+  _hbRel   :: FuncDecl, -- Effect -> Effect -> Bool
   {- Each effect has an address which is a pair composed of its session
    - identified (of sort Session) and an index (of soft Int) identifying its
    - position in the session. The following relations fetch session and index
@@ -55,9 +60,23 @@ data PropState = PropState {
 
 makeLenses ''PropState
 
+newtype Effect = Effect { unEffect :: AST }
+newtype Session = Session { unSession :: AST }
+
+-- State used for runtime Z3 checks
+data RtState = RtState {
+  _propState  :: PropState,
+  _effMap     :: M.Map Addr Effect, -- Maps addr to Z3 effect const
+  _sessMap    :: M.Map Sess Session, -- Maps sess to Z3 effect const
+  _knownSet   :: FuncDecl, -- Effect -> Bool
+  _unknownSet :: FuncDecl  -- Effect -> Bool
+}
+
+makeLenses ''RtState
+
 newtype Prop = Prop { unProp :: ReaderT PropState Z3 AST }
 newtype IntVal = IntVal { unIntVal :: ReaderT PropState Z3 AST }
-newtype Effect = Effect { unEffect :: AST }
+
 
 data Sort
 class Attr a
@@ -156,6 +175,11 @@ not_ (Prop p) = Prop $ do
   ast2 <- p2
   lift $ mkOr [ast1, ast2]
 
+orList :: [Prop] -> Prop
+orList propList = Prop $ do
+  astList <- sequence $ unProp <$> propList
+  lift $ mkOr astList
+
 (/\) :: Prop -> Prop -> Prop
 (/\) (Prop p1) (Prop p2) = Prop $ do
   ast1 <- p1
@@ -186,6 +210,11 @@ so (Effect a1) (Effect a2) = Prop $ do
   sr <- view soRel
   lift $ mkApp sr [a1, a2]
 
+hb :: Effect -> Effect -> Prop
+hb (Effect a1) (Effect a2) = Prop $ do
+  hr <- view hbRel
+  lift $ mkApp hr [a1, a2]
+
 sortOf :: Effect -> Sort -> Prop
 sortOf = undefined
 
@@ -204,13 +233,25 @@ isInSameSess (Effect a1) (Effect a2) = Prop $ do
   as2 <- lift $ mkApp sr [a2]
   lift $ mkEq as1 as2
 
-
 ite :: Prop -> Prop -> Prop -> Prop
 ite (Prop p1) (Prop p2) (Prop p3) = Prop $ do
   ast1 <- p1
   ast2 <- p2
   ast3 <- p3
   lift $ mkIte ast1 ast2 ast3
+
+hasSess :: Effect -> Session -> Prop
+hasSess (Effect e) (Session s) = Prop $ do
+  sr <- view sessRel
+  m <- lift $ mkApp sr [e]
+  lift $ mkEq m s
+
+hasIdx :: Integral a => Effect -> a -> Prop
+hasIdx (Effect e) idx = Prop $ do
+  ir <- view idxRel
+  m <- lift $ mkApp ir [e]
+  n <- lift $ mkInt idx
+  lift $ mkEq m n
 
 -------------------------------------------------------------------------------
 -- Queries
@@ -227,7 +268,7 @@ assertBasicAxioms = do
   -- Session order is asymmetric
   assertProp $ forall_ $ \ x -> forall_ $ \ y -> so x y ==> (not_ $ so y x)
 
-  -- Session order only relates actions from the same session. Otherwise, they
+  -- Session order only relates effects from the same session. Otherwise, they
   -- are unrelated by session order.
   assertProp $ forall_ $ \ x -> forall_ $ \ y ->
     ite (isInSameSess x y /\ (not_ $ sameEffect x y))
@@ -238,30 +279,23 @@ assertBasicAxioms = do
   assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
     (so x y /\ so y z) ==> (so x z)
 
-  -- The index of an action is always >= 1
+  -- The index of an effect is always >= 1
   let _1 = (IntVal . lift . mkInt) 1
   assertProp $ forall_ $ \ x -> forallInt $ \ i -> (i ==* idxOf x) ==> (i >=* _1)
 
-  -- Existence of previous actions in the same session.
-  -- For any action with a index greater than 1, there exists an action in the
+  -- Existence of previous effects in the same session.
+  -- For any effect with a index greater than 1, there exists an effect in the
   -- same session, with an index that is one less, and which precedes the
-  -- original action in session order.
+  -- original effect in session order.
   assertProp $ forall_ $ \ a ->
     (idxOf a >* _1) ==> (exists_ $ \b -> (isInSameSess a b /\ (idxOf b ==* (idxOf a -* _1)) /\ so b a))
 
-  -- If two actions are ordered by so, then their indices are ordered by <
+  -- If two effects are ordered by so, then their indices are ordered by <
   assertProp $ forall_ $ \a -> forall_ $ \b -> (so a b) ==> (idxOf a <* idxOf b)
 
-  -- Two actions have the same address iff they are the same
+  -- Two effects have the same address iff they are the same
   assertProp $ forall_ $ \a -> forall_ $ \b -> ((idxOf a ==* idxOf b) /\ isInSameSess a b) ==> sameEffect a b
   assertProp $ forall_ $ \a -> forall_ $ \b -> sameEffect a b ==> ((idxOf a ==* idxOf b) /\ isInSameSess a b)
-
-  -- Instantiate a happens-before relation
-  es <- view effSort
-  hbFuncDecl <- lift $ do
-    boolSort <- mkBoolSort
-    mkFreshFuncDecl "hb" [es, es] boolSort
-  let hb (Effect a1) (Effect a2) = Prop $ lift $ mkApp hbFuncDecl [a1,a2]
 
   -- Happens-before follows visibility and session order
   assertProp $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
@@ -283,8 +317,9 @@ mkPropState = do
   soRel <- mkFreshFuncDecl "so" [effectSort, effectSort] boolSort
   sessRel <- mkFreshFuncDecl "sess" [effectSort] sessSort
   idxRel <- mkFreshFuncDecl "idx" [effectSort] intSort
+  hbRel <- mkFreshFuncDecl "hb" [effectSort, effectSort] boolSort
 
-  return $ PropState effectSort sessSort visRel soRel sessRel idxRel
+  return $ PropState effectSort sessSort visRel soRel hbRel sessRel idxRel
 
 res2Bool :: Z3M.Result -> Bool
 res2Bool Unsat = True
@@ -372,3 +407,190 @@ isWellTyped s = evalZ3 $ do
       -- Assert the validity of the given specification under sequential consistency
       assertProp . not_ . forall_ $ s
       lift $ res2Bool <$> check
+
+assertRtProp :: Prop -> StateT RtState Z3 ()
+assertRtProp prop = do
+  ps <- use propState
+  lift $ runReaderT (assertProp prop) ps
+
+addEffect :: Addr -> StateT RtState Z3 (Effect, Session)
+addEffect addr = do
+  let Addr sid idx = addr
+  ps <- use propState
+  sm <- use sessMap
+
+  -- Create the session if it does not exist
+  sess <- case sm ^.at sid of
+      Nothing -> do
+        -- Session id does not exist. Create it.
+        sess <- lift $ Session <$> (mkFreshConst "sid_" $ ps^.sessSort)
+        sessMap .= (at sid ?~ sess $ sm)
+        return sess
+      Just sess -> return sess
+
+  -- Create the effect
+  eff <- lift $ Effect <$> (mkFreshConst "eff_" $ ps^.effSort)
+  em <- use effMap
+  effMap .= (at addr ?~ eff $ em)
+
+  -- Assert that the effect belongs to the session
+  assertRtProp $ hasSess eff sess
+  -- Assert that the effect this index
+  assertRtProp $ hasIdx eff idx
+
+  return (eff, sess)
+
+addPrevToUnknownIfNotKnown :: Addr -> StateT RtState Z3 ()
+addPrevToUnknownIfNotKnown addr = do
+  {- If the previous effect is not known, then it is unknown.
+   - Expect: Known effects are processed in session order.
+   - XXX KC: improve this solution. Step wise addition.
+   -}
+  em <- use effMap
+  let Addr sid idx = addr
+  if idx > 1 && (not $ M.member (Addr sid $ idx - 1) em)
+  then addUnknownEffect (Addr sid (idx - 1))
+  else return ()
+
+memberProp :: FuncDecl -> Effect -> Prop
+memberProp set (Effect eff) = Prop $ lift $ mkApp set [eff]
+
+-- Extend a set with a effect that is not already a member. Fails if the effect
+-- is already a member.
+extendSet :: FuncDecl -> String -> Effect -> StateT RtState Z3 FuncDecl
+extendSet set str (Effect eff) = do
+  ps <- use propState
+  bs <- lift $ mkBoolSort
+  -- Assert that the effect does not belong to the original set. This asserts
+  -- the freshness of the effect.
+  assertRtProp $ not_ $ memberProp set $ Effect eff
+  newSet <- lift $ mkFreshFuncDecl str [ps^.effSort] bs
+  assertRtProp $ forall_ $ \a -> ite (sameEffect a $ Effect eff) true (memberProp set a)
+  return newSet
+
+addKnownEffect :: (Addr, S.Set Addr) -> StateT RtState Z3 ()
+addKnownEffect (addr, visSet) = do
+  (eff, sess) <- addEffect addr
+  -- Extend known set with eff
+  ks <- use knownSet
+  newKs <- extendSet ks "known" eff
+  knownSet .= newKs
+
+  -- If the previous effect is not known, then it is unknown. Presupposes that
+  -- effects are added in session order.
+  addPrevToUnknownIfNotKnown addr
+
+  -- Assert visibility. Only those effects in the visibility are visible to
+  -- eff, everything else is not visible. Expect: all unknown effects are in
+  -- effMap
+  em <- use effMap
+  let cond = orList $ map (\addr -> sameEffect eff $ fromJust $ em ^.at addr) $ S.toList visSet
+  assertRtProp $ forall_ $ \a -> ite cond (vis a eff) (not_ $ vis a eff)
+
+addUnknownEffect :: Addr -> StateT RtState Z3 ()
+addUnknownEffect addr = do
+  (eff, sess) <- addEffect addr
+  -- Extend unknown set with eff
+  us <- use unknownSet
+  newUs <- extendSet us "unknown" eff
+  unknownSet .= newUs
+  -- Assert empty visibility set
+  assertRtProp $ forall_ $ \a -> (not_ $ vis a eff)
+
+isContextReady :: Ctxt4Z3 -> Addr -> Spec -> IO (Maybe Ctxt4Z3)
+isContextReady ctxt curAddr spec = evalZ3 $ do
+  ps <- mkPropState
+
+  -- Assert basic axioms
+  runReaderT assertBasicAxioms ps
+
+  -- Build known, unknown relations and RtState
+  boolSort <- mkBoolSort
+  ks <- mkFreshFuncDecl "known" [ps^.effSort] boolSort
+  us <- mkFreshFuncDecl "unknown" [ps^.effSort] boolSort
+  let assertEmptiness = do {
+    assertProp $ forall_ $ \a -> (not_ $ memberProp ks a);
+    assertProp $ forall_ $ \a -> (not_ $ memberProp us a)
+  }
+  runReaderT assertEmptiness ps
+
+  let rts = RtState ps M.empty M.empty ks us
+
+  -- Build the known & unknown set from the context
+  let (ctxtKnownMap, ctxtUnknownSet) = getKUSets ctxt
+  let isReadyBool = do
+      -- Incorporate current effect
+      (curEff, _) <- addEffect curAddr
+      addPrevToUnknownIfNotKnown curAddr
+
+      -- Load the known and unknown sets
+      mapM_ addUnknownEffect $ S.toList ctxtUnknownSet
+      mapM_ addKnownEffect $ M.toList ctxtKnownMap
+
+      -- Helper definitions
+      ks <- use knownSet
+      let known = memberProp ks
+      us <- use unknownSet
+      let unknown = memberProp us
+
+      -- source of a happens-before relation belongs to either known or unknown
+      assertRtProp $ forall_ $ \a -> forall_ $ \b -> hb a b ==> (known a \/ unknown a)
+      -- hb is constructed out of so and vis edges
+      assertRtProp $ forall_ $ \a -> forall_ $ \b -> hb a b ==>
+        (so a b \/ vis a b \/ (exists_ $ \c -> hb a c /\ hb c b))
+
+      -- Relate known and unknown
+      assertRtProp $ forall_ $ \a -> unknown a ==> (not_ $ known a)
+      assertRtProp $ forall_ $ \a -> known a ==> (not_ $ unknown a)
+
+      lift $ push
+      -- An effect is visible iff it is known
+      assertRtProp $ forall_ $ \a -> ite (known a) (vis a curEff) (not_ $ vis a curEff)
+      assertRtProp . not_ . spec $ curEff
+      res <- lift $ check
+      lift $ pop 1
+      return $ (res2Bool res, curEff)
+
+  let getReadySubKnown curEff = do
+      -- helper definitions
+      ks <- use knownSet
+      let known = memberProp ks
+      us <- use unknownSet
+      let unknown = memberProp us
+      -- Declare subKnown set
+      subKnownSet <- lift $ mkFreshFuncDecl "sub-known" [ps^.effSort] boolSort
+      let subKnown = memberProp subKnownSet
+      -- Define subKnown set
+      assertRtProp $ forall_ $ \a -> subKnown a ==> known a
+      assertRtProp $ forall_ $ \a -> known a /\ (not_ $ exists_ $ \b -> unknown b /\ hb b a) ==> subKnown a
+
+      lift $ push
+      assertRtProp $ forall_ $ \a -> ite (subKnown a) (vis a curEff) (not_ $ vis a curEff)
+      assertRtProp . spec $ curEff
+      res <- lift $ check
+      lift $ pop 1
+      return $ (res, subKnownSet)
+
+  ((res, curEff), rts) <- runStateT isReadyBool rts
+  -- If the context is ready, then return the original context
+  if res then do
+    liftIO $ print "known = SUCCESS"
+    return $ Just ctxt
+  -- Else, check if there exists a sub-context which is ready
+  else do
+    ((res, subKnownSet), rts) <- runStateT (getReadySubKnown curEff) rts
+    case res of
+      Sat -> do
+        liftIO $ print "Sub-Known = SUCCESS"
+        undefined
+      Unsat -> do
+        liftIO $ print "Sub-Known = FAILURE"
+        undefined
+
+  where
+    getKUSets ctxt = foldl kuFoo (M.empty, S.empty) ctxt
+
+    kuFoo (known, unknown) (Row4Z3 s a v) =
+      let known = M.insert (Addr s a) v known
+          unknown = S.difference (S.union unknown v) (M.keysSet known)
+      in (known, unknown)

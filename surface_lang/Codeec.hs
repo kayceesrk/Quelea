@@ -135,6 +135,10 @@ mkCtxtLoadEdges (x:xs) = do
 
 mkCtxt :: Storable a => [RowValue a] -> Ctxt a
 mkCtxt rows =
+  {- Loading nodes first. There are the effects that are known. Then load the
+   - edges. While loading edges, ignore the ones that originate from unknown
+   - nodes.
+   -}
   let comp = mkCtxtLoadNodes rows >> mkCtxtLoadEdges rows
       MkCtxtState _ ctxt = execState comp (MkCtxtState M.empty $ mkGraph [] [])
   in ctxt
@@ -143,6 +147,13 @@ mkVisSet :: Ctxt a -> Sess -> S.Set Addr
 mkVisSet ctxt sess =
   let visSet = S.fromList $ map (\(_,(sess, at, _)) -> Addr sess at) $ labNodes ctxt
   in if S.size(visSet) == 0 then
+       {- This is present in order to please Haskell Set to CQL set conversion.
+        - There is seems to be a bug in the serialization of sets, which
+        - encodes empty set as NULL (which is fine). When deserializing, we get
+        - an error saying that the value is NULL, but the type is not Maybe!
+        - Hence, subvert the error by never allowing the visSet to be empty.
+        - Take away is that any effect with index 0 should be ignored.
+        -}
        S.fromList [Addr sess 0]
      else visSet
 
