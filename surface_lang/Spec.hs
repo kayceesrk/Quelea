@@ -497,7 +497,7 @@ addUnknownEffect addr = do
   -- Assert empty visibility set
   assertRtProp $ forall_ $ \a -> (not_ $ vis a eff)
 
-isContextReady :: Ctxt4Z3 -> Addr -> Spec -> IO (Maybe Ctxt4Z3)
+isContextReady :: Ctxt4Z3 -> Addr -> Spec -> IO (Maybe [Addr])
 isContextReady ctxt curAddr spec = evalZ3 $ do
   ps <- mkPropState
 
@@ -569,25 +569,37 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
       assertRtProp . spec $ curEff
       res <- lift $ check
       lift $ pop 1
-      return $ (res, subKnownSet)
+      case res of
+        Sat -> return $ Just subKnownSet
+        Unsat -> return Nothing
+
 
   ((res, curEff), rts) <- runStateT isReadyBool rts
   -- If the context is ready, then return the original context
   if res then do
     liftIO $ print "known = SUCCESS"
-    return $ Just ctxt
+    return $ Just $ M.keys ctxtKnownMap
   -- Else, check if there exists a sub-context which is ready
   else do
-    ((res, subKnownSet), rts) <- runStateT (getReadySubKnown curEff) rts
+    (res, rts) <- runStateT (getReadySubKnown curEff) rts
     case res of
-      Sat -> do
-        liftIO $ print "Sub-Known = SUCCESS"
-        undefined
-      Unsat -> do
+      Nothing -> do
         liftIO $ print "Sub-Known = FAILURE"
-        undefined
-
+        return $ Nothing
+      Just subKnownSet -> do
+        liftIO $ print "Sub-Known = SUCCESS"
+        (Sat, Just model) <- getModel
+        subKnownAddrs <- filterM (isInSubKnown (rts^.effMap) subKnownSet) $ M.keys ctxtKnownMap
+        return $ Just subKnownAddrs
   where
+    isInSubKnown em subKnownSet addr = do
+      let (Effect eff) = fromJust $ em ^.at addr
+      v <- mkApp subKnownSet [eff] >>= getBool
+      case v of
+        (Just True) -> return True
+        (Just False) -> return False
+        Nothing -> error "isInSubKnown"
+
     getKUSets ctxt = foldl kuFoo (M.empty, S.empty) ctxt
 
     kuFoo (known, unknown) (Row4Z3 s a v) =
