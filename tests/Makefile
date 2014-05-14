@@ -15,5 +15,9 @@ db_test: db_test.hs
 analysis: analysis.hs
 	ghc analysis.hs
 
+typecheck: typecheck.hs
+	ghc typecheck.hs
+
+
 clean:
-	rm -rf test1 test2 test3 *.o *~ *.hi op db_test analysis
+	rm -rf test1 test2 test3 *.o *~ *.hi op db_test analysis typecheck

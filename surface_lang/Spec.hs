@@ -3,11 +3,14 @@
 
 module Spec
 (
+  -- Types
   Prop, Effect, Spec,
+  -- Types: debug expose
+  Row4Z3(..), Ctxt4Z3, Addr(..),
 
   -- Spec builders
   forall_, exists_, true, false, not_, (/\), (\/), (==>), sameEffect, vis, so,
-  sortOf, ite, sameAttr, distinctEffects, isInSameSess,
+  hb, sortOf, ite, sameAttr, distinctEffects, isInSameSess,
 
   -- Queries
   isAvailable,
@@ -17,8 +20,8 @@ module Spec
 ) where
 
 import Language.Haskell.TH
-import Z3.Monad hiding (Result, showModel, Sort)
-import qualified Z3.Monad as Z3M
+import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, assertCnstr, Sort)
+import qualified Z3.Monad as Z3M (Sort, mkFreshFuncDecl, mkFreshConst, assertCnstr)
 import Control.Applicative hiding ((<*))
 import Data.List (find)
 import Control.Lens hiding (Effect)
@@ -28,6 +31,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Types
+-- import Data.List.Utils (replace)
 
 -------------------------------------------------------------------------------
 -- Types
@@ -85,9 +89,48 @@ type Spec = Effect -> Prop
 -------------------------------------------------------------------------------
 -- Helper
 
--- Monadic composition
--- (>=>) :: Monad m => (a -> m b) -> (b -> m c) -> a -> m c
--- f >=> g = \x -> f x >>= g
+-- #define DBG_ASSERT
+
+assertCnstr :: AST -> Z3 ()
+#ifdef DBG_ASSERT
+assertCnstr ast = do
+  setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
+  astStr <- astToString ast
+  liftIO $ putStrLn $ "--------------------------------\n(assert " ++ astStr ++ ")\n"
+  Z3M.assertCnstr ast
+  r <- check
+  liftIO $ putStrLn $ "Assert Result: " ++ (show r)
+#else
+assertCnstr = Z3M.assertCnstr
+#endif
+
+mkFreshFuncDecl :: String -> [Z3M.Sort] -> Z3M.Sort -> Z3 FuncDecl
+#ifdef DBG_ASSERT
+mkFreshFuncDecl s args res = do
+  setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
+  fd <- Z3M.mkFreshFuncDecl s args res
+  fdStr <- funcDeclToString fd
+  liftIO $ putStrLn $ "--------------------------------\n" ++ fdStr ++ "\n"
+  return fd
+#else
+mkFreshFuncDecl = Z3M.mkFreshFuncDecl
+#endif
+
+mkFreshConst :: String -> Z3M.Sort -> Z3 AST
+#ifdef DBG_ASSERT
+mkFreshConst str srt = do
+  c <- Z3M.mkFreshConst str srt
+  cstr <- astToString c
+  srtstr <- sortToString srt
+  liftIO $ putStrLn $ "--------------------------------"
+  liftIO $ putStrLn $ "(declare-const " ++ cstr ++ " " ++ srtstr ++ ")\n"
+  return c
+#else
+mkFreshConst = Z3M.mkFreshConst
+#endif
+
+debugCheck str =
+  lift $ push >> check >>= (\r -> when (r == Unsat) $ error str) >> pop 1
 
 -------------------------------------------------------------------------------
 -- Proposition builder
@@ -321,7 +364,7 @@ mkPropState = do
 
   return $ PropState effectSort sessSort visRel soRel hbRel sessRel idxRel
 
-res2Bool :: Z3M.Result -> Bool
+res2Bool :: Result -> Bool
 res2Bool Unsat = True
 res2Bool Sat = False
 
@@ -458,17 +501,20 @@ memberProp set (Effect eff) = Prop $ lift $ mkApp set [eff]
 -- Extend a set with a effect that is not already a member. Fails if the effect
 -- is already a member.
 extendSet :: FuncDecl -> String -> Effect -> StateT RtState Z3 FuncDecl
-extendSet set str (Effect eff) = do
+extendSet set str eff = do
   ps <- use propState
   bs <- lift $ mkBoolSort
-  -- Assert that the effect does not belong to the original set. This asserts
-  -- the freshness of the effect.
-  assertRtProp $ not_ $ memberProp set $ Effect eff
+  -- Declare the new set
   newSet <- lift $ mkFreshFuncDecl str [ps^.effSort] bs
-  assertRtProp $ forall_ $ \a -> ite (sameEffect a $ Effect eff) true (memberProp set a)
+  let falseBranch quantifiedEff = Prop $ do
+        a <- unProp $ memberProp newSet quantifiedEff
+        b <- unProp $ memberProp set quantifiedEff
+        lift $ mkEq a b
+  assertRtProp $ forall_ $ \a -> ite (sameEffect a eff) (memberProp newSet eff) $ falseBranch a
   return newSet
 
 addKnownEffect :: (Addr, S.Set Addr) -> StateT RtState Z3 ()
+addKnownEffect (Addr _ 0, _) = error "addKnownEffect : index = 0"
 addKnownEffect (addr, visSet) = do
   (eff, sess) <- addEffect addr
   -- Extend known set with eff
@@ -484,10 +530,14 @@ addKnownEffect (addr, visSet) = do
   -- eff, everything else is not visible. Expect: all unknown effects are in
   -- effMap
   em <- use effMap
-  let cond = orList $ map (\addr -> sameEffect eff $ fromJust $ em ^.at addr) $ S.toList visSet
-  assertRtProp $ forall_ $ \a -> ite cond (vis a eff) (not_ $ vis a eff)
+  if S.size visSet == 0
+  then assertRtProp $ forall_ $ \a -> not_ $ vis a eff
+  else do
+    let cond = orList $ map (\addr -> sameEffect eff $ fromJust $ em ^.at addr) $ S.toList visSet
+    assertRtProp $ forall_ $ \a -> ite cond (vis a eff) (not_ $ vis a eff)
 
 addUnknownEffect :: Addr -> StateT RtState Z3 ()
+addUnknownEffect (Addr _ 0) = error "addUnknownEffect : index = 0"
 addUnknownEffect addr = do
   (eff, sess) <- addEffect addr
   -- Extend unknown set with eff
@@ -603,6 +653,6 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
     getKUSets ctxt = foldl kuFoo (M.empty, S.empty) ctxt
 
     kuFoo (known, unknown) (Row4Z3 s a v) =
-      let known = M.insert (Addr s a) v known
-          unknown = S.difference (S.union unknown v) (M.keysSet known)
-      in (known, unknown)
+      let known' = M.insert (Addr s a) v known
+          unknown' = S.difference (S.union unknown v) (M.keysSet known')
+      in (known', unknown')
