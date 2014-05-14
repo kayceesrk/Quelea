@@ -31,7 +31,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Types
--- import Data.List.Utils (replace)
+import System.IO
 
 -------------------------------------------------------------------------------
 -- Types
@@ -89,48 +89,65 @@ type Spec = Effect -> Prop
 -------------------------------------------------------------------------------
 -- Helper
 
--- #define DBG_ASSERT
+#define DEBUG_SHOW
+#define DEBUG_CHECK
+#define DEBUG_SANITY
 
-assertCnstr :: AST -> Z3 ()
-#ifdef DBG_ASSERT
-assertCnstr ast = do
+assertCnstr :: String -> AST -> Z3 ()
+#ifdef DEBUG_SHOW
+assertCnstr name ast = do
   setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
   astStr <- astToString ast
-  liftIO $ putStrLn $ "--------------------------------\n(assert " ++ astStr ++ ")\n"
+  liftIO $ do
+    putStrLn $ ";; --------------------------------"
+    putStrLn $ ";; Assert: " ++ name
+    putStrLn $ "(assert " ++ astStr ++ ")"
+    hFlush stdout
+    hFlush stderr
   Z3M.assertCnstr ast
+  #ifdef DEBUG_CHECK
   r <- check
-  liftIO $ putStrLn $ "Assert Result: " ++ (show r)
+  liftIO $ putStrLn $ ";; Assert Result: " ++ (show r)
+  #endif
 #else
-assertCnstr = Z3M.assertCnstr
+assertCnstr s a = Z3M.assertCnstr a
 #endif
 
 mkFreshFuncDecl :: String -> [Z3M.Sort] -> Z3M.Sort -> Z3 FuncDecl
-#ifdef DBG_ASSERT
+#ifdef DEBUG_SHOW
 mkFreshFuncDecl s args res = do
   setASTPrintMode Z3_PRINT_SMTLIB2_COMPLIANT
   fd <- Z3M.mkFreshFuncDecl s args res
   fdStr <- funcDeclToString fd
-  liftIO $ putStrLn $ "--------------------------------\n" ++ fdStr ++ "\n"
+  liftIO $ putStrLn $ ";; --------------------------------\n" ++ fdStr ++ "\n"
+  liftIO $ hFlush stdout
+  liftIO $ hFlush stderr
   return fd
 #else
 mkFreshFuncDecl = Z3M.mkFreshFuncDecl
 #endif
 
 mkFreshConst :: String -> Z3M.Sort -> Z3 AST
-#ifdef DBG_ASSERT
+#ifdef DEBUG_SHOW
 mkFreshConst str srt = do
   c <- Z3M.mkFreshConst str srt
   cstr <- astToString c
   srtstr <- sortToString srt
-  liftIO $ putStrLn $ "--------------------------------"
+  liftIO $ putStrLn $ ";; --------------------------------"
   liftIO $ putStrLn $ "(declare-const " ++ cstr ++ " " ++ srtstr ++ ")\n"
+  liftIO $ hFlush stdout
+  liftIO $ hFlush stderr
   return c
 #else
 mkFreshConst = Z3M.mkFreshConst
 #endif
 
+#ifdef DEBUG_SANITY
 debugCheck str =
   lift $ push >> check >>= (\r -> when (r == Unsat) $ error str) >> pop 1
+#else
+debugCheck str = return ()
+#endif
 
 -------------------------------------------------------------------------------
 -- Proposition builder
@@ -299,54 +316,54 @@ hasIdx (Effect e) idx = Prop $ do
 -------------------------------------------------------------------------------
 -- Queries
 
-assertProp :: Prop -> ReaderT PropState Z3 ()
-assertProp = unProp >=> (lift . assertCnstr)
+assertProp :: String -> Prop -> ReaderT PropState Z3 ()
+assertProp str = unProp >=> (lift . (assertCnstr str))
 
 assertBasicAxioms :: ReaderT PropState Z3 ()
 assertBasicAxioms = do
 
   -- Visibility is asymmetric
-  assertProp $ forall_ $ \ x -> forall_ $ \ y -> vis x y ==> (not_ $ vis y x)
+  assertProp "VIS_ASYMM" $ forall_ $ \ x -> forall_ $ \ y -> vis x y ==> (not_ $ vis y x)
 
   -- Session order is asymmetric
-  assertProp $ forall_ $ \ x -> forall_ $ \ y -> so x y ==> (not_ $ so y x)
+  assertProp "SO_ASYMM" $ forall_ $ \ x -> forall_ $ \ y -> so x y ==> (not_ $ so y x)
 
   -- Session order only relates effects from the same session. Otherwise, they
   -- are unrelated by session order.
-  assertProp $ forall_ $ \ x -> forall_ $ \ y ->
+  assertProp "SO_DISJ_TO" $ forall_ $ \ x -> forall_ $ \ y ->
     ite (isInSameSess x y /\ (not_ $ sameEffect x y))
     {- then -} (so x y \/ so y x)
     {- else -} (not_ $ so x y \/ so y x)
 
   -- Session order is transitive
-  assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
+  assertProp "SO_TRANS" $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
     (so x y /\ so y z) ==> (so x z)
 
   -- The index of an effect is always >= 1
   let _1 = (IntVal . lift . mkInt) 1
-  assertProp $ forall_ $ \ x -> forallInt $ \ i -> (i ==* idxOf x) ==> (i >=* _1)
+  assertProp "IDX_GE_1" $ forall_ $ \ x -> forallInt $ \ i -> (i ==* idxOf x) ==> (i >=* _1)
 
   -- Existence of previous effects in the same session.
   -- For any effect with a index greater than 1, there exists an effect in the
   -- same session, with an index that is one less, and which precedes the
   -- original effect in session order.
-  assertProp $ forall_ $ \ a ->
+  assertProp "EXIST_PREV_IDX_GT_1" $ forall_ $ \ a ->
     (idxOf a >* _1) ==> (exists_ $ \b -> (isInSameSess a b /\ (idxOf b ==* (idxOf a -* _1)) /\ so b a))
 
   -- If two effects are ordered by so, then their indices are ordered by <
-  assertProp $ forall_ $ \a -> forall_ $ \b -> (so a b) ==> (idxOf a <* idxOf b)
+  assertProp "SO_FOLLOWS_IDX" $ forall_ $ \a -> forall_ $ \b -> (so a b) ==> (idxOf a <* idxOf b)
 
   -- Two effects have the same address iff they are the same
-  assertProp $ forall_ $ \a -> forall_ $ \b -> ((idxOf a ==* idxOf b) /\ isInSameSess a b) ==> sameEffect a b
-  assertProp $ forall_ $ \a -> forall_ $ \b -> sameEffect a b ==> ((idxOf a ==* idxOf b) /\ isInSameSess a b)
+  assertProp "EQ_ADDR_EFF_1" $ forall_ $ \a -> forall_ $ \b -> ((idxOf a ==* idxOf b) /\ isInSameSess a b) ==> sameEffect a b
+  assertProp "EQ_ADDR_EFF_2" $ forall_ $ \a -> forall_ $ \b -> sameEffect a b ==> ((idxOf a ==* idxOf b) /\ isInSameSess a b)
 
   -- Happens-before follows visibility and session order
-  assertProp $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
+  assertProp "HB_FOLLOWS_VIS_N_SO" $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
   -- Happens-before is transitive
-  assertProp $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
+  assertProp "HB_TRANS" $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
     (hb x y /\ hb y z) ==> (hb x z)
   -- Happens-before is acyclic
-  assertProp $ forall_ $ \ x -> forall_ $ \ y -> hb x y ==> (not_ $ hb y x)
+  assertProp "HB_ASYMM" $ forall_ $ \ x -> forall_ $ \ y -> hb x y ==> (not_ $ hb y x)
 
 
 mkPropState :: Z3 PropState
@@ -389,12 +406,12 @@ isAvailable s = evalZ3 $ do
       eff <- mkEffectConst
 
       -- Build availability relation and extend visibility
-      assertProp $ forall_ $ \a -> forall_ $ \b -> vis a eff ==> avr a eff
-      assertProp $ forall_ $ \a -> forall_ $ \b -> ((vis a b \/ so a b) /\ avr b eff) ==> (avr a eff)
-      assertProp $ forall_ $ \a -> avr a eff ==> vis a eff
+      assertProp "AV_VIS" $ forall_ $ \a -> forall_ $ \b -> vis a eff ==> avr a eff
+      assertProp "AV_VIS_SO" $ forall_ $ \a -> forall_ $ \b -> ((vis a b \/ so a b) /\ avr b eff) ==> (avr a eff)
+      assertProp "AV_IMPL_VIS" $ forall_ $ \a -> avr a eff ==> vis a eff
 
       -- Assert validity of the given specification under the extended context
-      assertProp . not_ . s $ eff
+      (assertProp "AV_CHECK") . not_ . s $ eff
       lift $ res2Bool <$> check
 
 -- http://rise4fun.com/Z3/v6jF
@@ -418,12 +435,12 @@ isCoordFree s = evalZ3 $ do
       eff <- mkEffectConst
 
       -- Build happens-before relation and extend visibility (causal visibility)
-      assertProp $ forall_ $ \a -> (vis a eff \/ so a eff) ==> hb a eff
-      assertProp $ forall_ $ \a -> forall_ $ \b -> ((so a b \/ vis a b) /\ hb b eff) ==> hb a eff
-      assertProp $ forall_ $ \a -> hb a eff ==> vis a eff
+      assertProp "CF_VIS_SO" $ forall_ $ \a -> (vis a eff \/ so a eff) ==> hb a eff
+      assertProp "CF_TRANS" $ forall_ $ \a -> forall_ $ \b -> ((so a b \/ vis a b) /\ hb b eff) ==> hb a eff
+      assertProp "CF_IMPL_VIS" $ forall_ $ \a -> hb a eff ==> vis a eff
 
       -- Assert validity of the given specification under causal visibility
-      assertProp . not_ . s $ eff
+      (assertProp "CF_CHECK") . not_ . s $ eff
       lift $ res2Bool <$> check
 
 isWellTyped :: Spec -> IO Bool
@@ -443,18 +460,18 @@ isWellTyped s = evalZ3 $ do
       let to (Effect a1) (Effect a2) = Prop $ lift $ mkApp toFuncDecl [a1,a2]
 
       -- Build the total order relation and extend visibility (sequential consistency)
-      assertProp $ forall_ $ \a -> forall_ $ \b -> to a b \/ to b a \/ sameEffect a b
-      assertProp $ forall_ $ \a -> forall_ $ \b -> so a b ==> to a b
-      assertProp $ forall_ $ \a -> forall_ $ \b -> to a b ==> vis a b
+      assertProp "SC_TO" $ forall_ $ \a -> forall_ $ \b -> to a b \/ to b a \/ sameEffect a b
+      assertProp "SC_FOLLOWS_TO" $ forall_ $ \a -> forall_ $ \b -> so a b ==> to a b
+      assertProp "SC_VIS" $ forall_ $ \a -> forall_ $ \b -> to a b ==> vis a b
 
       -- Assert the validity of the given specification under sequential consistency
-      assertProp . not_ . forall_ $ s
+      (assertProp "WT_CHECK") . not_ . forall_ $ s
       lift $ res2Bool <$> check
 
-assertRtProp :: Prop -> StateT RtState Z3 ()
-assertRtProp prop = do
+assertRtProp :: String -> Prop -> StateT RtState Z3 ()
+assertRtProp str prop = do
   ps <- use propState
-  lift $ runReaderT (assertProp prop) ps
+  lift $ runReaderT (assertProp str prop) ps
 
 addEffect :: Addr -> StateT RtState Z3 (Effect, Session)
 addEffect addr = do
@@ -477,9 +494,9 @@ addEffect addr = do
   effMap .= (at addr ?~ eff $ em)
 
   -- Assert that the effect belongs to the session
-  assertRtProp $ hasSess eff sess
+  assertRtProp "ADD_EFF_SESS" $ hasSess eff sess
   -- Assert that the effect this index
-  assertRtProp $ hasIdx eff idx
+  assertRtProp "ADD_EFF_IDX" $ hasIdx eff idx
 
   return (eff, sess)
 
@@ -510,7 +527,7 @@ extendSet set str eff = do
         a <- unProp $ memberProp newSet quantifiedEff
         b <- unProp $ memberProp set quantifiedEff
         lift $ mkEq a b
-  assertRtProp $ forall_ $ \a -> ite (sameEffect a eff) (memberProp newSet eff) $ falseBranch a
+  assertRtProp "EXT_SET" $ forall_ $ \a -> ite (sameEffect a eff) (memberProp newSet eff) $ falseBranch a
   return newSet
 
 addKnownEffect :: (Addr, S.Set Addr) -> StateT RtState Z3 ()
@@ -531,10 +548,10 @@ addKnownEffect (addr, visSet) = do
   -- effMap
   em <- use effMap
   if S.size visSet == 0
-  then assertRtProp $ forall_ $ \a -> not_ $ vis a eff
+  then assertRtProp "ADD_K_EFF_EMP_VIS" $ forall_ $ \a -> not_ $ vis a eff
   else do
     let cond = orList $ map (\addr -> sameEffect eff $ fromJust $ em ^.at addr) $ S.toList visSet
-    assertRtProp $ forall_ $ \a -> ite cond (vis a eff) (not_ $ vis a eff)
+    assertRtProp "ADD_K_EFF_NEMP_VIS" $ forall_ $ \a -> ite cond (vis a eff) (not_ $ vis a eff)
 
 addUnknownEffect :: Addr -> StateT RtState Z3 ()
 addUnknownEffect (Addr _ 0) = error "addUnknownEffect : index = 0"
@@ -545,7 +562,7 @@ addUnknownEffect addr = do
   newUs <- extendSet us "unknown" eff
   unknownSet .= newUs
   -- Assert empty visibility set
-  assertRtProp $ forall_ $ \a -> (not_ $ vis a eff)
+  assertRtProp "ADD_U_EFF" $ forall_ $ \a -> (not_ $ vis a eff)
 
 isContextReady :: Ctxt4Z3 -> Addr -> Spec -> IO (Maybe [Addr])
 isContextReady ctxt curAddr spec = evalZ3 $ do
@@ -559,8 +576,8 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
   ks <- mkFreshFuncDecl "known" [ps^.effSort] boolSort
   us <- mkFreshFuncDecl "unknown" [ps^.effSort] boolSort
   let assertEmptiness = do {
-    assertProp $ forall_ $ \a -> (not_ $ memberProp ks a);
-    assertProp $ forall_ $ \a -> (not_ $ memberProp us a)
+    assertProp "K_EMP" $ forall_ $ \a -> (not_ $ memberProp ks a);
+    assertProp "UK_EMP" $ forall_ $ \a -> (not_ $ memberProp us a)
   }
   runReaderT assertEmptiness ps
 
@@ -568,14 +585,15 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
 
   -- Build the known & unknown set from the context
   let (ctxtKnownMap, ctxtUnknownSet) = getKUSets ctxt
-  let isReadyBool = do
-      -- Incorporate current effect
-      (curEff, _) <- addEffect curAddr
-      addPrevToUnknownIfNotKnown curAddr
 
+  let isReadyBool = do
       -- Load the known and unknown sets
       mapM_ addUnknownEffect $ S.toList ctxtUnknownSet
       mapM_ addKnownEffect $ M.toList ctxtKnownMap
+
+      -- Incorporate current effect
+      (curEff, _) <- addEffect curAddr
+      addPrevToUnknownIfNotKnown curAddr
 
       -- Helper definitions
       ks <- use knownSet
@@ -584,19 +602,21 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
       let unknown = memberProp us
 
       -- source of a happens-before relation belongs to either known or unknown
-      assertRtProp $ forall_ $ \a -> forall_ $ \b -> hb a b ==> (known a \/ unknown a)
+      assertRtProp "HB_ORIG_K_U" $ forall_ $ \a -> forall_ $ \b -> hb a b ==> (known a \/ unknown a)
       -- hb is constructed out of so and vis edges
-      assertRtProp $ forall_ $ \a -> forall_ $ \b -> hb a b ==>
+      assertRtProp "HB_BRK_VIS_SO" $ forall_ $ \a -> forall_ $ \b -> hb a b ==>
         (so a b \/ vis a b \/ (exists_ $ \c -> hb a c /\ hb c b))
 
       -- Relate known and unknown
-      assertRtProp $ forall_ $ \a -> unknown a ==> (not_ $ known a)
-      assertRtProp $ forall_ $ \a -> known a ==> (not_ $ unknown a)
+      assertRtProp "UK_IMPL_N_K" $ forall_ $ \a -> unknown a ==> (not_ $ known a)
+      assertRtProp "K_IMPL_N_UK" $ forall_ $ \a -> known a ==> (not_ $ unknown a)
+
+      debugCheck "Error : isReadyBool"
 
       lift $ push
       -- An effect is visible iff it is known
-      assertRtProp $ forall_ $ \a -> ite (known a) (vis a curEff) (not_ $ vis a curEff)
-      assertRtProp . not_ . spec $ curEff
+      assertRtProp "K_IMPL_VIS" $ forall_ $ \a -> ite (known a) (vis a curEff) (not_ $ vis a curEff)
+      (assertRtProp "K_CHECK") . not_ . spec $ curEff
       res <- lift $ check
       lift $ pop 1
       return $ (res2Bool res, curEff)
@@ -611,12 +631,15 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
       subKnownSet <- lift $ mkFreshFuncDecl "sub-known" [ps^.effSort] boolSort
       let subKnown = memberProp subKnownSet
       -- Define subKnown set
-      assertRtProp $ forall_ $ \a -> subKnown a ==> known a
-      assertRtProp $ forall_ $ \a -> known a /\ (not_ $ exists_ $ \b -> unknown b /\ hb b a) ==> subKnown a
+      assertRtProp "SK_SUBSET_K" $ forall_ $ \a -> subKnown a ==> known a
+      assertRtProp "SK_INCL_K" $ forall_ $ \a -> known a /\ (not_ $ exists_ $ \b -> unknown b /\ hb b a) ==> subKnown a
+
+      debugCheck "Error : getReadySubKnown"
 
       lift $ push
-      assertRtProp $ forall_ $ \a -> ite (subKnown a) (vis a curEff) (not_ $ vis a curEff)
-      assertRtProp . spec $ curEff
+      -- An effect is visible iff it is sub-known
+      assertRtProp "SK_IMPL_VIS" $ forall_ $ \a -> ite (subKnown a) (vis a curEff) (not_ $ vis a curEff)
+      (assertRtProp "SK_CHECK") . spec $ curEff
       res <- lift $ check
       lift $ pop 1
       case res of
@@ -627,17 +650,14 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
   ((res, curEff), rts) <- runStateT isReadyBool rts
   -- If the context is ready, then return the original context
   if res then do
-    liftIO $ print "known = SUCCESS"
     return $ Just $ M.keys ctxtKnownMap
   -- Else, check if there exists a sub-context which is ready
   else do
     (res, rts) <- runStateT (getReadySubKnown curEff) rts
     case res of
       Nothing -> do
-        liftIO $ print "Sub-Known = FAILURE"
-        return $ Nothing
+        return Nothing
       Just subKnownSet -> do
-        liftIO $ print "Sub-Known = SUCCESS"
         (Sat, Just model) <- getModel
         subKnownAddrs <- filterM (isInSubKnown (rts^.effMap) subKnownSet) $ M.keys ctxtKnownMap
         return $ Just subKnownAddrs
