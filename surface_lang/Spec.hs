@@ -20,8 +20,10 @@ module Spec
 ) where
 
 import Language.Haskell.TH
-import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, assertCnstr, Sort)
-import qualified Z3.Monad as Z3M (Sort, mkFreshFuncDecl, mkFreshConst, assertCnstr)
+import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, assertCnstr, Sort, push,
+                        pop, check)
+import qualified Z3.Monad as Z3M (Sort, mkFreshFuncDecl, mkFreshConst,
+                                  assertCnstr, push, pop, check)
 import Control.Applicative hiding ((<*))
 import Data.List (find)
 import Control.Lens hiding (Effect)
@@ -93,6 +95,43 @@ type Spec = Effect -> Prop
 #define DEBUG_CHECK
 #define DEBUG_SANITY
 
+check :: Z3 Result
+#ifdef DEBUG_SHOW
+check = do
+  liftIO $ do
+    putStrLn "(check-sat)"
+    hFlush stdout
+    hFlush stderr
+  Z3M.check
+#else
+check = Z3M.check
+#endif
+
+push :: Z3 ()
+#ifdef DEBUG_SHOW
+push = do
+  liftIO $ do
+    putStrLn "(push)"
+    hFlush stdout
+    hFlush stderr
+  Z3M.push
+#else
+push = Z3M.push
+#endif
+
+pop :: Int -> Z3 ()
+#ifdef DEBUG_SHOW
+pop n | n /= 1 = error "pop"
+pop 1 = do
+  liftIO $ do
+    putStrLn "(pop)"
+    hFlush stdout
+    hFlush stderr
+  Z3M.pop 1
+#else
+pop = Z3M.pop
+#endif
+
 assertCnstr :: String -> AST -> Z3 ()
 #ifdef DEBUG_SHOW
 assertCnstr name ast = do
@@ -106,8 +145,10 @@ assertCnstr name ast = do
     hFlush stderr
   Z3M.assertCnstr ast
   #ifdef DEBUG_CHECK
+  push
   r <- check
   liftIO $ putStrLn $ ";; Assert Result: " ++ (show r)
+  pop 1
   #endif
 #else
 assertCnstr s a = Z3M.assertCnstr a

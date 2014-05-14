@@ -91,4 +91,4 @@ main = do
   doEx (ex5 rmw)     "Example 5 + rmw"
   -}
   doEx (ex5 mw)      "Example 5 + mw"
-  doEx (ex5 cau)     "Example 5 + cau"
+  -- doEx (ex5 cau)     "Example 5 + cau"
