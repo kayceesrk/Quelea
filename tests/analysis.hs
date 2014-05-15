@@ -66,7 +66,6 @@ doEx ex str = do
     Just s -> putStrLn ("Ready : size(sub-known) = " ++ (show $ length s))
 
 main = do
-  {-
   doEx (ex1 trivial) "Example 1 + trivial"
   doEx (ex1 rmw)     "Example 1 + rmw"
   doEx (ex1 mw)      "Example 1 + mw"
@@ -89,6 +88,5 @@ main = do
 
   doEx (ex5 trivial) "Example 5 + trivial"
   doEx (ex5 rmw)     "Example 5 + rmw"
-  -}
   doEx (ex5 mw)      "Example 5 + mw"
-  -- doEx (ex5 cau)     "Example 5 + cau"
+  doEx (ex5 cau)     "Example 5 + cau"

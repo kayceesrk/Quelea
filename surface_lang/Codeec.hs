@@ -40,7 +40,7 @@ import qualified Database.Cassandra.CQL as CQL
 import Data.Graph.Inductive.Tree
 import Data.Graph.Inductive.Graph
 import Data.UUID
-import Control.Lens hiding (Action)
+import Control.Lens hiding (Action, Index)
 import Control.Monad.Trans.State
 import Data.Data
 import qualified Data.Set as S
@@ -67,7 +67,7 @@ type Table = String
 
 data ECState = ECState {
                  _sess_EC  :: Sess,
-                 _actid_EC :: ActId
+                 _idx_EC   :: Index
                }
 
 makeLenses ''ECState
@@ -86,9 +86,9 @@ instance CQL.CasType Addr where
 
 class (CQL.CasType a, Show a) => Storable a where
 
-type Ctxt a = Gr (Sess, ActId, a) ()
+type Ctxt a = Gr (Sess, Index, a) ()
 
-type RowValue a = (Key, Sess, ActId, S.Set Addr, a)
+type RowValue a = (Key, Sess, Index, S.Set Addr, a)
 
 data MkCtxtState a = MkCtxtState {
                      _hashMap :: M.Map Addr Node,
@@ -192,14 +192,14 @@ mkEC core spec tname k args = do
   let ctxt = mkCtxt rows
   -- Create the state for the stored procedure and execute it
   s <- use sess_EC
-  a <- use actid_EC
+  a <- use idx_EC
   let (res, eff) = core ctxt args
   -- Produce effect
   case eff of
     Nothing -> return ()
     Just eff -> do
       CQL.executeWrite CQL.ONE (mkInsert tname) (k, s, a + 1, mkVisSet ctxt s, eff)
-      actid_EC += 1
+      idx_EC += 1
   return res
 
 printCtxt :: Storable a => Table -> Key -> (Ctxt a -> Ctxt a) -> EC ()
@@ -211,6 +211,6 @@ printCtxt tname k f = do
 runEC :: CQL.Pool -> EC a -> IO a
 runEC pool ec = do
   sess <- liftIO randomIO
-  let ecst = ECState sess (0::ActId)
+  let ecst = ECState sess (0::Index)
   let cas = evalStateT ec ecst
   CQL.runCas pool cas

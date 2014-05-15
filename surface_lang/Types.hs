@@ -2,7 +2,7 @@ module Types
 (
   Key,
   Sess,
-  ActId,
+  Index,
   Addr(..),
   Row4Z3(..),
   Ctxt4Z3
@@ -14,13 +14,13 @@ import qualified Data.Set as S
 
 type Key  = UUID
 type Sess = UUID
-type ActId = Int64
-data Addr = Addr Sess ActId deriving (Eq, Ord, Read, Show)
+type Index = Int64
+data Addr = Addr Sess Index deriving (Eq, Ord, Read, Show)
 
 data Row4Z3 = Row4Z3 {
                  _sess_r4z3 :: Sess,
-                 _actid_r4z3 :: ActId,
-                 _vis_r4z3 :: S.Set Addr
+                 _idx_r4z3  :: Index,
+                 _vis_r4z3  :: S.Set Addr
                } deriving Eq
 
 instance Ord Row4Z3 where
