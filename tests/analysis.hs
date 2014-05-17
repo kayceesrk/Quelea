@@ -29,7 +29,7 @@ ex1 spec = do
 ex2 spec = do
   s1 <- randomIO
   let x = Addr s1 2
-  let y = Row4Z3 s1 1 S.empty
+  let y = Z3Row s1 1 S.empty
   putStrLn "size(known) = 1"
   isContextReady [y] x spec
 
@@ -42,20 +42,28 @@ ex3 spec = do
 ex4 spec = do
   s1 <- randomIO
   s2 <- randomIO
-  let y = Row4Z3 s1 1 S.empty
+  let y = Z3Row s1 1 S.empty
   let x = Addr s1 2
-  let z = Row4Z3 s2 1 S.empty
+  let z = Z3Row s2 1 S.empty
   putStrLn "size(known) = 2"
   isContextReady [y,z] x spec
 
 ex5 spec = do
   s1 <- randomIO
   s2 <- randomIO
-  let y = Row4Z3 s1 1 S.empty
+  let y = Z3Row s1 1 S.empty
   let x = Addr s1 2
-  let z = Row4Z3 s2 2 S.empty
+  let z = Z3Row s2 2 S.empty
   putStrLn "size(known) = 2"
   isContextReady [y,z] x spec
+
+ex6 spec = do
+  s1 <- randomIO
+  s2 <- randomIO
+  let y = Z3Row s1 2 $ S.fromList [Addr s2 2]
+  let x = Addr s1 3
+  putStrLn "size(known) = 1"
+  isContextReady [y] x spec
 
 doEx ex str = do
   putStrLn "--------------------------------"
@@ -66,7 +74,7 @@ doEx ex str = do
     Just s -> putStrLn ("Ready : size(sub-known) = " ++ (show $ length s))
 
 main = do
-  doEx (ex1 trivial) "Example 1 + trivial"
+  {- doEx (ex1 trivial) "Example 1 + trivial"
   doEx (ex1 rmw)     "Example 1 + rmw"
   doEx (ex1 mw)      "Example 1 + mw"
   doEx (ex1 cau)     "Example 1 + cau"
@@ -89,4 +97,6 @@ main = do
   doEx (ex5 trivial) "Example 5 + trivial"
   doEx (ex5 rmw)     "Example 5 + rmw"
   doEx (ex5 mw)      "Example 5 + mw"
-  doEx (ex5 cau)     "Example 5 + cau"
+  doEx (ex5 cau)     "Example 5 + cau" -}
+
+  doEx (ex6 cau)     "Example 6 + cau"

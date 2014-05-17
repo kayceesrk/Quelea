@@ -6,7 +6,7 @@ module Spec
   -- Types
   Prop, Effect, Spec,
   -- Types: debug expose
-  Row4Z3(..), Ctxt4Z3, Addr(..),
+  Z3Row(..), Z3Ctxt, Addr(..),
 
   -- Spec builders
   forall_, exists_, true, false, not_, (/\), (\/), (==>), sameEffect, vis, so,
@@ -21,9 +21,9 @@ module Spec
 
 import Language.Haskell.TH
 import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, assertCnstr, Sort, push,
-                        pop, check)
+                        pop, check, getModel)
 import qualified Z3.Monad as Z3M (Sort, mkFreshFuncDecl, mkFreshConst,
-                                  assertCnstr, push, pop, check)
+                                  assertCnstr, push, pop, check, getModel)
 import Control.Applicative hiding ((<*))
 import Data.List (find)
 import Control.Lens hiding (Effect)
@@ -45,7 +45,6 @@ data PropState = PropState {
   -- Sorts
   --------
   _effSort  :: Z3Sort,
-  _sessSort :: Z3Sort,
 
   ------------
   -- Relations
@@ -55,7 +54,9 @@ data PropState = PropState {
   -- Session order relation
   _soRel   :: FuncDecl, -- Effect -> Effect -> Bool
   -- Happens-before relation
-  _hbRel   :: FuncDecl  -- Effect -> Effect -> Bool
+  _hbRel   :: FuncDecl, -- Effect -> Effect -> Bool
+  -- Session relation
+  _sessRel :: FuncDecl  -- Effect -> Int
 }
 
 makeLenses ''PropState
@@ -74,9 +75,9 @@ type Spec = Effect -> Prop
 -------------------------------------------------------------------------------
 -- Helper
 
--- #define DEBUG_SHOW
+#define DEBUG_SHOW
 -- #define DEBUG_CHECK
-#define DEBUG_SANITY
+-- #define DEBUG_SANITY
 
 check :: Z3 Result
 #ifdef DEBUG_SHOW
@@ -89,6 +90,19 @@ check = do
 #else
 check = Z3M.check
 #endif
+
+getModel :: Z3 (Result, Maybe Model)
+#ifdef DEBUG_SHOW
+getModel = do
+  liftIO $ do
+    putStrLn "(check-sat) ;; get-model"
+    hFlush stdout
+    hFlush stderr
+  Z3M.getModel
+#else
+check = Z3M.check
+#endif
+
 
 push :: Z3 ()
 #ifdef DEBUG_SHOW
@@ -261,7 +275,11 @@ sameAttr :: Effect -> Effect -> Prop
 sameAttr = undefined
 
 isInSameSess :: Effect -> Effect -> Prop
-isInSameSess e1 e2 = so e1 e2 \/ so e2 e1
+isInSameSess (Effect a) (Effect b) = Prop $ do
+  sr <- view sessRel
+  s1 <- lift $ mkApp sr [a]
+  s2 <- lift $ mkApp sr [b]
+  lift $ mkEq s1 s2
 
 ite :: Prop -> Prop -> Prop -> Prop
 ite (Prop p1) (Prop p2) (Prop p3) = Prop $ do
@@ -269,6 +287,13 @@ ite (Prop p1) (Prop p2) (Prop p3) = Prop $ do
   ast2 <- p2
   ast3 <- p3
   lift $ mkIte ast1 ast2 ast3
+
+hasSess :: Integral a => Effect -> a -> Prop
+hasSess (Effect a) i = Prop $ do
+  sr <- view sessRel
+  iv <- lift $ mkInt i
+  s <- lift $ mkApp sr [a]
+  lift $ mkEq s iv
 
 -------------------------------------------------------------------------------
 -- Queries
@@ -296,6 +321,9 @@ assertBasicAxioms = do
   assertProp "SO_TRANS" $ forall_ $ \ x -> forall_ $ \ y -> forall_ $ \ z ->
     (so x y /\ so y z) ==> (so x z)
 
+  -- Session relation
+  assertProp "SO_SESS" $ forall_ $ \a -> forall_ $ \b -> so a b \/ so b a ==> isInSameSess a b
+
   -- Happens-before follows visibility and session order
   assertProp "HB_FOLLOWS_VIS_N_SO" $ forall_ $ \a -> forall_ $ \b -> (vis a b \/ so a b) ==> hb a b
   -- Happens-before is transitive
@@ -308,16 +336,15 @@ assertBasicAxioms = do
 mkPropState :: Z3 PropState
 mkPropState = do
   effectSort <- mkUninterpretedSort =<< mkStringSymbol "Effect"
-  sessSort <- mkUninterpretedSort =<< mkStringSymbol "Session"
   boolSort <- mkBoolSort
   intSort <- mkIntSort
 
   visRel <- mkFreshFuncDecl "vis" [effectSort, effectSort] boolSort
   soRel <- mkFreshFuncDecl "so" [effectSort, effectSort] boolSort
-  sessRel <- mkFreshFuncDecl "sess" [effectSort] sessSort
+  sessRel <- mkFreshFuncDecl "sess" [effectSort] intSort
   hbRel <- mkFreshFuncDecl "hb" [effectSort, effectSort] boolSort
 
-  return $ PropState effectSort sessSort visRel soRel hbRel
+  return $ PropState effectSort visRel soRel hbRel sessRel
 
 res2Bool :: Result -> Bool
 res2Bool Unsat = True
@@ -406,7 +433,7 @@ isWellTyped s = evalZ3 $ do
       (assertProp "WT_CHECK") . not_ . forall_ $ s
       lift $ res2Bool <$> check
 
-isContextReady :: Ctxt4Z3 -> Addr -> Spec -> IO (Maybe [Addr])
+isContextReady :: Z3Ctxt -> Addr -> Spec -> IO (Maybe [Addr])
 isContextReady ctxt curAddr spec = evalZ3 $ do
   let effMap = buildKU ctxt
   let Addr s i = curAddr
@@ -530,7 +557,7 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
           justK = M.map (\a -> Known a) k
       in S.foldl (\m addr -> M.insert addr Unknown m) justK u
 
-    buildKUHelper (known, unknown) (Row4Z3 s a v) =
+    buildKUHelper (known, unknown) (Z3Row s a v) =
       let known2 = M.insert (Addr s a) v known
           unknown2 = S.difference (S.union unknown v) (M.keysSet known2)
       in (known2, unknown2)
@@ -552,16 +579,19 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
 
     soHelper (Addr sess _) eff Nothing = do
       assertProp "SO_FIRST" $ forall_ $ \a -> not_ $ so a eff
-      return $ Just (sess, eff)
-    soHelper (Addr cSess _) cEff (Just (pSess, pEff)) = do
+      assertProp "SESS_FIRST" $ hasSess eff 0
+      return $ Just (sess, eff, 0)
+    soHelper (Addr cSess _) cEff (Just (pSess, pEff, pSid)) = do
       if pSess == cSess
       then do
         assertProp "SO_MID" $ so pEff cEff
-        return $ Just (cSess, cEff)
+        assertProp "SESS_MID" $ hasSess cEff pSid
+        return $ Just (cSess, cEff, pSid)
       else do
         assertProp "SO_LAST" $ forall_ $ \a -> not_ $ so pEff a
         assertProp "SO_FIRST" $ forall_ $ \a -> not_ $ so a cEff
-        return $ Just (cSess, cEff)
+        assertProp "SESS_FIRST" $ hasSess cEff (pSid + 1)
+        return $ Just (cSess, cEff, pSid + 1)
 
     visHelper (infoMap, effMap) addr eff = do
       case fromJust $ infoMap ^.at addr of
