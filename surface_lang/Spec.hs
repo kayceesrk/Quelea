@@ -301,6 +301,12 @@ hasSess (Effect a) i = Prop $ do
 assertProp :: String -> Prop -> ReaderT PropState Z3 ()
 assertProp str = unProp >=> (lift . (assertCnstr str))
 
+assertProp2 :: String -> Prop -> ReaderT PropState Z3 AST
+assertProp2 str (Prop prop) = do
+  ast <- prop
+  lift $ assertCnstr str ast
+  return ast
+
 assertBasicAxioms :: ReaderT PropState Z3 ()
 assertBasicAxioms = do
 
