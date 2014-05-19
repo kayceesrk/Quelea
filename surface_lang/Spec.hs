@@ -16,7 +16,8 @@ module Spec
   isAvailable,
   isCoordFree,
   isWellTyped,
-  isContextReady
+  isContextReady,
+  ReadyResult(..)
 ) where
 
 import Language.Haskell.TH
@@ -34,6 +35,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Types
 import System.IO
+import Data.String.Utils
 
 -------------------------------------------------------------------------------
 -- Types
@@ -74,10 +76,11 @@ data Sort
 class Attr a
 type Spec = Effect -> Prop
 
+data ReadyResult = Ready [Addr] | NotReady Addr
 -------------------------------------------------------------------------------
 -- Helper
 
-#define DEBUG_SHOW
+-- #define DEBUG_SHOW
 -- #define DEBUG_CHECK
 -- #define DEBUG_SANITY
 
@@ -102,7 +105,7 @@ getModel = do
     hFlush stderr
   Z3M.getModel
 #else
-check = Z3M.check
+getModel = Z3M.getModel
 #endif
 
 
@@ -308,8 +311,8 @@ assertProp str (Prop prop) = do
   assertions .= ast:asl
   return ast
 
-assertProp2 :: String -> Prop -> StateT PropState Z3 AST
-assertProp2 str (Prop prop) = do
+assertPropSilent :: String -> Prop -> StateT PropState Z3 AST
+assertPropSilent str (Prop prop) = do
   ast <- prop
   lift $ assertCnstr str ast
   asl <- use assertions
@@ -452,7 +455,7 @@ isWellTyped s = evalZ3 $ do
       (assertProp "WT_CHECK") . not_ . forall_ $ s
       lift $ res2Bool <$> check
 
-isContextReady :: Z3Ctxt -> Addr -> Spec -> IO (Maybe [Addr])
+isContextReady :: Z3Ctxt -> Addr -> Spec -> IO ReadyResult
 isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
   let effMap = buildKU ctxt
   let Addr s i = curAddr
@@ -502,17 +505,17 @@ isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
 
   (res,ps) <- runStateT (mainKnownAxioms known unknown curEff spec) ps
   case res of
-    Unsat -> return $ Just $ M.keys knownEffs
+    Unsat -> return $ Ready $ M.keys knownEffs
     Sat -> do
       subKnownRel <- mkFreshFuncDecl "subKnown" [ps^.effSort] boolSort
       let subKnown = mkMember subKnownRel
-      (res,ps) <- runStateT (mainSubknownAxioms subKnown known unknown curEff spec) ps
+      (res,ps) <- runStateT (mainSubknownAxioms effMap subKnown known unknown curEff spec) ps
       case res of
-        Nothing -> do
-          return Nothing
-        Just model -> do
+        Right addr-> do
+          return $ NotReady addr
+        Left model -> do
           sk <- foldM (belongsToSubknown subKnownRel model) [] $ M.toList knownEffs
-          return $ Just sk
+          return $ Ready sk
 
   where
     mkMember fd (Effect eff) = Prop $ lift $ mkApp fd [eff]
@@ -528,7 +531,7 @@ isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
             Just True -> return $ addr:acc
             otherwise -> return acc
 
-    mainSubknownAxioms subKnown known unknown cur spec = do
+    mainSubknownAxioms effMap subKnown known unknown cur spec = do
       -- Define subKnown set
       assertProp "SK_SUBSET_K" $ forall_ $ \a -> subKnown a ==> known a
       assertProp "SK_INCL_K" $ forall_ $ \a -> known a /\ (not_ $ exists_ $ \b -> unknown b /\ hb b a) ==> subKnown a
@@ -540,21 +543,32 @@ isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
       case (res,model) of
         (Sat, Just m) -> do
           lift $ pop 1
-          return $ Just m
+          return $ Left m
         otherwise -> do
           asl <- use assertions
           lift $ do
-            res <- interpolate2 (reverse asl) [f1,f2]
-            sres <- mapM astToString res
-            liftIO $ mapM_ putStrLn sres
+            res:_ <- interpolate2 (reverse asl) [f1,f2]
+            str <- astToString res
+            curEffStr <- astToString (unEffect cur)
+            let missingEffStr = head $ filter (\s -> startswith "eff" s && s /= curEffStr) $
+                                words $ replace ")" "" $ replace "(" "" str
+            Just addr <- foldM (findCore missingEffStr) Nothing $ M.toList effMap
             pop 1
-            return Nothing
+            return $ Right addr
+
+    findCore missingEffect (Just x) _ = return $ Just x
+    findCore missingEffStr Nothing (addr, Effect ast) = do
+      astStr <- astToString ast
+      if astStr == missingEffStr
+      then return $ Just addr
+      else return Nothing
+
 
     mainKnownAxioms known unknown cur spec = do
       lift $ push
       -- An effect is visible iff it is known
-      assertProp2 "K_IMPL_VIS" $ forall_ $ \a -> ite (known a) (vis a cur) (not_ $ vis a cur)
-      (assertProp2 "K_CHECK") . not_ . spec $ cur
+      assertPropSilent "K_IMPL_VIS" $ forall_ $ \a -> ite (known a) (vis a cur) (not_ $ vis a cur)
+      (assertPropSilent "K_CHECK") . not_ . spec $ cur
       res <- lift $ check
       lift $ pop 1
       return res

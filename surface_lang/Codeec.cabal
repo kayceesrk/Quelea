@@ -22,7 +22,8 @@ Library
     transformers,
     cereal,
     text,
-    random
+    random,
+    MissingH
   Exposed-modules:
     Codeec, SpecCheck, Spec
   Other-modules:
