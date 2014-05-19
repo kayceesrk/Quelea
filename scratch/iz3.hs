@@ -17,6 +17,7 @@ main = evalZ3WithInterpolationContext $ do
   z2p1 <- mkAdd [z2, _1]
   f2 <- mkEq z2p1 y
   --
+  t <- mkTrue
   assertCnstr f1
   assertCnstr f2
   --

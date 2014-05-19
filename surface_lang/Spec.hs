@@ -56,7 +56,9 @@ data PropState = PropState {
   -- Happens-before relation
   _hbRel   :: FuncDecl, -- Effect -> Effect -> Bool
   -- Session relation
-  _sessRel :: FuncDecl  -- Effect -> Int
+  _sessRel :: FuncDecl, -- Effect -> Int
+  -- Assetions
+  _assertions :: [AST]
 }
 
 makeLenses ''PropState
@@ -66,7 +68,7 @@ newtype Session = Session { unSession :: AST }
 
 data EffData = Current | Known (S.Set Addr) | Unknown deriving (Show, Eq, Ord)
 
-newtype Prop = Prop { unProp :: ReaderT PropState Z3 AST }
+newtype Prop = Prop { unProp :: StateT PropState Z3 AST }
 
 data Sort
 class Attr a
@@ -190,14 +192,14 @@ debugCheck str = return ()
 -------------------------------------------------------------------------------
 -- Proposition builder
 
-mkEffectConst :: ReaderT PropState Z3 Effect
+mkEffectConst :: StateT PropState Z3 Effect
 mkEffectConst = do
-  as <- view effSort
+  as <- use effSort
   lift $ Effect <$> mkFreshConst "Eff_" as
 
 forall_ :: (Effect -> Prop) -> Prop
 forall_ f = Prop $ do
-  as <- view effSort
+  as <- use effSort
   qvConst <- lift $ mkFreshConst "FA_E_" as
   qv <- lift $ toApp qvConst
   body <- unProp $ f (Effect qvConst)
@@ -205,7 +207,7 @@ forall_ f = Prop $ do
 
 exists_ :: (Effect -> Prop) -> Prop
 exists_ f = Prop $ do
-  as <- view effSort
+  as <- use effSort
   qvConst <- lift $ mkFreshConst "EX_E_" as
   qv <- lift $ toApp qvConst
   body <- unProp $ f (Effect qvConst)
@@ -255,17 +257,17 @@ distinctEffects al =
 
 vis :: Effect -> Effect -> Prop
 vis (Effect a1) (Effect a2) = Prop $ do
-  vr <- view visRel
+  vr <- use visRel
   lift $ mkApp vr [a1,a2]
 
 so :: Effect -> Effect -> Prop
 so (Effect a1) (Effect a2) = Prop $ do
-  sr <- view soRel
+  sr <- use soRel
   lift $ mkApp sr [a1, a2]
 
 hb :: Effect -> Effect -> Prop
 hb (Effect a1) (Effect a2) = Prop $ do
-  hr <- view hbRel
+  hr <- use hbRel
   lift $ mkApp hr [a1, a2]
 
 sortOf :: Effect -> Sort -> Prop
@@ -276,7 +278,7 @@ sameAttr = undefined
 
 isInSameSess :: Effect -> Effect -> Prop
 isInSameSess (Effect a) (Effect b) = Prop $ do
-  sr <- view sessRel
+  sr <- use sessRel
   s1 <- lift $ mkApp sr [a]
   s2 <- lift $ mkApp sr [b]
   lift $ mkEq s1 s2
@@ -290,7 +292,7 @@ ite (Prop p1) (Prop p2) (Prop p3) = Prop $ do
 
 hasSess :: Integral a => Effect -> a -> Prop
 hasSess (Effect a) i = Prop $ do
-  sr <- view sessRel
+  sr <- use sessRel
   iv <- lift $ mkInt i
   s <- lift $ mkApp sr [a]
   lift $ mkEq s iv
@@ -298,16 +300,23 @@ hasSess (Effect a) i = Prop $ do
 -------------------------------------------------------------------------------
 -- Queries
 
-assertProp :: String -> Prop -> ReaderT PropState Z3 ()
-assertProp str = unProp >=> (lift . (assertCnstr str))
+assertProp :: String -> Prop -> StateT PropState Z3 AST
+assertProp str (Prop prop) = do
+  ast <- prop
+  lift $ assertCnstr str ast
+  asl <- use assertions
+  assertions .= ast:asl
+  return ast
 
-assertProp2 :: String -> Prop -> ReaderT PropState Z3 AST
+assertProp2 :: String -> Prop -> StateT PropState Z3 AST
 assertProp2 str (Prop prop) = do
   ast <- prop
   lift $ assertCnstr str ast
+  asl <- use assertions
   return ast
 
-assertBasicAxioms :: ReaderT PropState Z3 ()
+
+assertBasicAxioms :: StateT PropState Z3 ()
 assertBasicAxioms = do
 
   -- Visibility is asymmetric
@@ -337,6 +346,7 @@ assertBasicAxioms = do
     (hb x y /\ hb y z) ==> (hb x z)
   -- Happens-before is acyclic
   assertProp "HB_ASYMM" $ forall_ $ \ x -> forall_ $ \ y -> hb x y ==> (not_ $ hb y x)
+  return ()
 
 
 mkPropState :: Z3 PropState
@@ -350,7 +360,7 @@ mkPropState = do
   sessRel <- mkFreshFuncDecl "sess" [effectSort] intSort
   hbRel <- mkFreshFuncDecl "hb" [effectSort, effectSort] boolSort
 
-  return $ PropState effectSort visRel soRel hbRel sessRel
+  return $ PropState effectSort visRel soRel hbRel sessRel []
 
 res2Bool :: Result -> Bool
 res2Bool Unsat = True
@@ -360,14 +370,15 @@ res2Bool Sat = False
 isAvailable :: Spec -> IO Bool
 isAvailable s = evalZ3 $ do
   ps <- mkPropState
-  runReaderT core ps
+  (res, _) <- runStateT core ps
+  return res
   where
     core = do
       -- assert basic axioms
       assertBasicAxioms
 
       -- Declare availability relation
-      es <- view effSort
+      es <- use effSort
       avrFD <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "avr" [es, es] boolSort
@@ -389,14 +400,15 @@ isAvailable s = evalZ3 $ do
 isCoordFree :: Spec -> IO Bool
 isCoordFree s = evalZ3 $ do
   ps <- mkPropState
-  runReaderT core ps
+  (res, ps) <- runStateT core ps
+  return res
   where
     core = do
       -- assert basic axioms
       assertBasicAxioms
 
       -- Declare a happens-before relation
-      es <- view effSort
+      es <- use effSort
       hbFuncDecl <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "hb" [es, es] boolSort
@@ -417,14 +429,15 @@ isCoordFree s = evalZ3 $ do
 isWellTyped :: Spec -> IO Bool
 isWellTyped s = evalZ3 $ do
   ps <- mkPropState
-  runReaderT core ps
+  (res, _) <- runStateT core ps
+  return res
   where
     core = do
       -- assert basic axioms
       assertBasicAxioms
 
       -- Declare a total order relation
-      es <- view effSort
+      es <- use effSort
       toFuncDecl <- lift $ do
         boolSort <- mkBoolSort
         mkFreshFuncDecl "to" [es, es] boolSort
@@ -440,7 +453,7 @@ isWellTyped s = evalZ3 $ do
       lift $ res2Bool <$> check
 
 isContextReady :: Z3Ctxt -> Addr -> Spec -> IO (Maybe [Addr])
-isContextReady ctxt curAddr spec = evalZ3 $ do
+isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
   let effMap = buildKU ctxt
   let Addr s i = curAddr
   let (_,_,infoMap) = M.foldlWithKey (\(prevSess, prevIdx, m) addr v ->
@@ -448,7 +461,7 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
              (M.insert curAddr Current effMap)
 
   ps <- mkPropState
-  runReaderT assertBasicAxioms ps
+  (_,ps) <- runStateT assertBasicAxioms ps
 
   let effMapHelper addr = do
       eff <- Effect <$> (mkFreshConst "eff" $ ps^.effSort)
@@ -457,16 +470,16 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
   let effMap = M.fromList effMapList
 
   let card = assertProp "CARDINALITY" $ forall_ $ \a -> orList (map (sameEffect a) $ M.elems effMap)
-  runReaderT card ps
+  (_, ps) <- runStateT card ps
 
   let distinct = assertProp "DISTINCT" $ distinctEffects $ M.elems effMap
-  runReaderT distinct ps
+  (_, ps) <- runStateT distinct ps
 
   let so = foldM_ (\acc (k,v) -> soHelper k v acc) Nothing (M.toList effMap)
-  runReaderT so ps
+  (_, ps) <- runStateT so ps
 
   let vis = mapM_ (\(k,v) -> visHelper (infoMap,effMap) k v) (M.toList effMap)
-  runReaderT vis ps
+  (_,ps) <- runStateT vis ps
 
   boolSort <- mkBoolSort
   knownRel <- mkFreshFuncDecl "known" [ps^.effSort] boolSort
@@ -478,24 +491,25 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
   let assertKnown = assertProp "KNOWN" $ forall_ $ \a ->
         if M.size knownEffs == 0 then (not_ $ known a)
         else ite (orList $ map (sameEffect a) $ M.elems knownEffs) (known a) (not_ $ known a)
-  runReaderT assertKnown ps
+  (_,ps) <- runStateT assertKnown ps
   let assertUnknown = assertProp "UNKNOWN" $ forall_ $ \a ->
         if M.size unknownEffs == 0 then (not_ $ unknown a)
         else ite (orList $ map (sameEffect a) $ M.elems unknownEffs) (unknown a) (not_ $ unknown a)
-  runReaderT assertUnknown ps
+  (_,ps) <- runStateT assertUnknown ps
 
   let curEff = fromJust $ effMap ^.at curAddr
-  runReaderT (auxAxioms known unknown curEff) ps
+  (_,ps) <- runStateT (auxAxioms known unknown curEff) ps
 
-  res <- runReaderT (mainKnownAxioms known unknown curEff spec) ps
+  (res,ps) <- runStateT (mainKnownAxioms known unknown curEff spec) ps
   case res of
     Unsat -> return $ Just $ M.keys knownEffs
     Sat -> do
       subKnownRel <- mkFreshFuncDecl "subKnown" [ps^.effSort] boolSort
       let subKnown = mkMember subKnownRel
-      res <- runReaderT (mainSubknownAxioms subKnown known unknown curEff spec) ps
+      (res,ps) <- runStateT (mainSubknownAxioms subKnown known unknown curEff spec) ps
       case res of
-        Nothing -> return Nothing
+        Nothing -> do
+          return Nothing
         Just model -> do
           sk <- foldM (belongsToSubknown subKnownRel model) [] $ M.toList knownEffs
           return $ Just sk
@@ -520,19 +534,27 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
       assertProp "SK_INCL_K" $ forall_ $ \a -> known a /\ (not_ $ exists_ $ \b -> unknown b /\ hb b a) ==> subKnown a
       lift $ push
       -- An effect is visible iff it is sub-known
-      assertProp "SK_IMPL_VIS" $ forall_ $ \a -> ite (subKnown a) (vis a cur) (not_ $ vis a cur)
-      (assertProp "SK_CHECK") . spec $ cur
+      f1 <- assertProp "SK_IMPL_VIS" $ forall_ $ \a -> ite (subKnown a) (vis a cur) (not_ $ vis a cur)
+      f2 <- (assertProp "SK_CHECK") . spec $ cur
       (res, model) <- lift $ getModel
-      lift $ pop 1
       case (res,model) of
-        (Sat, Just m) -> return $ Just m
-        otherwise -> return Nothing
+        (Sat, Just m) -> do
+          lift $ pop 1
+          return $ Just m
+        otherwise -> do
+          asl <- use assertions
+          lift $ do
+            res <- interpolate2 (reverse asl) [f1,f2]
+            sres <- mapM astToString res
+            liftIO $ mapM_ putStrLn sres
+            pop 1
+            return Nothing
 
     mainKnownAxioms known unknown cur spec = do
       lift $ push
       -- An effect is visible iff it is known
-      assertProp "K_IMPL_VIS" $ forall_ $ \a -> ite (known a) (vis a cur) (not_ $ vis a cur)
-      (assertProp "K_CHECK") . not_ . spec $ cur
+      assertProp2 "K_IMPL_VIS" $ forall_ $ \a -> ite (known a) (vis a cur) (not_ $ vis a cur)
+      (assertProp2 "K_CHECK") . not_ . spec $ cur
       res <- lift $ check
       lift $ pop 1
       return res
@@ -602,10 +624,13 @@ isContextReady ctxt curAddr spec = evalZ3 $ do
     visHelper (infoMap, effMap) addr eff = do
       case fromJust $ infoMap ^.at addr of
         Current -> return ()
-        Unknown -> assertProp "UK_VIS" $ forall_ $ \a -> not_ $ vis a eff
+        Unknown -> do
+          assertProp "UK_VIS" $ forall_ $ \a -> not_ $ vis a eff
+          return ()
         Known s -> do
           let visEffs = map (\addr -> fromJust $ effMap ^.at addr) $ S.toList s
           assertProp "K_VIS" $ forall_ $ \a ->
             if length visEffs == 0 then (not_ $ vis a eff)
             else ite (orList $ map (sameEffect a) visEffs) (vis a eff) (not_ $ vis a eff)
+          return ()
 
