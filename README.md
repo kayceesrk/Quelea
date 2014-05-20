@@ -1,5 +1,7 @@
-EC Debug
-========
+Codeec
+======
+
+Codeec = <b>Co</b>mposable, <b>De</b>clarative and <b>E</b>ventually <b>C</b>onsistent.
 
 Declarative programming over eventually consistent stores ([Cassandra](http://cassandra.apache.org/) to be precise).
 
