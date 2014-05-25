@@ -80,7 +80,7 @@ data ReadyResult = Ready [Addr] | NotReady Addr
 -------------------------------------------------------------------------------
 -- Helper
 
--- #define DEBUG_SHOW
+#define DEBUG_SHOW
 -- #define DEBUG_CHECK
 -- #define DEBUG_SANITY
 
@@ -545,6 +545,7 @@ isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
           lift $ pop 1
           return $ Left m
         otherwise -> do
+          lift $ liftIO $ putStrLn "Interpolating..."
           asl <- use assertions
           lift $ do
             res:_ <- interpolate2 (reverse asl) [f1,f2]
@@ -563,7 +564,8 @@ isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
       then return $ Just addr
       else return Nothing
 
-
+    mainKnownAxioms known unknown cur spec = return Sat
+    {-
     mainKnownAxioms known unknown cur spec = do
       lift $ push
       -- An effect is visible iff it is known
@@ -571,7 +573,7 @@ isContextReady ctxt curAddr spec = evalZ3WithInterpolationContext $ do
       (assertPropSilent "K_CHECK") . not_ . spec $ cur
       res <- lift $ check
       lift $ pop 1
-      return res
+      return res -}
 
     auxAxioms known unknown cur = do
       -- source of a happens-before relation belongs to either known or unknown
