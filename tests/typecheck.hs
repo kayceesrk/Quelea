@@ -18,6 +18,12 @@ mw x = forall_ $ \a -> forall_ $ \b -> so a b /\ vis b x ==> vis a x
 atomicVis :: Spec
 atomicVis x = forall_ $ \a -> forall_ $ \b -> (isInSameSess x a) /\ (not_ $ isInSameSess a b) /\ vis a b ==> vis x b
 
+lastEff :: Spec
+lastEff x = forall_ $ \a -> vis a x
+
+tv3 :: Spec
+tv3 x = forall_ $ \a -> vis a x \/ vis x a \/ sameEffect a x
+
 main = do
   -- show <$> isCoordFree (\_ -> true) >>= putStrLn
   putStrLn "Read-my-writes (RMW) is coordination-free but not available."
@@ -52,3 +58,5 @@ main = do
   show <$> isWellTyped (\x -> vis x x) >>= putStrLn -- Expect False
   show <$> isWellTyped (\x -> forall_ $ \y -> so y x ==> vis x y) >>= putStrLn -- Expect False
   show <$> isWellTyped atomicVis >>= putStrLn       -- Expect False
+  show <$> isWellTyped lastEff >>= putStrLn         -- Expect False
+  show <$> isWellTyped tv3 >>= putStrLn             -- Expect True

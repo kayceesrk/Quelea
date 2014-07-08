@@ -80,7 +80,7 @@ data ReadyResult = Ready [Addr] | NotReady Addr
 -------------------------------------------------------------------------------
 -- Helper
 
-#define DEBUG_SHOW
+-- #define DEBUG_SHOW
 -- #define DEBUG_CHECK
 -- #define DEBUG_SANITY
 
