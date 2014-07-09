@@ -1,0 +1,18 @@
+Name:           Codeec
+Version:        0.0.1
+Cabal-Version:  >= 1.2
+License:        BSD3
+License-File:   LICENSE
+Author:         KC Sivaramakrishnan
+Category:       Experimental
+Synopsis:       Programming with eventually consistent memory on top of Cassandra.
+build-type:     Simple
+
+Library
+  Build-Depends:
+    base,
+    bytestring >= 0.10,
+    zeromq4-haskell >= 0.6
+  Exposed-modules:
+    SimpleBrokerNameService
+  Extensions: CPP
