@@ -14,5 +14,5 @@ Library
     bytestring >= 0.10,
     zeromq4-haskell >= 0.6
   Exposed-modules:
-    SimpleBrokerNameService
+    Codeec.NameService.SimpleBroker
   Extensions: CPP
