@@ -21,6 +21,7 @@ Library
     Codeec.NameService.SimpleBroker
     Codeec.Marshall
     Codeec.Shim
+    Codeec.Client
   Other-modules:
     Codeec.Types
   Extensions: CPP
