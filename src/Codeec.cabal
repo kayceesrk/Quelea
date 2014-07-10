@@ -16,7 +16,8 @@ Library
     cereal,
     cassandra-cql,
     containers,
-    lens
+    lens,
+    template-haskell
   Exposed-modules:
     Codeec.NameService.SimpleBroker
     Codeec.Marshall

@@ -1,7 +1,8 @@
-{-# LANGUAGE ScopedTypeVariables, EmptyDataDecls  #-}
+{-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell  #-}
 
 module Codeec.Shim (
- runShimNode
+ runShimNode,
+ mkDtLib
 ) where
 
 import Codeec.Types
@@ -37,3 +38,8 @@ runShimNode dtlib backend port = do
     req <- receive sock
     result <- performOp dtlib $ decodeRequest req
     send sock [] result
+
+mkDtLib :: OTC a => [(a,Datatype)] -> DatatypeLibrary
+mkDtLib l =
+  let l' = map (\(v1,v2) -> (ObjType $ show v1, v2)) l
+  in Map.fromList l'

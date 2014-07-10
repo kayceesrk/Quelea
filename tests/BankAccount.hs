@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
 
 import Database.Cassandra.CQL as CQL
 import Data.Map (Map)
@@ -16,18 +16,20 @@ import Codeec.Client
 import Codeec.Marshall
 import Codeec.NameService.SimpleBroker
 
-data BAEffect = Deposit Int | Withdraw Int deriving Show
+data BankAccount_ = Deposit Int | Withdraw Int | GetBalance deriving Show
 
-instance Serialize BAEffect where
+instance Serialize BankAccount_ where
   put (Deposit v) = putTwoOf S.put S.put (0::Word8, v)
   put (Withdraw v) = putTwoOf S.put S.put (1::Word8, v)
+  put (GetBalance) = error "serializing GetBalance"
   get = do
     (i::Word8,v::Int) <- getTwoOf S.get S.get
     case i of
       0 -> return $ Deposit v
       1 -> return $ Withdraw v
+      otherwise -> error "deserializing GetBalance"
 
-instance CasType BAEffect where
+instance CasType BankAccount_ where
   getCas = do
     r <- decode . unBlob <$> getCas
     case r of
@@ -36,27 +38,28 @@ instance CasType BAEffect where
   putCas = putCas . Blob . encode
   casType _ = CBlob
 
-instance Storable BAEffect where
+instance Storable BankAccount_ where
 
-type Res a = (a, Maybe BAEffect)
+type Res a = (a, Maybe BankAccount_)
 
-deposit :: [BAEffect] -> Int -> Res ()
+deposit :: [BankAccount_] -> Int -> Res ()
 deposit _ amt = ((), Just $ Deposit amt)
 
-withdraw :: [BAEffect] -> Int -> Res Bool
+withdraw :: [BankAccount_] -> Int -> Res Bool
 withdraw ctxt amt =
   let (bal, _) = getBalance ctxt ()
   in if bal > amt
      then (True, Just $ Withdraw amt)
      else (False, Nothing)
 
-getBalance :: [BAEffect] -> () -> Res Int
+getBalance :: [BankAccount_] -> () -> Res Int
 getBalance ops () =
   let v = foldl acc 0 ops
   in (v, Nothing)
   where
     acc s (Deposit i) = s + i
     acc s (Withdraw i) = s - i
+    acc s GetBalance = s
 
 
 data Kind = B | C | S | D deriving (Read, Show)
@@ -67,6 +70,11 @@ fePort = 5558
 bePort :: Int
 bePort = 5559
 
+
+mkRDT ''BankAccount_
+-- data BankAccount = BankAccount deriving Show
+-- instance OTC BankAccount where
+
 main :: IO ()
 main = do
   (kindStr:_) <- getArgs
@@ -75,7 +83,7 @@ main = do
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     S -> do
-      let dtLib = Map.fromList [(ObjType "BankAccount",
+      let dtLib = mkDtLib [(BankAccount,
                     Map.fromList [(OperName "deposit",  (mkGeneric deposit, Un)),
                                   (OperName "withdraw", (mkGeneric withdraw, Un)),
                                   (OperName "getBalance", (mkGeneric getBalance, Un))])]
