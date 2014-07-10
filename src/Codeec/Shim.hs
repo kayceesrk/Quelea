@@ -30,9 +30,9 @@ runShimNode :: DatatypeLibrary -> Backend -> Int -> IO ()
 runShimNode dtlib backend port = do
   ctxt <- context
   sock <- socket ctxt Rep
-  let myaddr = "tcp://localhost:" ++ show port
+  let myaddr = "tcp://*:" ++ show port
   bind sock myaddr
-  serverJoin backend myaddr
+  serverJoin backend $ "tcp://localhost:" ++ show port
   forever $ do
     req <- receive sock
     result <- performOp dtlib $ decodeRequest req
