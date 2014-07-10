@@ -11,7 +11,6 @@ module Codeec.Types (
   Operation(..),
   OperName(..),
   Request(..),
-  OTC(..),
 
   mkRDT
 ) where
@@ -32,23 +31,29 @@ type Operation eff arg res = [eff] -> arg -> (res, Maybe eff)
 type GenericOperation = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
 data Availability = High | Sticky | Un
 
-class Show a => OTC a
+class (Show a, Read a, Eq a, Ord a) => ObjType a
+class (Show a, Read a, Eq a, Ord a) => OperName a
 
-newtype ObjType   = ObjType  { unObjType :: String } deriving (Eq, Ord)
-newtype OperName  = OperName { unOperName :: String } deriving (Eq, Ord)
-type Datatype = Map OperName (GenericOperation, Availability)
-type DatatypeLibrary = Map ObjType Datatype
+type Datatype opername = Map opername (GenericOperation, Availability)
+type DatatypeLibrary objtype opername = Map objtype (Datatype opername)
 
-data Request = Request ObjType OperName ByteString
+data Request objtype opername = Request objtype opername ByteString
 
 mkRDT :: Name -> Q [Dec]
 mkRDT t = do
   TyConI (DataD _ (typeName::Name) _ constructors _) <- reify t
   let typeNameStr = nameBase typeName
   let t = take (length typeNameStr - 1) typeNameStr
+  let t_ = typeNameStr ++ "_"
   let consNameStrList = map (\ (NormalC name _) -> nameBase name) constructors
   let consList = map (\s -> take (length s - 1) s) consNameStrList
-  d1 <- dataD (return []) (mkName t) [] [normalC (mkName t) []] [mkName "Show"]
-  let ap = appT ([t| OTC |]) (conT $ mkName t)
+  let consNameList = map (\s -> normalC (mkName s) []) consList
+
+  d1 <- dataD (return []) (mkName t) [] [normalC (mkName t) []] [mkName "Show", mkName "Eq", mkName "Ord", mkName "Read"]
+  let ap = appT ([t| ObjType |]) (conT $ mkName t)
   d2 <- instanceD (return []) ap []
-  return $ [d1,d2]
+
+  d3 <- dataD (return []) (mkName t_) [] consNameList [mkName "Show", mkName "Eq", mkName "Ord", mkName "Read"]
+  let ap = appT ([t| OperName |]) (conT $ mkName t_)
+  d4 <- instanceD (return []) ap []
+  return $ [d1,d2,d3,d4]

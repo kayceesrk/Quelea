@@ -14,11 +14,11 @@ import qualified Data.Map as Map
 import Data.ByteString.Char8 (pack, unpack)
 
 
-instance Serialize Request where
-  put (Request (ObjType s1) (OperName s2) v) = S.put (pack s1, pack s2, v)
+instance (ObjType a, OperName b) => Serialize (Request a b) where
+  put (Request ot on v) = S.put (pack $ show ot, pack $ show on, v)
   get = do
     (s1,s2,v) <- S.get
-    return $ Request (ObjType $ unpack s1) (OperName $ unpack s2) v
+    return $ Request (read $ unpack s1) (read $ unpack s2) v
 
 mkGeneric :: (Storable eff, Serialize arg, Serialize res)
           => Operation eff arg res
@@ -31,7 +31,7 @@ mkGeneric foo ctxt arg =
       (res, eff) = foo ctxt2 arg2
   in (encode res, encode <$> eff)
 
-decodeRequest :: ByteString -> Request
+decodeRequest :: (ObjType a, OperName b) => ByteString -> Request a b
 decodeRequest b = case decode b of
                     Left s -> error $ "decodeRequest : " ++ s
                     Right v -> v

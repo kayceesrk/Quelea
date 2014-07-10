@@ -1,8 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell  #-}
 
 module Codeec.Shim (
- runShimNode,
- mkDtLib
+ runShimNode
 ) where
 
 import Codeec.Types
@@ -20,14 +19,16 @@ import System.ZMQ4
 import Data.Maybe (fromJust)
 import Control.Lens
 
-performOp :: DatatypeLibrary -> Request -> IO ByteString
+performOp :: (ObjType a, OperName b)
+          => DatatypeLibrary a b -> Request a b -> IO ByteString
 performOp dtLib (Request objType operName arg) =
   let im = fromJust $ dtLib ^.at objType
       (op,_) = fromJust $ im ^.at operName
       (res, _) = op [] arg
   in return res
 
-runShimNode :: DatatypeLibrary -> Backend -> Int -> IO ()
+runShimNode :: (ObjType a, OperName b)
+            => DatatypeLibrary a b -> Backend -> Int -> IO ()
 runShimNode dtlib backend port = do
   ctxt <- context
   sock <- socket ctxt Rep
@@ -38,8 +39,3 @@ runShimNode dtlib backend port = do
     req <- receive sock
     result <- performOp dtlib $ decodeRequest req
     send sock [] result
-
-mkDtLib :: OTC a => [(a,Datatype)] -> DatatypeLibrary
-mkDtLib l =
-  let l' = map (\(v1,v2) -> (ObjType $ show v1, v2)) l
-  in Map.fromList l'
