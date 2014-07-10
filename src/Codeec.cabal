@@ -11,17 +11,16 @@ build-type:     Simple
 Library
   Build-Depends:
     base,
-    bytestring >= 0.10,
-    zeromq4-haskell >= 0.6,
-    cereal >= 0.4,
-    cassandra-cql >= 0.3,
-    containers >= 0.5,
-    lens >= 4.0
+    bytestring,
+    zeromq4-haskell,
+    cereal,
+    cassandra-cql,
+    containers,
+    lens
   Exposed-modules:
     Codeec.NameService.SimpleBroker
     Codeec.Marshall
     Codeec.Shim
     Codeec.Client
-  Other-modules:
     Codeec.Types
   Extensions: CPP

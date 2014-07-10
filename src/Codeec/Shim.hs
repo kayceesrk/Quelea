@@ -26,8 +26,8 @@ performOp dtLib (Request objType operName arg) =
       (res, _) = op [] arg
   in return res
 
-runShimNode :: DatatypeLibrary -> Backend -> String -> Int -> IO ()
-runShimNode dtlib backend serverName port = do
+runShimNode :: DatatypeLibrary -> Backend -> Int -> IO ()
+runShimNode dtlib backend port = do
   ctxt <- context
   sock <- socket ctxt Rep
   let myaddr = "tcp://localhost:" ++ show port
