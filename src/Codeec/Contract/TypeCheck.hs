@@ -395,7 +395,7 @@ isHighlyAvailable c mkOperSort = do
       assertProp "CV_IMPL_CTRT" $ not_ test1
       lift $ res2Bool <$> check
 
-classifyContract :: Operation a => Contract a -> String -> Name -> Q Availability
+classifyContract :: Operation a => Contract a -> String -> Name -> ExpQ
 classifyContract c info dt = do
   mkOperSort <- mkMkZ3OperSort dt
   runIO $ do
@@ -403,11 +403,11 @@ classifyContract c info dt = do
     if not isWt then fail $ info ++ " Contract is not well-typed"
     else do
       res <- isHighlyAvailable c mkOperSort
-      if res then return High
+      if res then [| High |]
       else do
         res <- isStickyAvailable c mkOperSort
-        if res then return Sticky
+        if res then [| Sticky |]
         else do
           res <- isUnavailable c mkOperSort
-          if res then return Un
+          if res then [| Un |]
           else fail $ info ++ " Contract is too strong"
