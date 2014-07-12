@@ -16,7 +16,7 @@ import Codeec.Client
 import Codeec.Marshall
 import Codeec.NameService.SimpleBroker
 
-data BankAccount_ = Deposit_ Int | Withdraw_ Int | GetBalance_ deriving Show
+data BankAccount = Deposit_ Int | Withdraw_ Int | GetBalance_ deriving Show
 
 instance Serialize BankAccount_ where
   put (Deposit_ v) = putTwoOf S.put S.put (0::Word8, v)

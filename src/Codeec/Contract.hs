@@ -14,7 +14,10 @@ module Codeec.Contract (
   (∪),
   liftProp,
   forall_,
-  forallQ_
+  forallQ_,
+
+  mkZeroIs
 ) where
 
 import Codeec.Contract.Language
+import Codeec.Contract.TypeCheck
