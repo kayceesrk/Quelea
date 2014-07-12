@@ -34,7 +34,11 @@ runShimNode dtlib backend port = do
     send sock [] result
   where
     performOp dtLib (Request objType operName arg) =
-      let im = fromJust $ dtLib ^.at objType
-          (op,_) = fromJust $ im ^.at operName
+      let (op,_) = fromJust $ dtLib ^.at (objType, operName)
           (res, _) = op [] arg
       in return res
+
+mkDtLib :: Operation a => [(a, GenOpFun, Availability)] -> DatatypeLibrary a
+mkDtLib l = Prelude.foldl core Map.empty l
+  where
+    core dtlib (op,fun,av) = Map.insert (getObjType op, op) (fun, av) dtlib

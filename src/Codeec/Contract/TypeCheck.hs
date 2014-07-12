@@ -166,9 +166,9 @@ assertProp str (Z3Ctrt m) = do
   return ast
 
 -- Create a Z3 Event Sort that mirrors the Haskell Oper Type.
-mkMkZ3OperSort :: Name -> Q (Z3 Sort)
-mkMkZ3OperSort t = do
-  TyConI (DataD _ (typeName::Name) _ constructors _) <- reify t
+mkMkZ3OperSort :: Q (Z3 Sort)
+mkMkZ3OperSort = do
+  TyConI (DataD _ (typeName::Name) _ constructors _) <- reify $ mkName operationsTyConStr
   let typeNameStr = nameBase typeName
   let consNameStrList = map (\ (NormalC name _) -> nameBase name) constructors
   let makeCons consStr = do
@@ -395,19 +395,19 @@ isHighlyAvailable c mkOperSort = do
       assertProp "CV_IMPL_CTRT" $ not_ test1
       lift $ res2Bool <$> check
 
-classifyContract :: Operation a => Contract a -> String -> Name -> ExpQ
-classifyContract c info dt = do
-  mkOperSort <- mkMkZ3OperSort dt
+classifyContract :: Operation a => Contract a -> String -> Q Availability
+classifyContract c info = do
+  mkOperSort <- mkMkZ3OperSort
   runIO $ do
     isWt <- isWellTyped c mkOperSort
     if not isWt then fail $ info ++ " Contract is not well-typed"
     else do
       res <- isHighlyAvailable c mkOperSort
-      if res then [| High |]
+      if res then return High
       else do
         res <- isStickyAvailable c mkOperSort
-        if res then [| Sticky |]
+        if res then return Sticky
         else do
           res <- isUnavailable c mkOperSort
-          if res then [| Un |]
+          if res then return Un
           else fail $ info ++ " Contract is too strong"

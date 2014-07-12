@@ -3,13 +3,14 @@
 module Codeec.Types (
   Storable(..),
   Availability(..),
-  Datatype(..),
   DatatypeLibrary(..),
   GenOpFun(..),
   ObjType(..),
   OpFun(..),
   Operation(..),
   Request(..),
+
+  operationsTyConStr
 ) where
 
 import Database.Cassandra.CQL
@@ -38,7 +39,9 @@ type ObjType = String
 class (Show a, Read a, Eq a, Ord a) => Operation a where
   getObjType :: a -> String
 
-type Datatype a = Map a (GenOpFun, Availability)
-type DatatypeLibrary a = Map ObjType (Datatype a)
+type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
 
 data Request a = Request ObjType a ByteString
+
+operationsTyConStr :: String
+operationsTyConStr = "OpName"
