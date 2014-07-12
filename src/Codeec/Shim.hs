@@ -19,16 +19,16 @@ import System.ZMQ4
 import Data.Maybe (fromJust)
 import Control.Lens
 
-performOp :: (ObjType a, OperName b)
-          => DatatypeLibrary a b -> Request a b -> IO ByteString
+performOp :: OperName a
+          => DatatypeLibrary a -> Request a -> IO ByteString
 performOp dtLib (Request objType operName arg) =
   let im = fromJust $ dtLib ^.at objType
       (op,_) = fromJust $ im ^.at operName
       (res, _) = op [] arg
   in return res
 
-runShimNode :: (ObjType a, OperName b)
-            => DatatypeLibrary a b -> Backend -> Int -> IO ()
+runShimNode :: OperName a
+            => DatatypeLibrary a -> Backend -> Int -> IO ()
 runShimNode dtlib backend port = do
   ctxt <- context
   sock <- socket ctxt Rep

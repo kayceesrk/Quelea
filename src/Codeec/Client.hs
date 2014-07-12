@@ -33,9 +33,10 @@ beginSession fe = do
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
 
-invoke :: (ObjType ot, OperName on, Serialize arg, Serialize res)
-       => Session -> ot -> on -> arg -> IO res
-invoke s objType operName arg = do
+invoke :: (OperName on, Serialize arg, Serialize res)
+       => Session -> on -> arg -> IO res
+invoke s operName arg = do
+  let objType = getObjType operName
   let req = Request objType operName (encode arg)
   send (s^.server) [] $ encode req
   result <- receive (s^.server)

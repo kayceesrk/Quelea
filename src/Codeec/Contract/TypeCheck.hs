@@ -1,7 +1,6 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse #-}
 
 module Codeec.Contract.TypeCheck (
-  mkZeroIs
 ) where
 
 
@@ -182,6 +181,7 @@ mkMkZ3OperSort t = do
   return makeDatatype
 
 instance OperName () where
+  getObjType _ = fail "requesting ObjType of ()"
 
 -------------------------------------------------------------------------------
 -- Contract to Z3 translation

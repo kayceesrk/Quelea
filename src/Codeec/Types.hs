@@ -31,13 +31,14 @@ type Operation eff arg res = [eff] -> arg -> (res, Maybe eff)
 type GenericOperation = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
 data Availability = High | Sticky | Un
 
-class (Show a, Read a, Eq a, Ord a) => ObjType a
-class (Show a, Read a, Eq a, Ord a) => OperName a
+type ObjType = String
+class (Show a, Read a, Eq a, Ord a) => OperName a where
+  getObjType :: a -> String
 
-type Datatype opername = Map opername (GenericOperation, Availability)
-type DatatypeLibrary objtype opername = Map objtype (Datatype opername)
+type Datatype a = Map a (GenericOperation, Availability)
+type DatatypeLibrary a = Map ObjType (Datatype a)
 
-data Request objtype opername = Request objtype opername ByteString
+data Request a = Request ObjType a ByteString
 
 mkRDT :: Name -> Q [Dec]
 mkRDT t = do
