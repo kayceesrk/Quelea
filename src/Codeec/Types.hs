@@ -40,21 +40,23 @@ type DatatypeLibrary a = Map ObjType (Datatype a)
 
 data Request a = Request ObjType a ByteString
 
-mkRDT :: Name -> Q [Dec]
-mkRDT t = do
-  TyConI (DataD _ (typeName::Name) _ constructors _) <- reify t
-  let typeNameStr = nameBase typeName
-  let t = take (length typeNameStr - 1) typeNameStr
-  let t_ = typeNameStr ++ "_"
-  let consNameStrList = map (\ (NormalC name _) -> nameBase name) constructors
-  let consList = map (\s -> take (length s - 1) s) consNameStrList
-  let consNameList = map (\s -> normalC (mkName s) []) consList
-
-  d1 <- dataD (return []) (mkName t) [] [normalC (mkName t) []] [mkName "Show", mkName "Eq", mkName "Ord", mkName "Read"]
-  let ap = appT ([t| ObjType |]) (conT $ mkName t)
-  d2 <- instanceD (return []) ap []
-
+mkRDT :: [Name] -> Q [Dec]
+mkRDT l = do
+  {-
   d3 <- dataD (return []) (mkName t_) [] consNameList [mkName "Show", mkName "Eq", mkName "Ord", mkName "Read"]
   let ap = appT ([t| OperName |]) (conT $ mkName t_)
   d4 <- instanceD (return []) ap []
   return $ [d1,d2,d3,d4]
+  -}
+  undefined
+  where
+    procNameList [] = []
+    procNameList (x:xs) = do
+      TyConI (DataD _ (typeName::Name) _ constructors _) <- reify x
+      let typeNameStr = nameBase typeName
+      let consNameStrList = map (\ (NormalC name _) -> nameBase name) constructors
+      let consList = map (\s -> take (length s - 1) s) consNameStrList
+      let consNameList = map (\s -> normalC (mkName s) []) consList
+      let pairList = map (\c -> (typeNameStr, c)) consNameList
+      pairList ++ (procNameList xs)
+
