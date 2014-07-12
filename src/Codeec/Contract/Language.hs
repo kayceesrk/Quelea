@@ -57,10 +57,10 @@ newtype Effect = Effect { unEffect :: Int } deriving (Eq, Ord)
 
 data Rel = Vis | So | Sameobj | TC Rel | Sameeff
          | Union Rel Rel | Intersect Rel Rel
-data OperName a => Prop a =
+data Operation a => Prop a =
     PTrue | Not (Prop a) | AppRel Rel Effect Effect | Conj (Prop a) (Prop a)
   | Disj (Prop a) (Prop a) | Impl (Prop a) (Prop a) | Oper Effect a | Raw Z3Ctrt
-data OperName a => Fol a = Forall [a] (Effect -> Fol a) | Plain (Prop a)
+data Operation a => Fol a = Forall [a] (Effect -> Fol a) | Plain (Prop a)
 
 type Contract a = Effect -> Fol a
 
@@ -88,26 +88,26 @@ a ∪ b = Union a b
 (∩) :: Rel -> Rel -> Rel
 a ∩ b = Intersect a b
 
-(∧) :: OperName a => Prop a -> Prop a -> Prop a
+(∧) :: Operation a => Prop a -> Prop a -> Prop a
 (∧) = Conj
 
-(∨) :: OperName a => Prop a -> Prop a -> Prop a
+(∨) :: Operation a => Prop a -> Prop a -> Prop a
 (∨) = Disj
 
-(⇒) :: OperName a => Prop a -> Prop a -> Prop a
+(⇒) :: Operation a => Prop a -> Prop a -> Prop a
 (⇒) = Impl
 
 (^+) :: Rel -> Rel
 (^+) = TC
 
-appRel :: OperName a => Rel -> Effect -> Effect -> Prop a
+appRel :: Operation a => Rel -> Effect -> Effect -> Prop a
 appRel = AppRel
 
-liftProp :: OperName a => Prop a -> Fol a
+liftProp :: Operation a => Prop a -> Fol a
 liftProp = Plain
 
-forall_ :: OperName a => (Effect -> Fol a) -> Fol a
+forall_ :: Operation a => (Effect -> Fol a) -> Fol a
 forall_ f = Forall [] f
 
-forallQ_ :: OperName a => [a] -> (Effect -> Fol a) -> Fol a
+forallQ_ :: Operation a => [a] -> (Effect -> Fol a) -> Fol a
 forallQ_ q f = Forall q f

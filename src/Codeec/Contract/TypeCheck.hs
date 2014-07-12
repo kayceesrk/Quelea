@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse #-}
 
 module Codeec.Contract.TypeCheck (
+  classifyContract
 ) where
 
 
@@ -180,7 +181,7 @@ mkMkZ3OperSort t = do
       mkDatatype dtSym consList
   return makeDatatype
 
-instance OperName () where
+instance Operation () where
   getObjType _ = fail "requesting ObjType of ()"
 
 -------------------------------------------------------------------------------
@@ -230,7 +231,7 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
       a2 <- lookupEff e2
       lift $ mkApp r [a1,a2]
 
-prop2Z3Ctrt :: OperName a => Prop a -> Z3Ctrt
+prop2Z3Ctrt :: Operation a => Prop a -> Z3Ctrt
 prop2Z3Ctrt PTrue = Z3Ctrt $ lift mkTrue
 prop2Z3Ctrt (AppRel r e1 e2) = rel2Z3Ctrt r e1 e2
 prop2Z3Ctrt (Conj p1 p2) = Z3Ctrt $ do
@@ -248,11 +249,11 @@ prop2Z3Ctrt (Impl p1 p2) = Z3Ctrt $ do
 prop2Z3Ctrt (Oper eff operName) = Z3Ctrt $ do
   effAST <- lookupEff eff
   operRel <- use operRel
-  operNameAST <- getZ3OperName operName
+  operNameAST <- getZ3Operation operName
   a1 <- lift $ mkApp operRel [effAST]
   lift $ mkEq a1 operNameAST
   where
-    getZ3OperName operName = do
+    getZ3Operation operName = do
       operSort <- use operSort
       constructors <- lift $ getDatatypeSortConstructors operSort
       nameList <- lift $ mapM getDeclName constructors
@@ -262,7 +263,7 @@ prop2Z3Ctrt (Oper eff operName) = Z3Ctrt $ do
       lift $ mkApp constructor []
 prop2Z3Ctrt (Raw c) = c
 
-fol2Z3Ctrt :: OperName a => Fol a -> Z3Ctrt
+fol2Z3Ctrt :: Operation a => Fol a -> Z3Ctrt
 fol2Z3Ctrt (Plain p) = prop2Z3Ctrt p
 fol2Z3Ctrt (Forall operNameList f) = Z3Ctrt $ do
   (effInt, effApp) <- newEff
@@ -314,13 +315,13 @@ typecheck mkOperSort core = evalZ3 $ do
   (res, _) <- runStateT core st
   return res
 
-isWellTyped :: OperName a => Contract a -> Z3 Sort -> IO Bool
+isWellTyped :: Operation a => Contract a -> Z3 Sort -> IO Bool
 isWellTyped c mkOperSort = typecheck mkOperSort $ do
   assertBasicAxioms
   (assertProp "WT_CHECK") . not_ . fol2Z3Ctrt . forall_ $ c
   lift $ res2Bool <$> check
 
-hbo :: OperName a => Effect -> Effect -> Prop a
+hbo :: Operation a => Effect -> Effect -> Prop a
 hbo = AppRel $ TC $ ((So ∩ Sameobj) ∪ Vis)
 
 sc :: Contract ()
@@ -337,7 +338,7 @@ cv x = forall_ $ \a -> forall_ $ \b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
 
-isUnavailable :: OperName a  => Contract a -> Z3 Sort -> IO Bool
+isUnavailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
 isUnavailable c mkOperSort = do
   isWt <- isWellTyped c mkOperSort
   if not isWt then return False
@@ -359,7 +360,7 @@ isUnavailable c mkOperSort = do
 
 
 
-isStickyAvailable :: OperName a  => Contract a -> Z3 Sort -> IO Bool
+isStickyAvailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
 isStickyAvailable c mkOperSort = do
   isWt <- isWellTyped c mkOperSort
   if not isWt then return False
@@ -379,7 +380,7 @@ isStickyAvailable c mkOperSort = do
       assertProp "CTRT_NOT_IMPL_CV" $ not_ test2
       lift $ res2Bool <$> check
 
-isHighlyAvailable :: OperName a  => Contract a -> Z3 Sort -> IO Bool
+isHighlyAvailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
 isHighlyAvailable c mkOperSort = do
   isWt <- isWellTyped c mkOperSort
   if not isWt then return False
@@ -394,7 +395,7 @@ isHighlyAvailable c mkOperSort = do
       assertProp "CV_IMPL_CTRT" $ not_ test1
       lift $ res2Bool <$> check
 
-classifyContract :: OperName a => Contract a -> String -> Name -> Q Availability
+classifyContract :: Operation a => Contract a -> String -> Name -> Q Availability
 classifyContract c info dt = do
   mkOperSort <- mkMkZ3OperSort dt
   runIO $ do

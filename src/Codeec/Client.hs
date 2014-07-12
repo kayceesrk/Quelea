@@ -33,7 +33,7 @@ beginSession fe = do
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
 
-invoke :: (OperName on, Serialize arg, Serialize res)
+invoke :: (Operation on, Serialize arg, Serialize res)
        => Session -> on -> arg -> IO res
 invoke s operName arg = do
   let objType = getObjType operName

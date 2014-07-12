@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell  #-}
 
 module Codeec.Shim (
- runShimNode
+ runShimNode,
+-- toDtLib
 ) where
 
 import Codeec.Types
@@ -19,15 +20,7 @@ import System.ZMQ4
 import Data.Maybe (fromJust)
 import Control.Lens
 
-performOp :: OperName a
-          => DatatypeLibrary a -> Request a -> IO ByteString
-performOp dtLib (Request objType operName arg) =
-  let im = fromJust $ dtLib ^.at objType
-      (op,_) = fromJust $ im ^.at operName
-      (res, _) = op [] arg
-  in return res
-
-runShimNode :: OperName a
+runShimNode :: Operation a
             => DatatypeLibrary a -> Backend -> Int -> IO ()
 runShimNode dtlib backend port = do
   ctxt <- context
@@ -39,3 +32,9 @@ runShimNode dtlib backend port = do
     req <- receive sock
     result <- performOp dtlib $ decodeRequest req
     send sock [] result
+  where
+    performOp dtLib (Request objType operName arg) =
+      let im = fromJust $ dtLib ^.at objType
+          (op,_) = fromJust $ im ^.at operName
+          (res, _) = op [] arg
+      in return res
