@@ -2,7 +2,7 @@
 
 module Codeec.Shim (
  runShimNode,
--- toDtLib
+ mkDtLib
 ) where
 
 import Codeec.Types

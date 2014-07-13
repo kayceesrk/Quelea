@@ -1,5 +1,5 @@
 module Codeec.Marshall (
-  mkGeneric,
+  mkGen,
   decodeRequest
 ) where
 
@@ -20,14 +20,14 @@ instance Operation a => Serialize (Request a) where
     (s1,s2,v) <- S.get
     return $ Request (read $ unpack s1) (read $ unpack s2) v
 
-mkGeneric :: (Storable eff, Serialize arg, Serialize res)
+mkGen :: (Storable eff, Serialize arg, Serialize res)
           => OpFun eff arg res
           -> GenOpFun
-mkGeneric foo ctxt arg =
+mkGen foo ctxt arg =
   let ctxt2 = rights $ map decode ctxt
       arg2 = case decode arg of
                Right v -> v
-               Left s -> error ("mkGeneric : " ++ s)
+               Left s -> error ("mkGen : " ++ s)
       (res, eff) = foo ctxt2 arg2
   in (encode res, encode <$> eff)
 

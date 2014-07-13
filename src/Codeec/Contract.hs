@@ -15,6 +15,7 @@ module Codeec.Contract (
   liftProp,
   forall_,
   forallQ_
+
 ) where
 
 import Codeec.Contract.Language

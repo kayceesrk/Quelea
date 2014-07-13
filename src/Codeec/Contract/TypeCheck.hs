@@ -262,6 +262,9 @@ prop2Z3Ctrt (Oper eff operName) = Z3Ctrt $ do
       let Just (_,constructor) = find (\ (s,_) -> (show operName) == s) pList
       lift $ mkApp constructor []
 prop2Z3Ctrt (Raw c) = c
+prop2Z3Ctrt (Not p) = Z3Ctrt $ do
+  a <- unZ3Ctrt $ prop2Z3Ctrt p
+  lift $ mkNot a
 
 fol2Z3Ctrt :: Operation a => Fol a -> Z3Ctrt
 fol2Z3Ctrt (Plain p) = prop2Z3Ctrt p

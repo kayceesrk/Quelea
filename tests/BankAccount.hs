@@ -15,10 +15,12 @@ import Codeec.Shim
 import Codeec.Client
 import Codeec.Marshall
 import Codeec.NameService.SimpleBroker
+import Codeec.TH
+import Codeec.Contract
 
 data BankAccount = Deposit_ Int | Withdraw_ Int | GetBalance_ deriving Show
 
-instance Serialize BankAccount_ where
+instance Serialize BankAccount where
   put (Deposit_ v) = putTwoOf S.put S.put (0::Word8, v)
   put (Withdraw_ v) = putTwoOf S.put S.put (1::Word8, v)
   put (GetBalance_) = error "serializing GetBalance"
@@ -29,7 +31,7 @@ instance Serialize BankAccount_ where
       1 -> return $ Withdraw_ v
       otherwise -> error "deserializing GetBalance"
 
-instance CasType BankAccount_ where
+instance CasType BankAccount where
   getCas = do
     r <- decode . unBlob <$> getCas
     case r of
@@ -38,21 +40,21 @@ instance CasType BankAccount_ where
   putCas = putCas . Blob . encode
   casType _ = CBlob
 
-instance Storable BankAccount_ where
+instance Storable BankAccount where
 
-type Res a = (a, Maybe BankAccount_)
+type Res a = (a, Maybe BankAccount)
 
-deposit :: [BankAccount_] -> Int -> Res ()
+deposit :: [BankAccount] -> Int -> Res ()
 deposit _ amt = ((), Just $ Deposit_ amt)
 
-withdraw :: [BankAccount_] -> Int -> Res Bool
+withdraw :: [BankAccount] -> Int -> Res Bool
 withdraw ctxt amt =
   let (bal, _) = getBalance ctxt ()
   in if bal > amt
      then (True, Just $ Withdraw_ amt)
      else (False, Nothing)
 
-getBalance :: [BankAccount_] -> () -> Res Int
+getBalance :: [BankAccount] -> () -> Res Int
 getBalance ops () =
   let v = foldl acc 0 ops
   in (v, Nothing)
@@ -71,9 +73,8 @@ bePort :: Int
 bePort = 5559
 
 
-mkRDT ''BankAccount_
--- data BankAccount = BankAccount deriving Show
--- instance OTC BankAccount where
+mkOperations [''BankAccount]
+
 
 main :: IO ()
 main = do
@@ -83,23 +84,20 @@ main = do
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     S -> do
-      let dtLib = Map.fromList [(BankAccount,
-                    Map.fromList [(Deposit,  (mkGeneric deposit, Un)),
-                                  (Withdraw, (mkGeneric withdraw, Un)),
-                                  (GetBalance, (mkGeneric getBalance, Un))])]
+      let dtLib = mkDtLib [(Deposit, mkGen deposit, $(check  "Deposit" $ \x -> liftProp $ (true_ :: Prop ())))]
       runShimNode dtLib (Backend $ "tcp://localhost:" ++ show bePort) 5560
     C -> do
       sess <- beginSession $ Frontend $ "tcp://localhost:" ++ show fePort
 
       putStrLn "Client : performing deposit"
-      r::() <- invoke sess BankAccount Deposit (100::Int)
+      r::() <- invoke sess Deposit (100::Int)
 
       putStrLn "Client : performing withdraw"
-      r::(Maybe Int) <- invoke sess BankAccount Withdraw (10::Int)
+      r::(Maybe Int) <- invoke sess Withdraw (10::Int)
       putStrLn $ show r
 
       putStrLn "Client : performing getBalance"
-      r::Int <- invoke sess BankAccount GetBalance ()
+      r::Int <- invoke sess GetBalance ()
       putStrLn $ show r
       endSession sess
     D -> do
