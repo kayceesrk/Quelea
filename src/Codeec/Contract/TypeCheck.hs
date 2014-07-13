@@ -29,8 +29,8 @@ makeLenses ''Z3CtrtState
 -------------------------------------------------------------------------------
 -- Helper
 
--- #define DEBUG_SHOW
--- #define DEBUG_CHECK
+#define DEBUG_SHOW
+#define DEBUG_CHECK
 -- #define DEBUG_SANITY
 
 check :: Z3 Result
@@ -288,6 +288,9 @@ assertBasicAxioms = do
   assertProp "ThinAir" $ fol2Z3Ctrt thinAir
   let doVis :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $ vis a b ⇒ appRel Sameobj a b
   assertProp "doVis" $ fol2Z3Ctrt doVis
+  let soTrans :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
+                            so a b ∧ so b c ⇒  so a c
+  assertProp "soTrans" $ fol2Z3Ctrt soTrans
   return ()
 
 mkZ3CtrtState :: Sort -> Z3 Z3CtrtState
@@ -321,8 +324,8 @@ typecheck mkOperSort core = evalZ3 $ do
 isWellTyped :: Operation a => Contract a -> Z3 Sort -> IO Bool
 isWellTyped c mkOperSort = typecheck mkOperSort $ do
   assertBasicAxioms
-  (assertProp "WT_CHECK") . not_ . fol2Z3Ctrt . forall_ $ c
-  lift $ res2Bool <$> check
+  (assertProp "WT_CHECK") . fol2Z3Ctrt . forall_ $ c
+  lift $ not . res2Bool <$> check
 
 hbo :: Operation a => Effect -> Effect -> Prop a
 hbo = AppRel $ TC $ ((So ∩ Sameobj) ∪ Vis)

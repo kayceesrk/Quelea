@@ -9,11 +9,12 @@ module Codeec.Contract.Language (
   Z3CtrtState(..),
   Z3Ctrt(..),
 
-  true_,
+  true,
   vis,
   so,
   soo,
   hb,
+  sameeff,
   (∩),
   (∪),
   (∧),
@@ -67,8 +68,8 @@ type Contract a = Effect -> Fol a
 -------------------------------------------------------------------------------
 -- Contract builder
 
-true_ :: Prop a
-true_ = PTrue
+true :: Prop a
+true = PTrue
 
 vis :: Effect -> Effect -> Prop a
 vis a b = AppRel Vis a b
@@ -111,3 +112,6 @@ forall_ f = Forall [] f
 
 forallQ_ :: Operation a => [a] -> (Effect -> Fol a) -> Fol a
 forallQ_ q f = Forall q f
+
+sameeff :: Effect -> Effect -> Prop a
+sameeff a b = AppRel Sameeff a b

@@ -5,13 +5,19 @@ module Codeec.Contract (
   Contract,
   Effect,
 
-  true_,
+  true,
   vis,
   so,
   soo,
+  sameeff,
   hb,
   (∩),
   (∪),
+  (∧),
+  (∨),
+  (⇒),
+  (^+),
+
   liftProp,
   forall_,
   forallQ_

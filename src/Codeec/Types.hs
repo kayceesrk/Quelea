@@ -28,7 +28,7 @@ class (CasType a, Serialize a) => Storable a where
 
 type OpFun eff arg res = [eff] -> arg -> (res, Maybe eff)
 type GenOpFun = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
-data Availability = High | Sticky | Un
+data Availability = High | Sticky | Un deriving (Show, Eq, Ord)
 
 instance Lift Availability where
   lift High = [| High |]
