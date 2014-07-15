@@ -10,6 +10,7 @@ module Codeec.Contract (
   so,
   soo,
   sameeff,
+  appRel,
   hb,
   (∩),
   (∪),
@@ -20,8 +21,9 @@ module Codeec.Contract (
 
   liftProp,
   forall_,
-  forallQ_
-
+  forallQ_,
+  isValid,
+  fol2Z3Ctrt
 ) where
 
 import Codeec.Contract.Language

@@ -1,7 +1,9 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse #-}
 
 module Codeec.Contract.TypeCheck (
-  classifyContract
+  classifyContract,
+  isValid,
+  fol2Z3Ctrt
 ) where
 
 
@@ -181,6 +183,19 @@ mkMkZ3OperSort = do
       mkDatatype dtSym consList
   return makeDatatype
 
+dummyZ3Sort :: Z3 Sort
+dummyZ3Sort = do
+  let makeCons consStr = do
+      consSym <- mkStringSymbol consStr
+      isConsSym <- mkStringSymbol $ "is_" ++ consStr
+      mkConstructor consSym isConsSym []
+  let makeDatatype = do
+      consList <- sequence $ map makeCons ["DummyCon"]
+      dtSym <- mkStringSymbol "DummyTyCon"
+      mkDatatype dtSym consList
+  makeDatatype
+
+
 instance Operation () where
   getObjType _ = fail "requesting ObjType of ()"
 
@@ -211,17 +226,16 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
       bs <- lift $ mkBoolSort
       newR <- lift $ mkFreshFuncDecl "TC" [es,es] bs
       -- Prop 1
-      p1 <- mkApp2 newR e1 e2
-      -- Prop 2
-      let f2 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
+      let f1 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
               (Raw $ rel2Z3Ctrt r a b) ⇒ (Raw . Z3Ctrt $ mkApp2 newR a b)
-      p2 <- unZ3Ctrt $ fol2Z3Ctrt f2
-      -- Prop 3
-      let f3 :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
+      p1 <- unZ3Ctrt $ fol2Z3Ctrt f1
+      -- Prop 2
+      let f2 :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
               ((Raw . Z3Ctrt $ mkApp2 newR a b) ∧ (Raw .Z3Ctrt $ mkApp2 newR b c)) ⇒
                (Raw . Z3Ctrt $ mkApp2 newR a c)
-      p3 <- unZ3Ctrt $ fol2Z3Ctrt f3
-      lift $ mkAnd [p1,p2,p3]
+      p2 <- unZ3Ctrt $ fol2Z3Ctrt f2
+      assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2]
+      mkApp2 newR e1 e2
   where
     mkApp1 idx e1 e2 = do
       r <- use idx
@@ -345,61 +359,52 @@ mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
 
 isUnavailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
-isUnavailable c mkOperSort = do
-  isWt <- isWellTyped c mkOperSort
-  if not isWt then return False
-  else typecheck mkOperSort core
-  where
-    core = do
-      (curEff, _) <- newEff
+isUnavailable c mkOperSort =
+  typecheck mkOperSort $ do
+    assertBasicAxioms
+    (curEff, _) <- newEff
 
-      let an1 = fol2Z3Ctrt $ sc curEff
-      let cn1 = fol2Z3Ctrt $ c curEff
-      let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
-      assertProp "SC_IMPL_CTRT" $ not_ test1
+    let an1 = fol2Z3Ctrt $ sc curEff
+    let cn1 = fol2Z3Ctrt $ c curEff
+    let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
+    assertProp "SC_IMPL_CTRT" $ not_ test1
 
-      let an2 = fol2Z3Ctrt $ c curEff
-      let cn2 = fol2Z3Ctrt $ cc curEff
-      let test2 = prop2Z3Ctrt $ Not $ mkRawImpl an2 cn2
-      assertProp "CTRT_NOT_IMPL_CC" $ not_ test2
-      lift $ res2Bool <$> check
+    let an2 = fol2Z3Ctrt $ c curEff
+    let cn2 = fol2Z3Ctrt $ cc curEff
+    let test2 = prop2Z3Ctrt $ Not $ mkRawImpl an2 cn2
+    assertProp "CTRT_NOT_IMPL_CC" $ not_ test2
+    lift $ res2Bool <$> check
 
 
 
 isStickyAvailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
-isStickyAvailable c mkOperSort = do
-  isWt <- isWellTyped c mkOperSort
-  if not isWt then return False
-  else typecheck mkOperSort core
-  where
-    core = do
-      (curEff, _) <- newEff
+isStickyAvailable c mkOperSort =
+  typecheck mkOperSort $ do
+    assertBasicAxioms
+    (curEff, _) <- newEff
 
-      let an1 = fol2Z3Ctrt $ cc curEff
-      let cn1 = fol2Z3Ctrt $ c curEff
-      let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
-      assertProp "CC_IMPL_CTRT" $ not_ test1
+    let an1 = fol2Z3Ctrt $ cc curEff
+    let cn1 = fol2Z3Ctrt $ c curEff
+    let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
+    assertProp "CC_IMPL_CTRT" $ not_ test1
 
-      let an2 = fol2Z3Ctrt $ c curEff
-      let cn2 = fol2Z3Ctrt $ cv curEff
-      let test2 = prop2Z3Ctrt $ Not $ mkRawImpl an2 cn2
-      assertProp "CTRT_NOT_IMPL_CV" $ not_ test2
-      lift $ res2Bool <$> check
+    let an2 = fol2Z3Ctrt $ c curEff
+    let cn2 = fol2Z3Ctrt $ cv curEff
+    let test2 = prop2Z3Ctrt $ Not $ mkRawImpl an2 cn2
+    assertProp "CTRT_NOT_IMPL_CV" $ not_ test2
+    lift $ res2Bool <$> check
 
 isHighlyAvailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
-isHighlyAvailable c mkOperSort = do
-  isWt <- isWellTyped c mkOperSort
-  if not isWt then return False
-  else typecheck mkOperSort core
-  where
-    core = do
-      (curEff, _) <- newEff
+isHighlyAvailable c mkOperSort =
+  typecheck mkOperSort $ do
+    assertBasicAxioms
+    (curEff, _) <- newEff
 
-      let an1 = fol2Z3Ctrt $ cv curEff
-      let cn1 = fol2Z3Ctrt $ c curEff
-      let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
-      assertProp "CV_IMPL_CTRT" $ not_ test1
-      lift $ res2Bool <$> check
+    let an1 = fol2Z3Ctrt $ cv curEff
+    let cn1 = fol2Z3Ctrt $ c curEff
+    let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
+    assertProp "CV_IMPL_CTRT" $ not_ test1
+    lift $ res2Bool <$> check
 
 classifyContract :: Operation a => Contract a -> String -> Q Availability
 classifyContract c info = do
@@ -417,3 +422,9 @@ classifyContract c info = do
           res <- isUnavailable c mkOperSort
           if res then return Un
           else fail $ info ++ " Contract is too strong"
+
+isValid :: Operation a => String -> Fol a -> IO Bool
+isValid str c = typecheck dummyZ3Sort $ do
+  assertBasicAxioms
+  assertProp str $ not_ $ fol2Z3Ctrt c
+  lift $ res2Bool <$> check
