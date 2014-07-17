@@ -442,7 +442,7 @@ classifyContract c info = do
   mkOperSort <- mkMkZ3OperSort
   runIO $ do
     isWt <- isWellTyped c mkOperSort
-    if not isWt then fail $ info ++ " Contract is not well-typed"
+    if not isWt then fail $ info ++ " contract is not well-typed"
     else do
       res <- isHighlyAvailable c mkOperSort
       if res then return High
@@ -452,7 +452,7 @@ classifyContract c info = do
         else do
           res <- isUnavailable c mkOperSort
           if res then return Un
-          else fail $ info ++ " Contract is too strong"
+          else fail $ info ++ " -- strange contract"
 
 isValid :: Operation a => String -> Fol a -> IO Bool
 isValid str c = typecheck dummyZ3Sort $ do
