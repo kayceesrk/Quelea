@@ -223,29 +223,36 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
       a2 <- unZ3Ctrt $ rel2Z3Ctrt r2 e1 e2
       lift $ mkAnd [a1, a2]
     TC r -> do
-      es <- use effSort
-      bs <- lift $ mkBoolSort
-      newR <- lift $ mkFreshFuncDecl "TC" [es,es] bs
-      -- Prop 1
-      let f1 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
-              (Raw $ rel2Z3Ctrt r a b) ⇒ (Raw . Z3Ctrt $ mkApp2 newR a b)
-      p1 <- unZ3Ctrt $ fol2Z3Ctrt f1
-      -- Prop 2
-      let f2 :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
-              ((Raw . Z3Ctrt $ mkApp2 newR a b) ∧ (Raw .Z3Ctrt $ mkApp2 newR b c)) ⇒
-               (Raw . Z3Ctrt $ mkApp2 newR a c)
-      p2 <- unZ3Ctrt $ fol2Z3Ctrt f2
+      rm <- use tcRelMap
+      case rm ^.at r of
+        Nothing -> do
+          es <- use effSort
+          bs <- lift $ mkBoolSort
+          newR <- lift $ mkFreshFuncDecl "TC" [es,es] bs
+          -- Insert into rm
+          let newRm = at r .~ Just newR $ rm
+          tcRelMap .= newRm
+          -- Prop 1
+          let f1 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
+                  (Raw $ rel2Z3Ctrt r a b) ⇒ (Raw . Z3Ctrt $ mkApp2 newR a b)
+          p1 <- unZ3Ctrt $ fol2Z3Ctrt f1
+          -- Prop 2
+          let f2 :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
+                  ((Raw . Z3Ctrt $ mkApp2 newR a b) ∧ (Raw .Z3Ctrt $ mkApp2 newR b c)) ⇒
+                  (Raw . Z3Ctrt $ mkApp2 newR a c)
+          p2 <- unZ3Ctrt $ fol2Z3Ctrt f2
 #ifdef EXISTS
-      -- Prop 3
-      let f3 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
-            (Raw . Z3Ctrt $ mkApp2 newR a b) ⇒ ((Raw $ rel2Z3Ctrt r a b) ∨
-            (exists $ \c -> (Raw $ rel2Z3Ctrt r a b) ∧ (Raw . Z3Ctrt $ mkApp2 newR b c)))
-      p3 <- unZ3Ctrt $ fol2Z3Ctrt f3
-      assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2,p3]
+          -- Prop 3
+          let f3 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
+                (Raw . Z3Ctrt $ mkApp2 newR a b) ⇒ ((Raw $ rel2Z3Ctrt r a b) ∨
+                (exists $ \c -> (Raw $ rel2Z3Ctrt r a b) ∧ (Raw . Z3Ctrt $ mkApp2 newR b c)))
+          p3 <- unZ3Ctrt $ fol2Z3Ctrt f3
+          assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2,p3]
 #else
-      assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2]
+          assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2]
 #endif
-      mkApp2 newR e1 e2
+          mkApp2 newR e1 e2
+        Just savedR -> mkApp2 savedR e1 e2
   where
     mkApp1 idx e1 e2 = do
       r <- use idx
@@ -337,7 +344,7 @@ mkZ3CtrtState operSort = do
   sameobjRel <- mkFreshFuncDecl "sameobj" [effSort, effSort] boolSort
   operRel <- mkFreshFuncDecl "oper" [effSort] boolSort
 
-  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel operRel M.empty []
+  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel operRel M.empty [] M.empty
 
 res2Bool :: Result -> Bool
 res2Bool Unsat = True
