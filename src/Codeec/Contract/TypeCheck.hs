@@ -342,7 +342,7 @@ mkZ3CtrtState operSort = do
   visRel <- mkFreshFuncDecl "vis" [effSort, effSort] boolSort
   soRel <- mkFreshFuncDecl "so" [effSort, effSort] boolSort
   sameobjRel <- mkFreshFuncDecl "sameobj" [effSort, effSort] boolSort
-  operRel <- mkFreshFuncDecl "oper" [effSort] boolSort
+  operRel <- mkFreshFuncDecl "oper" [effSort] operSort
 
   return $ Z3CtrtState effSort operSort visRel soRel sameobjRel operRel M.empty [] M.empty
 

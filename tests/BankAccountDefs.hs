@@ -3,6 +3,8 @@
 module BankAccountDefs (
   BankAccount(..),
   deposit, depositCtrt,
+  withdraw, withdrawCtrt,
+  getBalance, getBalanceCtrt,
   Operation(..),
 ) where
 
@@ -66,3 +68,13 @@ mkOperations [''BankAccount]
 
 depositCtrt :: Contract Operation
 depositCtrt x = liftProp $ true
+
+withdrawCtrt :: Contract Operation
+withdrawCtrt x = forallQ_ [Deposit] $ \a -> forallQ_ [Withdraw] $ \b ->
+                 forallQ_ [Withdraw] $ \c -> liftProp $
+                    ((vis a b ∧ vis b x) ⇒ vis a x) ∧
+                    (vis c x ∨ vis x c ∨ appRel Sameeff x c)
+
+getBalanceCtrt :: Contract Operation
+getBalanceCtrt x = forallQ_ [Deposit] $ \a -> forallQ_ [Withdraw] $ \b -> liftProp $
+                      (vis a b ∧ vis b x) ⇒ vis a x

@@ -20,7 +20,9 @@ bePort = 5559
 
 data Kind = B | C | S | D deriving (Read, Show)
 
-dtLib = mkDtLib [(Deposit, mkGen deposit, $(check "Deposit" depositCtrt))]
+dtLib = mkDtLib [(Deposit, mkGen deposit, $(check "Deposit" depositCtrt)),
+                 (Withdraw, mkGen withdraw, $(check "Withdraw" withdrawCtrt)),
+                 (GetBalance, mkGen getBalance, $(check "Withdraw" getBalanceCtrt))]
 
 main :: IO ()
 main = do
@@ -30,6 +32,7 @@ main = do
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     S -> do
+      print dtLib
       runShimNode dtLib (Backend $ "tcp://localhost:" ++ show bePort) 5560
     C -> do
       sess <- beginSession $ Frontend $ "tcp://localhost:" ++ show fePort
