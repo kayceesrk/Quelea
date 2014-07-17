@@ -7,7 +7,10 @@ import Contracts
 main = print [ $(check "rmw" rmw),          -- Sticky
                $(check "simple" simple),    -- High
                $(check "tv" tv),            -- High
-               $(check "tv2" tv2),          -- Fail -- too strong
+               $(check "tv2" tv2),          -- Un
                $(check "mw" mw),            -- High
-               $(check "lastEff" lastEff),  -- Fail -- too strong
-               $(check "tv3" tv3) ]         -- Un
+               -- $(check "cyclic" cyclic),    -- Not well-typed
+               -- $(check "lastEff" lastEff)   -- Not well-typed
+               $(check "tv3" tv3)           -- Un
+             ]
+

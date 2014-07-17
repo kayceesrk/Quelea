@@ -202,6 +202,7 @@ instance Operation () where
 -------------------------------------------------------------------------------
 -- Contract to Z3 translation
 
+-- #define EXISTS
 
 rel2Z3Ctrt :: Rel -> Effect -> Effect -> Z3Ctrt
 rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
@@ -234,7 +235,16 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
               ((Raw . Z3Ctrt $ mkApp2 newR a b) ∧ (Raw .Z3Ctrt $ mkApp2 newR b c)) ⇒
                (Raw . Z3Ctrt $ mkApp2 newR a c)
       p2 <- unZ3Ctrt $ fol2Z3Ctrt f2
+#ifdef EXISTS
+      -- Prop 3
+      let f3 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
+            (Raw . Z3Ctrt $ mkApp2 newR a b) ⇒ ((Raw $ rel2Z3Ctrt r a b) ∨
+            (exists $ \c -> (Raw $ rel2Z3Ctrt r a b) ∧ (Raw . Z3Ctrt $ mkApp2 newR b c)))
+      p3 <- unZ3Ctrt $ fol2Z3Ctrt f3
+      assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2,p3]
+#else
       assertProp "TC" $ Z3Ctrt . lift $ mkAnd [p1,p2]
+#endif
       mkApp2 newR e1 e2
   where
     mkApp1 idx e1 e2 = do
@@ -293,14 +303,24 @@ fol2Z3Ctrt (Forall operNameList f) = Z3Ctrt $ do
     body2 <- lift $ mkImplies ante body
     lift $ mkForallConst [] [effApp] body2
 
+exists :: Operation a => (Effect -> Prop a) -> Prop a
+exists f = Raw $ Z3Ctrt $ do
+  (effInt, effApp) <- newEff
+  body <- unZ3Ctrt . prop2Z3Ctrt $ f effInt
+  lift $ mkExistsConst [] [effApp] body
+
 -------------------------------------------------------------------------------
 -- Type checking helper
 
+thinAir :: Fol ()
+thinAir = forall_ $ \x -> liftProp . Not $ hb x x
+
+doVis :: Fol ()
+doVis = forall_ $ \a -> forall_ $ \b -> liftProp $ vis a b ⇒ appRel Sameobj a b
+
 assertBasicAxioms :: StateT Z3CtrtState Z3 ()
 assertBasicAxioms = do
-  let thinAir :: Fol () = forall_ $ \x -> liftProp . Not $ hb x x
   assertProp "ThinAir" $ fol2Z3Ctrt thinAir
-  let doVis :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $ vis a b ⇒ appRel Sameobj a b
   assertProp "doVis" $ fol2Z3Ctrt doVis
   let soTrans :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
                             so a b ∧ so b c ⇒  so a c
@@ -337,9 +357,13 @@ typecheck mkOperSort core = evalZ3 $ do
 
 isWellTyped :: Operation a => Contract a -> Z3 Sort -> IO Bool
 isWellTyped c mkOperSort = typecheck mkOperSort $ do
-  assertBasicAxioms
-  (assertProp "WT_CHECK") . fol2Z3Ctrt . forall_ $ c
-  lift $ not . res2Bool <$> check
+  (curEff, _) <- newEff
+
+  let an1 = fol2Z3Ctrt $ sc curEff
+  let cn1 = fol2Z3Ctrt $ c curEff
+  let test1 = prop2Z3Ctrt $ mkRawImpl an1 cn1
+  assertProp "SC_IMPL_CTRT" $ not_ test1
+  lift $ res2Bool <$> check
 
 hbo :: Operation a => Effect -> Effect -> Prop a
 hbo = AppRel $ TC $ ((So ∩ Sameobj) ∪ Vis)

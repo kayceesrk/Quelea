@@ -58,10 +58,25 @@ newtype Effect = Effect { unEffect :: Int } deriving (Eq, Ord)
 
 data Rel = Vis | So | Sameobj | TC Rel | Sameeff
          | Union Rel Rel | Intersect Rel Rel
+
+instance Eq Rel where
+  Vis == Vis = True
+  So == So = True
+  Sameobj == Sameobj = True
+  (TC r1) == (TC r2) = r1 == r2
+  Sameeff == Sameeff = True
+  Union r1 r2 == Union r3 r4 =
+    (r1 == r3 && r2 == r4) || (r2 == r3 && r1 == r4)
+  Intersect r1 r2 == Intersect r3 r4 =
+    (r1 == r3 && r2 == r4) || (r2 == r3 && r1 == r4)
+
+
+
 data Operation a => Prop a =
     PTrue | Not (Prop a) | AppRel Rel Effect Effect | Conj (Prop a) (Prop a)
   | Disj (Prop a) (Prop a) | Impl (Prop a) (Prop a) | Oper Effect a | Raw Z3Ctrt
 data Operation a => Fol a = Forall [a] (Effect -> Fol a) | Plain (Prop a)
+
 
 type Contract a = Effect -> Fol a
 
