@@ -196,7 +196,7 @@ dummyZ3Sort = do
   makeDatatype
 
 
-instance Operation () where
+instance OperationClass () where
   getObjType _ = fail "requesting ObjType of ()"
 
 -------------------------------------------------------------------------------
@@ -262,7 +262,7 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
       a2 <- lookupEff e2
       lift $ mkApp r [a1,a2]
 
-prop2Z3Ctrt :: Operation a => Prop a -> Z3Ctrt
+prop2Z3Ctrt :: OperationClass a => Prop a -> Z3Ctrt
 prop2Z3Ctrt PTrue = Z3Ctrt $ lift mkTrue
 prop2Z3Ctrt (AppRel r e1 e2) = rel2Z3Ctrt r e1 e2
 prop2Z3Ctrt (Conj p1 p2) = Z3Ctrt $ do
@@ -297,7 +297,7 @@ prop2Z3Ctrt (Not p) = Z3Ctrt $ do
   a <- unZ3Ctrt $ prop2Z3Ctrt p
   lift $ mkNot a
 
-fol2Z3Ctrt :: Operation a => Fol a -> Z3Ctrt
+fol2Z3Ctrt :: OperationClass a => Fol a -> Z3Ctrt
 fol2Z3Ctrt (Plain p) = prop2Z3Ctrt p
 fol2Z3Ctrt (Forall operNameList f) = Z3Ctrt $ do
   (effInt, effApp) <- newEff
@@ -310,7 +310,7 @@ fol2Z3Ctrt (Forall operNameList f) = Z3Ctrt $ do
     body2 <- lift $ mkImplies ante body
     lift $ mkForallConst [] [effApp] body2
 
-exists :: Operation a => (Effect -> Prop a) -> Prop a
+exists :: OperationClass a => (Effect -> Prop a) -> Prop a
 exists f = Raw $ Z3Ctrt $ do
   (effInt, effApp) <- newEff
   body <- unZ3Ctrt . prop2Z3Ctrt $ f effInt
@@ -362,7 +362,7 @@ typecheck mkOperSort core = evalZ3 $ do
   (res, _) <- runStateT core st
   return res
 
-isWellTyped :: Operation a => Contract a -> Z3 Sort -> IO Bool
+isWellTyped :: OperationClass a => Contract a -> Z3 Sort -> IO Bool
 isWellTyped c mkOperSort = typecheck mkOperSort $ do
   (curEff, _) <- newEff
 
@@ -372,7 +372,7 @@ isWellTyped c mkOperSort = typecheck mkOperSort $ do
   assertProp "SC_IMPL_CTRT" $ not_ test1
   lift $ res2Bool <$> check
 
-hbo :: Operation a => Effect -> Effect -> Prop a
+hbo :: OperationClass a => Effect -> Effect -> Prop a
 hbo = AppRel $ TC $ ((So ∩ Sameobj) ∪ Vis)
 
 sc :: Contract ()
@@ -389,7 +389,7 @@ cv x = forall_ $ \a -> forall_ $ \b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
 
-isUnavailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
+isUnavailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
 isUnavailable c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
@@ -408,7 +408,7 @@ isUnavailable c mkOperSort =
 
 
 
-isStickyAvailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
+isStickyAvailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
 isStickyAvailable c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
@@ -425,7 +425,7 @@ isStickyAvailable c mkOperSort =
     assertProp "CTRT_NOT_IMPL_CV" $ not_ test2
     lift $ res2Bool <$> check
 
-isHighlyAvailable :: Operation a  => Contract a -> Z3 Sort -> IO Bool
+isHighlyAvailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
 isHighlyAvailable c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
@@ -437,7 +437,7 @@ isHighlyAvailable c mkOperSort =
     assertProp "CV_IMPL_CTRT" $ not_ test1
     lift $ res2Bool <$> check
 
-classifyContract :: Operation a => Contract a -> String -> Q Availability
+classifyContract :: OperationClass a => Contract a -> String -> Q Availability
 classifyContract c info = do
   mkOperSort <- mkMkZ3OperSort
   runIO $ do
@@ -454,7 +454,7 @@ classifyContract c info = do
           if res then return Un
           else fail $ info ++ " -- strange contract"
 
-isValid :: Operation a => String -> Fol a -> IO Bool
+isValid :: OperationClass a => String -> Fol a -> IO Bool
 isValid str c = typecheck dummyZ3Sort $ do
   assertBasicAxioms
   assertProp str $ not_ $ fol2Z3Ctrt c

@@ -20,7 +20,7 @@ import System.ZMQ4
 import Data.Maybe (fromJust)
 import Control.Lens
 
-runShimNode :: Operation a
+runShimNode :: OperationClass a
             => DatatypeLibrary a -> Backend -> Int -> IO ()
 runShimNode dtlib backend port = do
   ctxt <- context
@@ -38,7 +38,7 @@ runShimNode dtlib backend port = do
           (res, _) = op [] arg
       in return res
 
-mkDtLib :: Operation a => [(a, GenOpFun, Availability)] -> DatatypeLibrary a
+mkDtLib :: OperationClass a => [(a, GenOpFun, Availability)] -> DatatypeLibrary a
 mkDtLib l = Prelude.foldl core Map.empty l
   where
     core dtlib (op,fun,av) = Map.insert (getObjType op, op) (fun, av) dtlib

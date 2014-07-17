@@ -76,10 +76,10 @@ instance Eq Rel where
       otherwise -> False
 
 
-data Operation a => Prop a =
+data OperationClass a => Prop a =
     PTrue | Not (Prop a) | AppRel Rel Effect Effect | Conj (Prop a) (Prop a)
   | Disj (Prop a) (Prop a) | Impl (Prop a) (Prop a) | Oper Effect a | Raw Z3Ctrt
-data Operation a => Fol a = Forall [a] (Effect -> Fol a) | Plain (Prop a)
+data OperationClass a => Fol a = Forall [a] (Effect -> Fol a) | Plain (Prop a)
 
 
 type Contract a = Effect -> Fol a
@@ -108,28 +108,28 @@ a ∪ b = Union a b
 (∩) :: Rel -> Rel -> Rel
 a ∩ b = Intersect a b
 
-(∧) :: Operation a => Prop a -> Prop a -> Prop a
+(∧) :: OperationClass a => Prop a -> Prop a -> Prop a
 (∧) = Conj
 
-(∨) :: Operation a => Prop a -> Prop a -> Prop a
+(∨) :: OperationClass a => Prop a -> Prop a -> Prop a
 (∨) = Disj
 
-(⇒) :: Operation a => Prop a -> Prop a -> Prop a
+(⇒) :: OperationClass a => Prop a -> Prop a -> Prop a
 (⇒) = Impl
 
 (^+) :: Rel -> Rel
 (^+) = TC
 
-appRel :: Operation a => Rel -> Effect -> Effect -> Prop a
+appRel :: OperationClass a => Rel -> Effect -> Effect -> Prop a
 appRel = AppRel
 
-liftProp :: Operation a => Prop a -> Fol a
+liftProp :: OperationClass a => Prop a -> Fol a
 liftProp = Plain
 
-forall_ :: Operation a => (Effect -> Fol a) -> Fol a
+forall_ :: OperationClass a => (Effect -> Fol a) -> Fol a
 forall_ f = Forall [] f
 
-forallQ_ :: Operation a => [a] -> (Effect -> Fol a) -> Fol a
+forallQ_ :: OperationClass a => [a] -> (Effect -> Fol a) -> Fol a
 forallQ_ q f = Forall q f
 
 sameeff :: Effect -> Effect -> Prop a

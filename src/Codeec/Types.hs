@@ -7,7 +7,7 @@ module Codeec.Types (
   GenOpFun(..),
   ObjType(..),
   OpFun(..),
-  Operation(..),
+  OperationClass(..),
   Request(..),
 
   operationsTyConStr
@@ -36,7 +36,7 @@ instance Lift Availability where
   lift Un = [| Un |]
 
 type ObjType = String
-class (Show a, Read a, Eq a, Ord a) => Operation a where
+class (Show a, Read a, Eq a, Ord a) => OperationClass a where
   getObjType :: a -> String
 
 type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
@@ -44,4 +44,4 @@ type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
 data Request a = Request ObjType a ByteString
 
 operationsTyConStr :: String
-operationsTyConStr = "OpName"
+operationsTyConStr = "Operation"
