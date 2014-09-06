@@ -19,7 +19,10 @@ Library
     lens,
     template-haskell,
     z3,
-    mtl
+    mtl,
+    random,
+    uuid,
+    text
   Exposed-modules:
     Codeec.NameService.SimpleBroker
     Codeec.Marshall

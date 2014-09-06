@@ -14,6 +14,8 @@ import Control.Lens
 import System.ZMQ4
 import Data.Serialize
 import Codeec.Marshall
+import System.Random (randomIO)
+import Control.Applicative
 
 data Session = Session {
   _broker     :: Frontend,
@@ -44,3 +46,6 @@ invoke s operName arg = do
   case decode result of
     Left s -> error $ "invoke : decode failure " ++ s
     Right v -> return v
+
+newKey :: IO Key
+newKey = Key <$> randomIO

@@ -10,6 +10,9 @@ module Codeec.Types (
   OperationClass(..),
   Request(..),
 
+  Key(..),
+  Addr(..),
+
   operationsTyConStr
 ) where
 
@@ -23,6 +26,8 @@ import qualified Data.Map as Map
 import Data.ByteString.Char8 (pack, unpack)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
+import Data.UUID
+import Data.Int (Int64)
 
 class (CasType a, Serialize a) => Storable a where
 
@@ -48,3 +53,11 @@ data Request a = Request ObjType a ByteString
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"
+
+
+newtype Key = Key UUID
+
+data Addr = Addr {
+  _sessid :: UUID,
+  _seqno  :: Int64
+}
