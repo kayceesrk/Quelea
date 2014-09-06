@@ -17,6 +17,7 @@ import Control.Applicative ((<$>))
 import Codeec.Types
 import Codeec.Contract
 import Codeec.TH
+import Debug.Trace
 
 data BankAccount = Deposit_ Int | Withdraw_ Int | GetBalance_ deriving Show
 
@@ -50,9 +51,9 @@ deposit _ amt = ((), Just $ Deposit_ amt)
 
 withdraw :: [BankAccount] -> Int -> Res Bool
 withdraw ctxt amt =
-  let (bal, _) = getBalance ctxt ()
+  let (bal, _) = trace ("Calling withdraw on context = " ++ show ctxt) getBalance ctxt ()
   in if bal > amt
-     then (True, Just $ Withdraw_ amt)
+     then trace "Withdraw success" (True, Just $ Withdraw_ amt)
      else (False, Nothing)
 
 getBalance :: [BankAccount] -> () -> Res Int

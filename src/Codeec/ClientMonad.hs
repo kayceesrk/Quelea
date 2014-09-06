@@ -5,7 +5,8 @@ module Codeec.ClientMonad (
   Session,
 
   runSession,
-  invoke
+  invoke,
+  newKey
 ) where
 
 import Codeec.Types

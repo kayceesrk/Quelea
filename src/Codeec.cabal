@@ -33,6 +33,7 @@ Library
     Codeec.Types
     Codeec.TH
     Codeec.Contract
+    Codeec.DBDriver
   Other-modules:
     Codeec.Contract.Language
     Codeec.Contract.TypeCheck

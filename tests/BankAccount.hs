@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
 import Codeec.Shim
-import Codeec.Client
+import Codeec.ClientMonad
+import Codeec.DBDriver
 import BankAccountDefs
 import Codeec.Contract
 import System.Process (runCommand, terminateProcess)
@@ -10,6 +11,9 @@ import Control.Concurrent (threadDelay)
 import Codeec.NameService.SimpleBroker
 import Codeec.Marshall
 import Codeec.TH
+import Database.Cassandra.CQL
+import Control.Monad.Trans (liftIO)
+import Data.Text (pack)
 
 fePort :: Int
 fePort = 5558
@@ -19,6 +23,9 @@ bePort = 5559
 
 
 data Kind = B | C | S | D deriving (Read, Show)
+
+keyspace :: Keyspace
+keyspace = Keyspace $ pack "Codeec"
 
 dtLib = mkDtLib [(Deposit, mkGen deposit, $(check "Deposit" depositCtrt)),
                  (Withdraw, mkGen withdraw, $(check "Withdraw" withdrawCtrt)),
@@ -33,22 +40,23 @@ main = do
                      (Backend $ "tcp://*:" ++ show bePort)
     S -> do
       print dtLib
-      runShimNode dtLib (Backend $ "tcp://localhost:" ++ show bePort) 5560
-    C -> do
-      sess <- beginSession $ Frontend $ "tcp://localhost:" ++ show fePort
+      runShimNode dtLib [("localhost","9042")] keyspace
+        (Backend $ "tcp://localhost:" ++ show bePort) 5560
+    C -> runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
+            key <- liftIO $ newKey
+            liftIO $ putStrLn "Client : performing deposit"
+            r::() <- invoke key Deposit (64::Int)
 
-      putStrLn "Client : performing deposit"
-      r::() <- invoke sess Deposit (100::Int)
+            liftIO $ putStrLn "Client : performing withdraw"
+            r::Bool <- invoke key Withdraw (10::Int)
+            liftIO . putStrLn $ show r
 
-      putStrLn "Client : performing withdraw"
-      r::(Maybe Int) <- invoke sess Withdraw (10::Int)
-      putStrLn $ show r
-
-      putStrLn "Client : performing getBalance"
-      r::Int <- invoke sess GetBalance ()
-      putStrLn $ show r
-      endSession sess
+            liftIO $ putStrLn "Client : performing getBalance"
+            r::Int <- invoke key GetBalance ()
+            liftIO . putStrLn $ show r
     D -> do
+      pool <- newPool [("localhost","9042")] keyspace Nothing
+      runCas pool $ createTable "BankAccount"
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " B"
@@ -58,4 +66,4 @@ main = do
       c <- runCommand $ progName ++ " C"
       threadDelay 5000000
       mapM_ terminateProcess [b,s,c]
-
+      runCas pool $ dropTable "BankAccount"

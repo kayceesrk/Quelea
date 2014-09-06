@@ -1,6 +1,7 @@
 module Codeec.Marshall (
   mkGen,
-  decodeRequest
+  decodeRequest,
+  decodeResponse
 ) where
 
 import Codeec.Types
@@ -38,3 +39,15 @@ decodeRequest :: OperationClass a => ByteString -> Request a
 decodeRequest b = case decode b of
                     Left s -> error $ "decodeRequest : " ++ s
                     Right v -> v
+
+
+instance Serialize a => Serialize (Response a) where
+  put (Response seqno res) = S.put (seqno, res)
+  get = do
+    (a,b) <- S.get
+    return $ Response a b
+
+decodeResponse :: Serialize a => ByteString -> Response a
+decodeResponse b = case decode b of
+                     Left s -> error $ "decodeResponse : " ++ s
+                     Right v -> v

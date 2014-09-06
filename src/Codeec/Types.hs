@@ -9,6 +9,7 @@ module Codeec.Types (
   OpFun(..),
   OperationClass(..),
   Request(..),
+  Response(..),
 
   Key(..),
   Addr(..),
@@ -58,6 +59,8 @@ type SessUUID = UUID
 type SeqNo = Int64
 
 data Request a = Request ObjType Key a ByteString SessUUID SeqNo
+
+data Response a = Response SeqNo a
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"
