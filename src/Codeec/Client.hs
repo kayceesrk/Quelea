@@ -1,11 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Codeec.Client (
+  Key,
   Session,
 
   beginSession,
   endSession,
-  invoke
+  invoke,
+  newKey
 ) where
 
 import Codeec.Types
@@ -37,10 +39,10 @@ endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
-       => Session -> on -> arg -> IO res
-invoke s operName arg = do
+       => Session -> Key -> on -> arg -> IO res
+invoke s key operName arg = do
   let objType = getObjType operName
-  let req = Request objType operName (encode arg)
+  let req = Request objType key operName (encode arg)
   send (s^.server) [] $ encode req
   result <- receive (s^.server)
   case decode result of

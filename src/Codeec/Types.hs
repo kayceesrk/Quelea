@@ -49,13 +49,12 @@ class (Show a, Read a, Eq a, Ord a) => OperationClass a where
 
 type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
 
-data Request a = Request ObjType a ByteString
+newtype Key = Key UUID
+
+data Request a = Request ObjType Key a ByteString
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"
-
-
-newtype Key = Key UUID
 
 data Addr = Addr {
   _sessid :: UUID,

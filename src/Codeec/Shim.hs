@@ -65,7 +65,7 @@ runShimNode dtlib backend port = do
     result <- performOp dtlib $ decodeRequest req
     send sock [] result
   where
-    performOp dtLib (Request objType operName arg) =
+    performOp dtLib (Request objType key operName arg) =
       let (op,_) = fromJust $ dtLib ^.at (objType, operName)
           (res, eff) = op [] arg
       in return res

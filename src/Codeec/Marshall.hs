@@ -12,13 +12,15 @@ import Data.Either (rights)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.ByteString.Char8 (pack, unpack)
+import Data.UUID
+import Data.Maybe (fromJust)
 
 
 instance OperationClass a => Serialize (Request a) where
-  put (Request ot on v) = S.put (pack $ show ot, pack $ show on, v)
+  put (Request ot (Key k) on v) = S.put (pack $ show ot, toByteString k, pack $ show on, v)
   get = do
-    (s1,s2,v) <- S.get
-    return $ Request (read $ unpack s1) (read $ unpack s2) v
+    (s1,k,s2,v) <- S.get
+    return $ Request (read $ unpack s1) (Key $ fromJust $ fromByteString k) (read $ unpack s2) v
 
 mkGen :: (Storable eff, Serialize arg, Serialize res)
           => OpFun eff arg res
