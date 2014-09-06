@@ -12,6 +12,8 @@ module Codeec.Types (
 
   Key(..),
   Addr(..),
+  SessUUID,
+  SeqNo,
 
   operationsTyConStr
 ) where
@@ -28,6 +30,7 @@ import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Data.UUID
 import Data.Int (Int64)
+import Data.Maybe (fromJust)
 
 class (CasType a, Serialize a) => Storable a where
 
@@ -49,14 +52,27 @@ class (Show a, Read a, Eq a, Ord a) => OperationClass a where
 
 type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
 
-newtype Key = Key UUID
+newtype Key = Key { unKey :: UUID }
 
-data Request a = Request ObjType Key a ByteString
+type SessUUID = UUID
+type SeqNo = Int64
+
+data Request a = Request ObjType Key a ByteString SessUUID SeqNo
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"
 
 data Addr = Addr {
-  _sessid :: UUID,
-  _seqno  :: Int64
-}
+  _sessid :: SessUUID,
+  _seqno  :: SeqNo
+} deriving (Eq, Ord, Read, Show)
+
+instance CasType Addr where
+  putCas (Addr x y) = do
+    putLazyByteString $ toByteString x
+    (putWord64be . fromIntegral) y
+  getCas = do
+    x <- fromJust . fromByteString <$> getLazyByteString 16
+    y <- fromIntegral <$> getWord64be
+    return $ Addr x y
+  casType _ = CBlob

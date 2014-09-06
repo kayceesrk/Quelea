@@ -17,10 +17,11 @@ import Data.Maybe (fromJust)
 
 
 instance OperationClass a => Serialize (Request a) where
-  put (Request ot (Key k) on v) = S.put (pack $ show ot, toByteString k, pack $ show on, v)
+  put (Request ot (Key k) on v sessid seqno) = S.put (pack $ show ot, toByteString k, pack $ show on, v, toByteString sessid, seqno)
   get = do
-    (s1,k,s2,v) <- S.get
+    (s1,k,s2,v,sid,sqn) <- S.get
     return $ Request (read $ unpack s1) (Key $ fromJust $ fromByteString k) (read $ unpack s2) v
+      (fromJust $ fromByteString sid) sqn
 
 mkGen :: (Storable eff, Serialize arg, Serialize res)
           => OpFun eff arg res

@@ -22,32 +22,40 @@ import Control.Applicative
 data Session = Session {
   _broker     :: Frontend,
   _server     :: Socket Req,
-  _serverAddr :: String
+  _serverAddr :: String,
+  _sessid     :: SessUUID,
+  _seqno      :: SeqNo
 }
 
 makeLenses ''Session
 
 beginSession :: Frontend -> IO Session
 beginSession fe = do
+  {- connect to the frontend of shim layer broker, which returns one of the
+   - shim layer node addresses. -}
   serverAddr <- clientJoin fe
+  -- Connect to the shim layer node.
   ctxt <- context
   sock <- socket ctxt Req
   connect sock serverAddr
-  return $ Session fe sock serverAddr
+  -- Create a session id
+  sessid <- randomIO
+  -- Initialize session
+  return $ Session fe sock serverAddr sessid 0
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
-       => Session -> Key -> on -> arg -> IO res
+       => Session -> Key -> on -> arg -> IO (res, Session)
 invoke s key operName arg = do
   let objType = getObjType operName
-  let req = Request objType key operName (encode arg)
+  let req = Request objType key operName (encode arg) (s ^. sessid) (s ^. seqno)
   send (s^.server) [] $ encode req
-  result <- receive (s^.server)
-  case decode result of
+  resultBlob <- receive (s^.server)
+  case decode resultBlob of
     Left s -> error $ "invoke : decode failure " ++ s
-    Right v -> return v
+    Right (v, newSeqNo) -> return (v, Session (s^.broker) (s^.server) (s^.serverAddr) (s^.sessid) newSeqNo)
 
 newKey :: IO Key
 newKey = Key <$> randomIO
