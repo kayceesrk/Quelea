@@ -51,9 +51,9 @@ deposit _ amt = ((), Just $ Deposit_ amt)
 
 withdraw :: [BankAccount] -> Int -> Res Bool
 withdraw ctxt amt =
-  let (bal, _) = trace ("Calling withdraw on context = " ++ show ctxt) getBalance ctxt ()
+  let (bal, _) = getBalance ctxt ()
   in if bal > amt
-     then trace "Withdraw success" (True, Just $ Withdraw_ amt)
+     then (True, Just $ Withdraw_ amt)
      else (False, Nothing)
 
 getBalance :: [BankAccount] -> () -> Res Int

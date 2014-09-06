@@ -51,13 +51,12 @@ invoke :: (OperationClass on, Serialize arg, Serialize res)
 invoke s key operName arg = do
   let objType = getObjType operName
   let req = Request objType key operName (encode arg) (s ^. sessid) (s ^. seqno)
-  putStrLn $ "invoke : SessId=" ++ show (s ^. sessid) ++ " seqno=" ++ show (s ^. seqno)
   send (s^.server) [] $ encode req
-  resultBlob <- receive (s^.server)
-  case decode resultBlob of
+  responseBlob <- receive (s^.server)
+  let (Response newSeqNo resBlob) = decodeResponse responseBlob
+  case decode resBlob of
     Left s -> error $ "invoke : decode failure " ++ s
-    Right (Response newSeqNo res) -> do
-      putStrLn $ "invoke : newSeqNo=" ++ show newSeqNo
+    Right res -> do
       return (res, Session (s^.broker) (s^.server) (s^.serverAddr) (s^.sessid) newSeqNo)
 
 newKey :: IO Key

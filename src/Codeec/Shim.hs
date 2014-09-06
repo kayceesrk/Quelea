@@ -50,19 +50,15 @@ runShimNode dtlib serverList keyspace backend port = do
     send sock [] result
   where
     performOp dtLib pool (Request objType key operName arg sessid seqno) = runCas pool $ do
-      liftIO . putStrLn $ "runShimNode : sessid=" ++ (show sessid) ++ " seqno=" ++ (show seqno)
       let (op,_) = fromJust $ dtLib ^.at (objType, operName)
       rows <- cqlRead objType key
       let ctxt = map (\(_,_,_,_,v) -> v) rows
-      liftIO . putStrLn $ "runShimNode : NumRows = " ++ (show $ Prelude.length ctxt)
       let (res, effM) = op ctxt arg
       case effM of
         Nothing -> do
-          liftIO . putStrLn $ "runShimNode : seqno=" ++ show seqno
           return $ encode $ Response seqno res
         Just eff -> do
           cqlWrite objType (unKey key, sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
-          liftIO . putStrLn $ "runShimNode : seqno=" ++ show (seqno + 1)
           return $ encode $ Response (seqno + 1) res
 
 mkDtLib :: OperationClass a => [(a, GenOpFun, Availability)] -> DatatypeLibrary a
