@@ -53,7 +53,7 @@ class (Show a, Read a, Eq a, Ord a) => OperationClass a where
 
 type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
 
-newtype Key = Key { unKey :: UUID }
+newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
 
 type SessUUID = UUID
 type SeqNo = Int64
