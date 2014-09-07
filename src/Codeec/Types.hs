@@ -60,7 +60,7 @@ type SeqNo = Int64
 
 data Request a = Request ObjType Key a ByteString SessUUID SeqNo
 
-data Response a = Response SeqNo a
+data Response = Response SeqNo ByteString
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"

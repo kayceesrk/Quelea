@@ -41,13 +41,13 @@ decodeRequest b = case decode b of
                     Right v -> v
 
 
-instance Serialize a => Serialize (Response a) where
+instance Serialize Response where
   put (Response seqno res) = S.put (seqno, res)
   get = do
     (a,b) <- S.get
     return $ Response a b
 
-decodeResponse :: Serialize a => ByteString -> Response a
+decodeResponse :: ByteString -> Response
 decodeResponse b = case decode b of
                      Left s -> error $ "decodeResponse : " ++ s
                      Right v -> v

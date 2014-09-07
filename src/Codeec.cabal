@@ -23,7 +23,8 @@ Library
     random,
     uuid,
     text,
-    transformers
+    transformers,
+    time
   Exposed-modules:
     Codeec.NameService.SimpleBroker
     Codeec.Marshall
@@ -37,4 +38,6 @@ Library
   Other-modules:
     Codeec.Contract.Language
     Codeec.Contract.TypeCheck
+    Codeec.ShimLayer.UpdateFetcher
+    Codeec.ShimLayer.Cache
   Extensions: CPP
