@@ -7,9 +7,12 @@ module Codeec.Client (
   beginSession,
   endSession,
   invoke,
-  newKey
+  newKey,
+  mkKey,
+  getUUID
 ) where
 
+import Data.UUID
 import Codeec.Types
 import Codeec.NameService.SimpleBroker
 import Control.Lens
@@ -61,3 +64,9 @@ invoke s key operName arg = do
 
 newKey :: IO Key
 newKey = Key <$> randomIO
+
+mkKey :: UUID -> Key
+mkKey uuid = Key uuid
+
+getUUID :: Key -> UUID
+getUUID (Key k) = k

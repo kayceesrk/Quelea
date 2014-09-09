@@ -58,7 +58,7 @@ withdraw ctxt amt =
 
 getBalance :: [BankAccount] -> () -> Res Int
 getBalance ops () =
-  let v = foldl acc 0 ops
+  let v = {- trace ("GB : #effect=" ++ (show $ length ops)) -} foldl acc 0 ops
   in (v, Nothing)
   where
     acc s (Deposit_ i) = s + i

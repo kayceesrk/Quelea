@@ -85,13 +85,14 @@ initCacheManager pool = do
   sem <- newEmptyMVar
   forkIO $ signalGenerator sem
   let cm = CacheManager cache hotLocs sem
-  forkIO $ cacheMgrCore cm pool
+  -- forkIO $ cacheMgrCore cm pool
   return $ cm
 
 addEffectToCache :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> Effect -> IO ()
 addEffectToCache cm ot k sid sqn eff = do
   cache <- takeMVar $ cm^.cacheMVar
   putMVar (cm^.cacheMVar) $ M.insertWith (\a b -> S.union a b) (ot,k) (S.singleton (sid,sqn,eff)) cache
+  c <- readMVar $ cm^.cacheMVar
   addHotLocation cm ot k
 
 getContext :: CacheManager -> ObjType -> Key -> IO [Effect]
@@ -99,7 +100,7 @@ getContext cm ot k = do
   cache <- readMVar $ cm^.cacheMVar
   case M.lookup (ot,k) cache of
     Nothing -> return []
-    Just s -> return $ S.toList (S.map (\(_,_,eff) -> eff) s)
+    Just s -> return $ map (\(_,_,eff) -> eff) $ S.toList s
 
 -- TODO: The context must be represented by a set and not a list.
 -- TODO: Handle Sticky availability.
