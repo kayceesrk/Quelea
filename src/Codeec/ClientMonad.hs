@@ -6,11 +6,12 @@ module Codeec.ClientMonad (
 
   runSession,
   invoke,
-  newKey
+  newKey,
+  getServerAddr
 ) where
 
 import Codeec.Types
-import Codeec.Client hiding (invoke)
+import Codeec.Client hiding (invoke, getServerAddr)
 import qualified Codeec.Client as CCLow
 import Control.Monad.Trans.State
 import Control.Monad.Trans (liftIO)
@@ -36,3 +37,8 @@ invoke key operName arg = do
   (res, newSession) <- liftIO $ CCLow.invoke session key operName arg
   put newSession
   return res
+
+getServerAddr :: CSN String
+getServerAddr = do
+  s <- use serverAddr
+  return s

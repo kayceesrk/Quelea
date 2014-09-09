@@ -14,6 +14,8 @@ import Codeec.TH
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
+import Codeec.Client (mkKey, getUUID)
+import Control.Applicative
 
 fePort :: Int
 fePort = 5558
@@ -33,16 +35,20 @@ dtLib = mkDtLib [(Deposit, mkGen deposit, $(check "Deposit" depositCtrt)),
 
 main :: IO ()
 main = do
-  (kindStr:_) <- getArgs
+  (kindStr:tailStr) <- getArgs
   let k :: Kind = read kindStr
   case k of
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     S -> do
-      runShimNode dtLib [("localhost","9042")] keyspace
-        (Backend $ "tcp://localhost:" ++ show bePort) 5560
+      let offStr:_ = tailStr
+      let off::Int = read offStr
+      print dtLib
+      runShimNode dtLib [("localhost",show (9042+off))] keyspace
+        (Backend $ "tcp://localhost:" ++ show bePort) (5560+off)
     C -> runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
-      key <- liftIO $ newKey
+      let keyStr:_ = tailStr
+      let key = mkKey . read $ keyStr
       liftIO $ putStrLn "Client : performing deposit"
       r::() <- invoke key Deposit (64::Int)
 
@@ -59,10 +65,16 @@ main = do
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " B"
-      putStrLn "Driver : Starting server"
-      s <- runCommand $ progName ++ " S"
-      putStrLn "Driver : Starting client"
-      c <- runCommand $ progName ++ " C"
+      putStrLn "Driver : Starting server0"
+      s0 <- runCommand $ progName ++ " S 0"
+      -- putStrLn "Driver : Starting server1"
+      -- s1 <- runCommand $ progName ++ " S 1"
+      key <- liftIO $ newKey
+      putStrLn "Driver : Starting client0"
+      c0 <- runCommand $ progName ++ " C " ++ show (getUUID key)
+      threadDelay 1000000
+      putStrLn "Driver : Starting client1"
+      c1 <- runCommand $ progName ++ " C " ++ show (getUUID key)
       threadDelay 5000000
-      mapM_ terminateProcess [b,s,c]
+      mapM_ terminateProcess [b,s0,c0,c1]
       runCas pool $ dropTable "BankAccount"

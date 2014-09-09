@@ -9,7 +9,8 @@ module Codeec.Client (
   invoke,
   newKey,
   mkKey,
-  getUUID
+  getUUID,
+  getServerAddr
 ) where
 
 import Data.UUID
@@ -48,6 +49,9 @@ beginSession fe = do
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
+
+getServerAddr :: Session -> String
+getServerAddr s = s^.serverAddr
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)

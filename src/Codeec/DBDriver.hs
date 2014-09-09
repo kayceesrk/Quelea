@@ -21,7 +21,6 @@ import Data.Either (rights)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import System.ZMQ4
-import Data.Maybe (fromJust)
 import Control.Lens
 import Database.Cassandra.CQL
 import Data.UUID

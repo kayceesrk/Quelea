@@ -6,6 +6,7 @@ module Codeec.ShimLayer.Cache (
   initCacheManager,
   getContext,
   addEffectToCache,
+  addHotLocation
 ) where
 
 import Control.Concurrent
@@ -65,7 +66,10 @@ cacheMgrCore (CacheManager cacheMVar hotLocsMVar semMVar) pool = forever $ do
   -- Get remote updates by mapping over newCache (smaller set of keys) and for
   -- each value, which is the set of effects, remove an effect from the set, it
   -- if the current cache contains it.
-  let remoteUpdates = M.mapWithKey (\k v1 -> S.difference v1 $ fromJust $ M.lookup k curCache) newCache
+  let remoteUpdates = M.mapWithKey (\k v1 ->
+        case M.lookup k curCache of
+          Nothing -> v1
+          Just v2 -> S.difference v1 v2) newCache
   -- Lock the current cache (takeMVar)
   curCache <- takeMVar cacheMVar
   let finalCache = M.unionWith S.union curCache remoteUpdates
@@ -85,15 +89,13 @@ initCacheManager pool = do
   sem <- newEmptyMVar
   forkIO $ signalGenerator sem
   let cm = CacheManager cache hotLocs sem
-  -- forkIO $ cacheMgrCore cm pool
+  forkIO $ cacheMgrCore cm pool
   return $ cm
 
 addEffectToCache :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> Effect -> IO ()
 addEffectToCache cm ot k sid sqn eff = do
   cache <- takeMVar $ cm^.cacheMVar
   putMVar (cm^.cacheMVar) $ M.insertWith (\a b -> S.union a b) (ot,k) (S.singleton (sid,sqn,eff)) cache
-  c <- readMVar $ cm^.cacheMVar
-  addHotLocation cm ot k
 
 getContext :: CacheManager -> ObjType -> Key -> IO [Effect]
 getContext cm ot k = do

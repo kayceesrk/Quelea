@@ -65,13 +65,15 @@ doOp dtLib cache pool request = do
   -- Fetch the current context
   ctxt <- getContext cache objType key
   let (res, effM) = op ctxt arg
+  -- Add current location to the ones for which updates will be fetched
+  addHotLocation cache objType key
   case effM of
     Nothing -> return $ Response seqno res
     Just eff -> do
       -- Write to database
       runCas pool $ cqlWrite objType (unKey key, sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
       -- Add effect to cache
-      addEffectToCache cache objType key sessid seqno eff
+      addEffectToCache cache objType key sessid (seqno+1) eff
       -- Return response
       return $ Response (seqno + 1) res
 
