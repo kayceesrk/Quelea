@@ -9,7 +9,6 @@ import Codeec.Types
 import Codeec.NameService.SimpleBroker
 import Codeec.Marshall
 import Codeec.DBDriver
-import Codeec.ShimLayer.UpdateFetcher
 import Codeec.ShimLayer.Cache
 
 import Data.Serialize
@@ -48,18 +47,17 @@ runShimNode dtLib serverList keyspace backend port = do
   {- Connection to the Cassandra deployment -}
   pool <- newPool serverList keyspace Nothing
 
-  {- Spawn helpers -}
-  cache <- initCache
-  updateFetcher <- initUpdateFetcher
+  {- Spawn cache manager -}
+  cache <- initCacheManager pool
 
   {- loop forver servicing clients -}
   forever $ do
     req <- receive sock
-    result <- doOp dtLib cache updateFetcher pool $ decodeRequest req
+    result <- doOp dtLib cache pool $ decodeRequest req
     send sock [] $ encode result
 
-doOp :: OperationClass a => DatatypeLibrary a -> Cache -> UpdateFetcher -> Pool -> Request a -> IO Response
-doOp dtLib cache updateFetcher pool request = do
+doOp :: OperationClass a => DatatypeLibrary a -> CacheManager -> Pool -> Request a -> IO Response
+doOp dtLib cache pool request = do
   let (Request objType key operName arg sessid seqno) = request
   {- Fetch the operation from the datatype library using the object type and
   - operation name. -}
@@ -74,8 +72,6 @@ doOp dtLib cache updateFetcher pool request = do
       runCas pool $ cqlWrite objType (unKey key, sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
       -- Add effect to cache
       addEffectToCache cache objType key sessid seqno eff
-      -- Add effect to update fetcher
-      addObject updateFetcher objType key
       -- Return response
       return $ Response (seqno + 1) res
 

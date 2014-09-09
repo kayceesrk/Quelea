@@ -1,13 +1,11 @@
 {-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell, DataKinds, OverloadedStrings, DoAndIfThenElse  #-}
 
 module Codeec.ShimLayer.Cache (
-  Cache,
+  CacheManager,
 
-  initCache,
+  initCacheManager,
   getContext,
   addEffectToCache,
-  getHistory,
-  batchUpdate
 ) where
 
 import Control.Concurrent
@@ -16,98 +14,93 @@ import Data.ByteString hiding (map, pack, putStrLn)
 import Control.Lens
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Codeec.Types
-import Control.Monad.Trans (liftIO)
-import Control.Monad.Trans.State
 import Data.Map.Lens
 import Control.Monad (forever)
 import Data.Maybe (fromJust)
+import Control.Monad (replicateM,foldM)
+import Database.Cassandra.CQL
 
-type History = M.Map (ObjType, Key, SessUUID) SeqNo
+import Codeec.Types
+import Codeec.DBDriver
+
 type Effect = ByteString
 
-data ReqMsgs =
-    GetCtxt ObjType Key
-  | AddEffect ObjType Key SessUUID SeqNo Effect
-  | GetHistory
-  | BatchUpdate (M.Map (ObjType, Key, SessUUID, SeqNo) Effect)
+type CacheMap  = (M.Map (ObjType, Key) (S.Set (SessUUID, SeqNo, Effect)))
+type Cache     = MVar CacheMap
+type HotLocs   = MVar (S.Set (ObjType, Key))
+type Semaphore = MVar ()
 
-data ResMsgs =
-    Ctxt [Effect]
-  | Hist History
-
-data Cache = Cache (MVar ReqMsgs) (MVar ResMsgs)
-
-data CacheState = CacheState {
-  _cache   :: M.Map (ObjType, Key) [Effect],
-  _history :: History,
-  -- interveningWrite == Nothing if batch update is not in progress
-  _interveningWrites :: Maybe (S.Set (ObjType, Key, SessUUID, SeqNo))
+data CacheManager = CacheManager {
+  _cacheMVar   :: Cache,
+  _hotLocsMVar :: HotLocs,
+  _semMVar     :: Semaphore
 }
 
-type CacheMonad a = StateT CacheState IO a
+makeLenses ''CacheManager
 
-makeLenses ''CacheState
+signalGenerator :: Semaphore -> IO ()
+signalGenerator semMVar = forever $ do
+  isEmpty <- isEmptyMVar semMVar
+  if isEmpty
+  then tryPutMVar semMVar ()
+  else return True
+  threadDelay 1000000 -- 1 second
 
-cacheCore :: Cache -> CacheMonad ()
-cacheCore (Cache reqMVar resMVar) = forever $ do
-  request <- liftIO $ takeMVar reqMVar
-  case request of
-    GetCtxt objType key -> do
-      c <- use cache;
-      let ctxt = fromJust $ c ^.at (objType, key)
-      liftIO $ putMVar resMVar $ Ctxt ctxt
-    GetHistory -> do
-      h <- use history
-      liftIO $ putMVar resMVar $ Hist h
-      interveningWrites .= Just S.empty
-    AddEffect objType key sessid seqno eff -> do
-      addEffect (objType, key, sessid, seqno) eff
-    BatchUpdate updateMap -> do
-      iv <- use interveningWrites
-      let updateMapFiltered =
-            case iv of
-              Nothing -> updateMap
-              Just ivSet -> S.foldl (\m e -> M.delete e m) updateMap ivSet
-      let updateList = M.toList updateMapFiltered
-      interveningWrites .= Nothing
-      {- The following invocation Only works if the effects are added in seq
-       - number order(1), without missing any intervening effects(2). (1)
-       - should be ensured since the quadruple (objType, key, sessid, seqno) is
-       - derived from the key of the update map. (2) is taken care of by the
-       - update fetcher daemon. TODO: Optimize. -}
-      mapM_ (\(k,v) -> addEffect k v) updateList
+addHotLocation :: CacheManager -> ObjType -> Key -> IO ()
+addHotLocation cm ot k = do
+  hotLocs <- takeMVar $ cm^.hotLocsMVar
+  putMVar (cm^.hotLocsMVar) $ S.insert (ot,k) hotLocs
+
+cacheMgrCore :: CacheManager -> Pool -> IO ()
+cacheMgrCore (CacheManager cacheMVar hotLocsMVar semMVar) pool = forever $ do
+  takeMVar semMVar
+  -- Woken up. Read the current list of hot locations, and empty the MVar.
+  locs <- takeMVar hotLocsMVar
+  putMVar hotLocsMVar S.empty
+  -- Read the database to fetch the all (including new remote) updates for the
+  -- hot locations.
+  newCache :: CacheMap <- foldM (\cache (ot, k) -> readDB ot k >>= \v -> return $ M.insert (ot,k) v cache) M.empty (S.toList locs)
+  -- Read the current cache
+  curCache :: CacheMap <- readMVar cacheMVar
+  -- Get remote updates by mapping over newCache (smaller set of keys) and for
+  -- each value, which is the set of effects, remove an effect from the set, it
+  -- if the current cache contains it.
+  let remoteUpdates = M.mapWithKey (\k v1 -> S.difference v1 $ fromJust $ M.lookup k curCache) newCache
+  -- Lock the current cache (takeMVar)
+  curCache <- takeMVar cacheMVar
+  let finalCache = M.unionWith S.union curCache remoteUpdates
+  -- install the final cache
+  putMVar cacheMVar finalCache
   where
-    addEffect (objType, key, sessid, seqno) eff = do
-        h <- use history
-        if (seqno == 1 || h ^.at (objType, key, sessid) == (Just $ seqno - 1))
-        then do
-          -- update history
-          history .= (at (objType, key, sessid) .~ Just seqno $ h)
-          -- update cache
-          c <- use cache
-          let ctxt = (\x -> case x of {Nothing -> []; Just l -> l}) (c ^.at (objType, key))
-          cache .= (at (objType, key) .~ Just (eff:ctxt) $ c)
-          -- record intervening write if necessary
-          iv <- use interveningWrites
-          case iv of
-            Nothing -> return ()
-            Just set -> do
-              let newSet = S.insert (objType, key, sessid, seqno) set
-              interveningWrites .= Just newSet
-        else return ()
+    readDB ot k = runCas pool $ do
+      rows <- cqlRead ot k
+      -- TODO: Utilize dependencies
+      let filteredRows = map (\(_,sid,sqn,_,v) -> (sid,sqn,v)) rows
+      return $ S.fromList filteredRows
 
-initCache :: IO Cache
-initCache = undefined
+initCacheManager :: Pool -> IO CacheManager
+initCacheManager pool = do
+  cache <- newMVar M.empty
+  hotLocs <- newMVar S.empty
+  sem <- newEmptyMVar
+  forkIO $ signalGenerator sem
+  let cm = CacheManager cache hotLocs sem
+  forkIO $ cacheMgrCore cm pool
+  return $ cm
 
-addEffectToCache :: Cache -> ObjType -> Key -> SessUUID -> SeqNo -> Effect -> IO Bool
-addEffectToCache = undefined
+addEffectToCache :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> Effect -> IO ()
+addEffectToCache cm ot k sid sqn eff = do
+  cache <- takeMVar $ cm^.cacheMVar
+  putMVar (cm^.cacheMVar) $ M.insertWith (\a b -> S.union a b) (ot,k) (S.singleton (sid,sqn,eff)) cache
+  addHotLocation cm ot k
 
-getContext :: Cache -> ObjType -> Key -> IO [Effect]
-getContext = undefined
+getContext :: CacheManager -> ObjType -> Key -> IO [Effect]
+getContext cm ot k = do
+  cache <- readMVar $ cm^.cacheMVar
+  case M.lookup (ot,k) cache of
+    Nothing -> return []
+    Just s -> return $ S.toList (S.map (\(_,_,eff) -> eff) s)
 
-getHistory :: Int
-getHistory = undefined
-
-batchUpdate :: Int
-batchUpdate = undefined
+-- TODO: The context must be represented by a set and not a list.
+-- TODO: Handle Sticky availability.
+-- TODO: Unavailability.
