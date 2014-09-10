@@ -47,7 +47,7 @@ mkInsert :: TableName -> Query Write RowValue ()
 mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value) values (?, ?, ?, ?, ?)"
 
 mkRead :: TableName -> Query Rows (UUID) Row
-mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname ++ " where objid = ?"
+mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname ++ " where objid = ? order by sessid, seqno"
 
 cqlRead :: TableName -> Key -> Cas [Row]
 cqlRead tname (Key k) = executeRows ONE (mkRead tname) k
