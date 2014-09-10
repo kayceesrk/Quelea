@@ -10,6 +10,7 @@ import Codeec.NameService.SimpleBroker
 import Codeec.Marshall
 import Codeec.DBDriver
 import Codeec.ShimLayer.Cache
+import Codeec.Contract.Language
 
 import Data.Serialize
 import Control.Applicative ((<$>))
@@ -63,7 +64,8 @@ doOp dtLib cache pool request = do
   - operation name. -}
   let (op,_) = fromJust $ dtLib ^.at (objType, operName)
   -- Fetch the current context
-  ctxt <- getContext cache objType key
+  ctxtSet <- getContext cache objType key
+  let ctxt = map (\(_,_,eff) -> eff) $ S.toList ctxtSet
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
@@ -71,13 +73,14 @@ doOp dtLib cache pool request = do
     Nothing -> return $ Response seqno res
     Just eff -> do
       -- Write to database
+      -- TODO: Calculate nearest dependencies
       runCas pool $ cqlWrite objType key (sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
       -- Add effect to cache
       addEffectToCache cache objType key sessid (seqno+1) eff
       -- Return response
       return $ Response (seqno + 1) res
 
-mkDtLib :: OperationClass a => [(a, GenOpFun, Availability)] -> DatatypeLibrary a
+mkDtLib :: OperationClass a => [(a, GenOpFun, Availability, Contract a)] -> DatatypeLibrary a
 mkDtLib l = Prelude.foldl core Map.empty l
   where
-    core dtlib (op,fun,av) = Map.insert (getObjType op, op) (fun, av) dtlib
+    core dtlib (op,fun,av,_) = Map.insert (getObjType op, op) (fun, av) dtlib

@@ -97,13 +97,12 @@ addEffectToCache cm ot k sid sqn eff = do
   cache <- takeMVar $ cm^.cacheMVar
   putMVar (cm^.cacheMVar) $ M.insertWith (\a b -> S.union a b) (ot,k) (S.singleton (sid,sqn,eff)) cache
 
-getContext :: CacheManager -> ObjType -> Key -> IO [Effect]
+getContext :: CacheManager -> ObjType -> Key -> IO (S.Set (SessUUID, SeqNo, Effect))
 getContext cm ot k = do
   cache <- readMVar $ cm^.cacheMVar
   case M.lookup (ot,k) cache of
-    Nothing -> return []
-    Just s -> return $ map (\(_,_,eff) -> eff) $ S.toList s
+    Nothing -> return S.empty
+    Just s -> return s
 
--- TODO: The context must be represented by a set and not a list.
 -- TODO: Handle Sticky availability.
 -- TODO: Unavailability.
