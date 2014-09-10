@@ -84,4 +84,4 @@ main = do
       c1 <- runCommand $ progName ++ " C " ++ show (getUUID key)
       threadDelay 6000000
       mapM_ terminateProcess [b,s0,s1,c0,c1]
-      runCas pool $ dropTable "BankAccount"
+      -- runCas pool $ dropTable "BankAccount"

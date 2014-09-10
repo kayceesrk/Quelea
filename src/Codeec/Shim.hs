@@ -71,7 +71,7 @@ doOp dtLib cache pool request = do
     Nothing -> return $ Response seqno res
     Just eff -> do
       -- Write to database
-      runCas pool $ cqlWrite objType (unKey key, sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
+      runCas pool $ cqlWrite objType key (sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
       -- Add effect to cache
       addEffectToCache cache objType key sessid (seqno+1) eff
       -- Return response

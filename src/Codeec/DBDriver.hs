@@ -35,6 +35,7 @@ import Control.Monad.Trans (liftIO)
 
 type TableName = String
 type RowValue = (UUID, SessUUID, SeqNo, S.Set Addr, ByteString)
+type Row = (SessUUID, SeqNo, S.Set Addr, ByteString)
 
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++ " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, value ascii, primary key (objid, sessid, seqno)) "
@@ -45,14 +46,14 @@ mkDropTable tname = query $ pack $ "drop table " ++ tname
 mkInsert :: TableName -> Query Write RowValue ()
 mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value) values (?, ?, ?, ?, ?)"
 
-mkRead :: TableName -> Query Rows (UUID) RowValue
-mkRead tname = query $ pack $ "select objid, sessid, seqno, deps, value from " ++ tname ++ " where objid = ?"
+mkRead :: TableName -> Query Rows (UUID) Row
+mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname ++ " where objid = ?"
 
-cqlRead :: TableName -> Key -> Cas [RowValue]
+cqlRead :: TableName -> Key -> Cas [Row]
 cqlRead tname (Key k) = executeRows ONE (mkRead tname) k
 
-cqlWrite :: TableName -> RowValue -> Cas ()
-cqlWrite tname rv = executeWrite ONE (mkInsert tname) rv
+cqlWrite :: TableName -> Key -> Row -> Cas ()
+cqlWrite tname (Key k) (sid,sqn,dep,val) = executeWrite ONE (mkInsert tname) (k,sid,sqn,dep,val)
 
 createTable :: TableName -> Cas ()
 createTable tname = liftIO . print =<< executeSchema ALL (mkCreateTable tname) ()

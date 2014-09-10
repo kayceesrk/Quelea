@@ -79,7 +79,7 @@ cacheMgrCore (CacheManager cacheMVar hotLocsMVar semMVar) pool = forever $ do
     readDB ot k = runCas pool $ do
       rows <- cqlRead ot k
       -- TODO: Utilize dependencies
-      let filteredRows = map (\(_,sid,sqn,_,v) -> (sid,sqn,v)) rows
+      let filteredRows = map (\(sid,sqn,_,v) -> (sid,sqn,v)) rows
       return $ S.fromList filteredRows
 
 initCacheManager :: Pool -> IO CacheManager
