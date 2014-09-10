@@ -18,7 +18,7 @@ import Control.Monad (forever)
 import Data.ByteString hiding (map, pack, putStrLn)
 import Data.Either (rights)
 import Data.Map (Map)
-import qualified Data.Map as Map
+import qualified Data.Map as M
 import System.ZMQ4
 import Data.Maybe (fromJust)
 import Control.Lens
@@ -29,6 +29,7 @@ import qualified Data.Set as S
 import Data.Text hiding (map)
 
 makeLenses ''Addr
+makeLenses ''DatatypeLibrary
 
 runShimNode :: OperationClass a
             => DatatypeLibrary a
@@ -62,7 +63,7 @@ doOp dtLib cache pool request = do
   let (Request objType key operName arg sessid seqno) = request
   {- Fetch the operation from the datatype library using the object type and
   - operation name. -}
-  let (op,_) = fromJust $ dtLib ^.at (objType, operName)
+  let (op,_) = fromJust $ dtLib ^. avMap ^.at (objType, operName)
   -- Fetch the current context
   ctxtSet <- getContext cache objType key
   let ctxt = map (\(_,_,eff) -> eff) $ S.toList ctxtSet
@@ -81,6 +82,6 @@ doOp dtLib cache pool request = do
       return $ Response (seqno + 1) res
 
 mkDtLib :: OperationClass a => [(a, GenOpFun, Availability, Contract a)] -> DatatypeLibrary a
-mkDtLib l = Prelude.foldl core Map.empty l
+mkDtLib l = DatatypeLibrary (Prelude.foldl core M.empty l) (M.empty)
   where
-    core dtlib (op,fun,av,_) = Map.insert (getObjType op, op) (fun, av) dtlib
+    core dtlib (op,fun,av,_) = M.insert (getObjType op, op) (fun, av) dtlib

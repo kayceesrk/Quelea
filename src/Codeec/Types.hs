@@ -32,6 +32,7 @@ import Language.Haskell.TH.Syntax
 import Data.UUID
 import Data.Int (Int64)
 import Data.Maybe (fromJust)
+import qualified Data.Set as S
 
 class (CasType a, Serialize a) => Storable a where
 
@@ -51,7 +52,13 @@ type ObjType = String
 class (Show a, Read a, Eq a, Ord a) => OperationClass a where
   getObjType :: a -> String
 
-type DatatypeLibrary a = Map (ObjType, a) (GenOpFun, Availability)
+type AvailabilityMap a = Map (ObjType, a) (GenOpFun, Availability)
+type DependenceMap a = Map a (S.Set a)
+
+data DatatypeLibrary a = DatatypeLibrary {
+  _avMap  :: AvailabilityMap a,
+  _depMap :: DependenceMap a
+}
 
 newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
 

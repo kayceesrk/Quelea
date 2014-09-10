@@ -38,5 +38,6 @@ Library
   Other-modules:
     Codeec.Contract.Language
     Codeec.Contract.TypeCheck
+    Codeec.Contract.RequiredDependencies
     Codeec.ShimLayer.Cache
   Extensions: CPP
