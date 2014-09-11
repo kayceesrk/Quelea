@@ -81,6 +81,3 @@ mkDtLib :: OperationClass a => [(a, GenOpFun, Availability, Contract a)] -> Data
 mkDtLib l = DatatypeLibrary $ Prelude.foldl core M.empty l
   where
     core dtlib (op,fun,av,_) = M.insert (getObjType op, op) (fun, av) dtlib
-
--- TODO: Handle Sticky availability.
--- TODO: Unavailability.

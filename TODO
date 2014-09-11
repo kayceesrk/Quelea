@@ -1,1 +1,11 @@
-
+* Handle Sticky availability.
+* Handle unavailability.
+* Transactions.
+* Is pagination possible?
+	+ This will avoid reading the entire set of effects for each location on every cache refresh.
+* Summarization.
+  + In the shim layer
+	+ In the DB
+* Reconnection on shim layer disconnection.
+* Implement benchmarks.
+* Evaluation.
