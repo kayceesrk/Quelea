@@ -18,7 +18,7 @@ mkOperations :: [Name] -> Q [Dec]
 mkOperations l = do
   pl <- procNameList l
   let (_,consList) = unzip pl
-  d1 <- dataD (return []) (mkName operationsTyConStr) [] consList [mkName "Show", mkName "Eq", mkName "Ord", mkName "Read"]
+  d1 <- dataD (return []) (mkName operationsTyConStr) [] consList [mkName "Show", mkName "Eq", mkName "Ord", mkName "Read", mkName "Enum"]
   let ap = appT ([t| OperationClass |]) (conT $ mkName operationsTyConStr)
   d2 <- instanceD (return []) ap [funD 'getObjType $ map mkGetObjType pl]
   return $ [d1,d2]
@@ -39,7 +39,7 @@ mkOperations l = do
       NormalC conName _ <- con
       return $ Clause [ConP conName []] (NormalB (LitE (StringL objType))) []
 
-check :: OperationClass a => String -> Contract a -> ExpQ
-check info c = do
-  a <- classifyContract c info
+check :: OperationClass a => a -> Contract a -> ExpQ
+check kind c = do
+  a <- classifyContract c $ show kind
   lift a

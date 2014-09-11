@@ -11,6 +11,7 @@ import Codeec.Marshall
 import Codeec.DBDriver
 import Codeec.ShimLayer.Cache
 import Codeec.Contract.Language
+import Codeec.Contract.RequiredDependencies
 
 import Data.Serialize
 import Control.Applicative ((<$>))
@@ -27,6 +28,7 @@ import Data.UUID
 import Data.Int (Int64)
 import qualified Data.Set as S
 import Data.Text hiding (map)
+import Debug.Trace
 
 makeLenses ''Addr
 makeLenses ''DatatypeLibrary
@@ -58,7 +60,7 @@ runShimNode dtLib serverList keyspace backend port = do
     result <- doOp dtLib cache pool $ decodeRequest req
     send sock [] $ encode result
 
-doOp :: OperationClass a => DatatypeLibrary a -> CacheManager -> Pool -> Request a -> IO Response
+doOp :: OperationClass a => DatatypeLibrary a -> CacheManager a -> Pool -> Request a -> IO Response
 doOp dtLib cache pool request = do
   let (Request objType key operName arg sessid seqno) = request
   {- Fetch the operation from the datatype library using the object type and
@@ -66,7 +68,8 @@ doOp dtLib cache pool request = do
   let (op,_) = fromJust $ dtLib ^. avMap ^.at (objType, operName)
   -- Fetch the current context
   ctxtSet <- getContext cache objType key
-  let ctxt = map (\(_,_,eff) -> eff) $ S.toList ctxtSet
+  let (ctxt, deps) = S.foldl (\(ctxt,deps) (sid,sqn,op,eff) ->
+        (eff:ctxt, M.insertWith S.union sid (S.singleton (sqn,op)) deps)) ([],M.empty) ctxtSet
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
@@ -75,13 +78,16 @@ doOp dtLib cache pool request = do
     Just eff -> do
       -- Write to database
       -- TODO: Calculate nearest dependencies
-      runCas pool $ cqlWrite objType key (sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
+      runCas pool $ cqlWrite objType key (sessid, seqno + 1, S.fromList [Addr sessid 0], fromEnum operName, eff)
       -- Add effect to cache
-      addEffectToCache cache objType key sessid (seqno+1) eff
+      addEffectToCache cache objType key sessid (seqno+1) operName eff
       -- Return response
       return $ Response (seqno + 1) res
 
 mkDtLib :: OperationClass a => [(a, GenOpFun, Availability, Contract a)] -> DatatypeLibrary a
-mkDtLib l = DatatypeLibrary (Prelude.foldl core M.empty l) (M.empty)
+mkDtLib l =
+  let am = Prelude.foldl core M.empty l
+      dm = calcReqDeps $ map (\(_,_,_,c) -> c) l
+  in DatatypeLibrary am dm
   where
     core dtlib (op,fun,av,_) = M.insert (getObjType op, op) (fun, av) dtlib

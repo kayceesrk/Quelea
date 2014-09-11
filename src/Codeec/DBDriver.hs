@@ -34,26 +34,26 @@ import Control.Monad.Trans (liftIO)
 --------------------------------------------------------------------------------
 
 type TableName = String
-type RowValue = (UUID, SessUUID, SeqNo, S.Set Addr, ByteString)
-type Row = (SessUUID, SeqNo, S.Set Addr, ByteString)
+type RowValue = (UUID, SessUUID, SeqNo, S.Set Addr, Int, ByteString)
+type Row = (SessUUID, SeqNo, S.Set Addr, Int, ByteString)
 
 mkCreateTable :: TableName -> Query Schema () ()
-mkCreateTable tname = query $ pack $ "create table " ++ tname ++ " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, value ascii, primary key (objid, sessid, seqno)) "
+mkCreateTable tname = query $ pack $ "create table " ++ tname ++ " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, oper int, value ascii, primary key (objid, sessid, seqno)) "
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
 
 mkInsert :: TableName -> Query Write RowValue ()
-mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value) values (?, ?, ?, ?, ?)"
+mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, oper, value) values (?, ?, ?, ?, ?)"
 
 mkRead :: TableName -> Query Rows (UUID) Row
-mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname ++ " where objid = ? order by sessid, seqno"
+mkRead tname = query $ pack $ "select sessid, seqno, deps, oper, value from " ++ tname ++ " where objid = ? order by sessid, seqno"
 
 cqlRead :: TableName -> Key -> Cas [Row]
 cqlRead tname (Key k) = executeRows ONE (mkRead tname) k
 
 cqlWrite :: TableName -> Key -> Row -> Cas ()
-cqlWrite tname (Key k) (sid,sqn,dep,val) = executeWrite ONE (mkInsert tname) (k,sid,sqn,dep,val)
+cqlWrite tname (Key k) (sid,sqn,dep,op,val) = executeWrite ONE (mkInsert tname) (k,sid,sqn,dep,fromEnum op,val)
 
 createTable :: TableName -> Cas ()
 createTable tname = liftIO . print =<< executeSchema ALL (mkCreateTable tname) ()
