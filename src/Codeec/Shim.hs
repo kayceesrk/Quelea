@@ -66,24 +66,21 @@ doOp dtLib cache pool request = do
   - operation name. -}
   let (op,_) = fromJust $ dtLib ^. avMap ^.at (objType, operName)
   -- Fetch the current context
-  ctxtSet <- getContext cache objType key
-  let (ctxt, deps) = S.foldl (\(ctxt,deps) (sid,sqn,eff) ->
-        (eff:ctxt, M.insertWith S.union sid (S.singleton sqn) deps)) ([],M.empty) ctxtSet
+  (ctxt, deps) <- getContext cache objType key
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
   case effM of
     Nothing -> return $ Response seqno res
     Just eff -> do
-      -- Write to database
-      -- TODO: Calculate nearest dependencies
-      runCas pool $ cqlWrite objType key (sessid, seqno + 1, S.fromList [Addr sessid 0], eff)
-      -- Add effect to cache
-      addEffectToCache cache objType key sessid (seqno+1) eff
-      -- Return response
+      -- Write effect to cache, which writes through to DB
+      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps
       return $ Response (seqno + 1) res
 
 mkDtLib :: OperationClass a => [(a, GenOpFun, Availability, Contract a)] -> DatatypeLibrary a
 mkDtLib l = DatatypeLibrary $ Prelude.foldl core M.empty l
   where
     core dtlib (op,fun,av,_) = M.insert (getObjType op, op) (fun, av) dtlib
+
+-- TODO: Handle Sticky availability.
+-- TODO: Unavailability.
