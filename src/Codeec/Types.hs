@@ -49,15 +49,14 @@ instance Lift Availability where
   lift Un = [| Un |]
 
 type ObjType = String
-class (Enum a, Show a, Read a, Eq a, Ord a) => OperationClass a where
+class (Show a, Read a, Eq a, Ord a) => OperationClass a where
   getObjType :: a -> String
 
 type AvailabilityMap a = Map (ObjType, a) (GenOpFun, Availability)
 type DependenceMap a = Map a (S.Set a)
 
-data DatatypeLibrary a = DatatypeLibrary {
-  _avMap  :: AvailabilityMap a,
-  _depMap :: DependenceMap a
+newtype DatatypeLibrary a = DatatypeLibrary {
+  _avMap  :: AvailabilityMap a
 }
 
 newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
