@@ -6,7 +6,9 @@ module Codeec.ShimLayer.Cache (
   initCacheManager,
   getContext,
   addHotLocation,
-  writeEffect
+  writeEffect,
+  doesCacheInclude,
+  waitForCacheRefresh
 ) where
 
 import Control.Concurrent
@@ -215,3 +217,16 @@ writeEffect cm ot k addr eff origDeps = do
   putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
   runCas (cm^.pool) $ cqlWrite ot k (sid, sqn, deps, eff)
+
+doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
+doesCacheInclude cm ot k sid sqn = do
+  cursor <- readMVar $ cm^.cursorMVar
+  case M.lookup (ot,k) cursor of
+    Nothing -> return False
+    Just cursorAtKey ->
+      case M.lookup sid cursorAtKey of
+        Nothing -> return False
+        Just curSqn -> return $ (==) sqn curSqn
+
+waitForCacheRefresh :: CacheManager -> IO ()
+waitForCacheRefresh cm = undefined

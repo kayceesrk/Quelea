@@ -74,8 +74,8 @@ main = do
       b <- runCommand $ progName ++ " B"
       putStrLn "Driver : Starting server0"
       s0 <- runCommand $ progName ++ " S 0"
-      {- putStrLn "Driver : Starting server1"
-      s1 <- runCommand $ progName ++ " S 1" -}
+      putStrLn "Driver : Starting server1"
+      s1 <- runCommand $ progName ++ " S 1"
       key <- liftIO $ newKey
       putStrLn "Driver : Starting client0"
       c0 <- runCommand $ progName ++ " C " ++ show (getUUID key)
@@ -83,5 +83,5 @@ main = do
       putStrLn "Driver : Starting client1"
       c1 <- runCommand $ progName ++ " C " ++ show (getUUID key)
       threadDelay 6000000
-      mapM_ terminateProcess [b,s0,{- s1, -}c0,c1]
+      mapM_ terminateProcess [b,s0,s1,c0,c1]
       runCas pool $ dropTable "BankAccount"

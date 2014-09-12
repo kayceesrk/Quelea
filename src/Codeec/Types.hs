@@ -64,7 +64,14 @@ newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
 type SessUUID = UUID
 type SeqNo = Int64
 
-data Request a = Request ObjType Key a ByteString SessUUID SeqNo
+data Request a = Request {
+  _objTypeReq :: ObjType,
+  _keyReq     :: Key,
+  _opReq      :: a,
+  _valReq     :: ByteString,
+  _sidReq     :: SessUUID,
+  _sqnReq     :: SeqNo
+}
 
 data Response = Response SeqNo ByteString
 
