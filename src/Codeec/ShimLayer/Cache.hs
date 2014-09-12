@@ -38,6 +38,7 @@ type NearestDepsMap = (M.Map (ObjType, Key) (S.Set Addr))
 type NearestDeps = MVar NearestDepsMap
 type HotLocs     = MVar (S.Set (ObjType, Key))
 type Semaphore   = MVar ()
+type ThreadQueue = MVar ([MVar ()])
 
 data CacheManager = CacheManager {
   _cacheMVar   :: Cache,
@@ -45,6 +46,7 @@ data CacheManager = CacheManager {
   _depsMVar    :: NearestDeps,
   _hotLocsMVar :: HotLocs,
   _semMVar     :: Semaphore,
+  _blockedMVar :: ThreadQueue,
   _pool        :: Pool
 }
 
@@ -101,7 +103,10 @@ cacheMgrCore cm = forever $ do
   let newCursor = M.unionWith (M.unionWith max) newCursorMap cursor
   putMVar (cm^.cursorMVar) newCursor
   putMVar (cm^.depsMVar) newDeps
-  where
+  -- Wakeup threads that are waiting for the cache to be refreshed
+  blockedList <- takeMVar $ cm^.blockedMVar
+  putMVar (cm^.blockedMVar) []
+  mapM_ (\mv -> putMVar mv ()) blockedList
 
 getEffectsCore :: CursorMap -> Pool -> (CacheMap, NearestDepsMap) -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
 getEffectsCore cursor pool acc (ot,k) = do
@@ -171,7 +176,6 @@ isResolved addr = do
       visitedState .= M.insert addr (Visited res) newVs
       return res
 
-
 initCacheManager :: Pool -> IO CacheManager
 initCacheManager pool = do
   cache <- newMVar M.empty
@@ -179,8 +183,9 @@ initCacheManager pool = do
   nearestDeps <- newMVar M.empty
   hotLocs <- newMVar S.empty
   sem <- newEmptyMVar
+  blockedList <- newMVar []
   forkIO $ signalGenerator sem
-  let cm = CacheManager cache cursor nearestDeps hotLocs sem pool
+  let cm = CacheManager cache cursor nearestDeps hotLocs sem blockedList pool
   forkIO $ cacheMgrCore cm
   return $ cm
 
@@ -229,4 +234,8 @@ doesCacheInclude cm ot k sid sqn = do
         Just curSqn -> return $ (==) sqn curSqn
 
 waitForCacheRefresh :: CacheManager -> IO ()
-waitForCacheRefresh cm = undefined
+waitForCacheRefresh cm = do
+  blockedList <- takeMVar $ cm^.blockedMVar
+  mv <- newEmptyMVar
+  putMVar (cm^.blockedMVar) $ mv:blockedList
+  takeMVar mv
