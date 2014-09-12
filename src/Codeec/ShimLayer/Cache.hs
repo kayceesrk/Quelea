@@ -8,7 +8,8 @@ module Codeec.ShimLayer.Cache (
   addHotLocation,
   writeEffect,
   doesCacheInclude,
-  waitForCacheRefresh
+  waitForCacheRefresh,
+  fetchUpdates
 ) where
 
 import Control.Concurrent
@@ -76,17 +77,23 @@ addHotLocation cm ot k = do
   hotLocs <- takeMVar $ cm^.hotLocsMVar
   putMVar (cm^.hotLocsMVar) $ S.insert (ot,k) hotLocs
 
-
 cacheMgrCore :: CacheManager -> IO ()
 cacheMgrCore cm = forever $ do
   takeMVar $ cm^.semMVar
   -- Woken up. Read the current list of hot locations, and empty the MVar.
   locs <- takeMVar $ cm^.hotLocsMVar
   putMVar (cm^.hotLocsMVar) S.empty
-  -- Read the database to fetch the all (including new remote) updates for the
-  -- hot locations.
+  -- Fetch updates
+  fetchUpdates cm $ S.toList locs
+  -- Wakeup threads that are waiting for the cache to be refreshed
+  blockedList <- takeMVar $ cm^.blockedMVar
+  putMVar (cm^.blockedMVar) []
+  mapM_ (\mv -> putMVar mv ()) blockedList
+
+fetchUpdates :: CacheManager -> [(ObjType, Key)] -> IO ()
+fetchUpdates cm locs = do
   cursor <- readMVar $ cm^.cursorMVar
-  (newEffMap, newAddrMap) <- foldM (getEffectsCore cursor (cm^.pool)) (M.empty, M.empty) $ S.toList locs
+  (newEffMap, newAddrMap) <- foldM (getEffectsCore cursor (cm^.pool)) (M.empty, M.empty) locs
   -- Update cache state
   cache <- takeMVar $ cm^.cacheMVar
   cursor <- takeMVar $ cm^.cursorMVar
@@ -103,10 +110,7 @@ cacheMgrCore cm = forever $ do
   let newCursor = M.unionWith (M.unionWith max) newCursorMap cursor
   putMVar (cm^.cursorMVar) newCursor
   putMVar (cm^.depsMVar) newDeps
-  -- Wakeup threads that are waiting for the cache to be refreshed
-  blockedList <- takeMVar $ cm^.blockedMVar
-  putMVar (cm^.blockedMVar) []
-  mapM_ (\mv -> putMVar mv ()) blockedList
+
 
 getEffectsCore :: CursorMap -> Pool -> (CacheMap, NearestDepsMap) -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
 getEffectsCore cursor pool acc (ot,k) = do
@@ -114,7 +118,7 @@ getEffectsCore cursor pool acc (ot,k) = do
     rows <- runCas pool $ cqlRead ot k
     -- Filter effects that were already seen
     let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
-    let unseenRows = Prelude.filter (\(sid,sqn,deps,eff) -> isUnseenEffect cursorAtKey sid sqn) rows
+    let unseenRows = Prelude.filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
     if unseenRows == []
     then return acc
     else do
@@ -125,7 +129,7 @@ getEffectsCore cursor pool acc (ot,k) = do
       let filteredSet = filterUnresolved cursorAtKey depsMap effSet
       let (newEffMap, newAddrMap) = acc
       let newEffSet = filteredSet
-      let newAddrSet = S.map (\(addr, eff) -> addr) filteredSet
+      let newAddrSet = S.map (\(addr, _) -> addr) filteredSet
       return $ (M.insert (ot,k) newEffSet newEffMap, M.insert (ot,k) newAddrSet newAddrMap)
   where
     isUnseenEffect cursorAtKey sid sqn =
@@ -233,9 +237,11 @@ doesCacheInclude cm ot k sid sqn = do
         Nothing -> return False
         Just curSqn -> return $ (==) sqn curSqn
 
-waitForCacheRefresh :: CacheManager -> IO ()
-waitForCacheRefresh cm = do
+waitForCacheRefresh :: CacheManager -> ObjType -> Key -> IO ()
+waitForCacheRefresh cm ot k = do
+  hotLocs <- takeMVar $ cm^.hotLocsMVar
   blockedList <- takeMVar $ cm^.blockedMVar
   mv <- newEmptyMVar
+  putMVar (cm^.hotLocsMVar) $ S.insert (ot,k) hotLocs
   putMVar (cm^.blockedMVar) $ mv:blockedList
   takeMVar mv

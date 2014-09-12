@@ -42,3 +42,5 @@ Library
     Codeec.Contract.TypeCheck
     Codeec.ShimLayer.Cache
   Extensions: CPP
+  ghc-options: -Wall
+
