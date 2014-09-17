@@ -4,3 +4,6 @@
 [submodule "Z3"]
 	path = Z3
 	url = git@github.com:kayceesrk/Z3.git
+[submodule "cassandra-cql"]
+	path = cassandra-cql
+	url = git@github.com:kayceesrk/cassandra-cql.git
