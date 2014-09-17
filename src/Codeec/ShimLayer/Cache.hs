@@ -115,7 +115,7 @@ fetchUpdates cm locs = do
 getEffectsCore :: CursorMap -> Pool -> (CacheMap, NearestDepsMap) -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
 getEffectsCore cursor pool acc (ot,k) = do
     -- Read the database
-    rows <- runCas pool $ cqlRead ot k
+    rows <- runCas pool $ cqlRead ot ONE k
     -- Filter effects that were already seen
     let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
     let unseenRows = Prelude.filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
@@ -225,7 +225,7 @@ writeEffect cm ot k addr eff origDeps = do
   -- Update dependence
   putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
-  runCas (cm^.pool) $ cqlWrite ot k (sid, sqn, deps, eff)
+  runCas (cm^.pool) $ cqlWrite ot ONE k (sid, sqn, deps, eff)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do
