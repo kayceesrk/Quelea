@@ -88,10 +88,10 @@ worker dtLib pool cache = do
     let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
     case av of
       High -> doOp op cache req sock
-      Sticky -> processSAOp req op cache sock
-      Un -> error "worker : Unavailable operations not implemented"
+      Sticky -> processStickyOp req op cache sock
+      Un -> processUnOp req op cache sock pool
   where
-    processSAOp req op cache sock =
+    processStickyOp req op cache sock =
       -- Check whether this is the first effect in the session <= previous
       -- sequence number is 0.
       if req^.sqnReq == 0
@@ -105,15 +105,15 @@ worker dtLib pool cache = do
         then doOp op cache req sock
         else do
           -- Read DB, and check cache for previous effect
-          fetchUpdates cache [(ot,k)]
+          fetchUpdates ONE cache [(ot,k)]
           res <- doesCacheInclude cache ot k (req^.sidReq) (req^.sqnReq)
           if res
           then doOp op cache req sock
           else do
             -- Wait till next cache refresh and repeat the process again
             waitForCacheRefresh cache ot k
-            processSAOp req op cache sock
-
+            processStickyOp req op cache sock
+    processUnOp req op cache sock pool = error "processUnOp : Not Implemented"
 
 doOp :: OperationClass a => GenOpFun -> CacheManager -> Request a -> ZMQ.Socket ZMQ.Rep -> IO ()
 doOp op cache request sock = do
@@ -126,7 +126,7 @@ doOp op cache request sock = do
   result <- case effM of
     Nothing -> return $ Response seqno res
     Just eff -> do
-      -- Write effect to cache, which writes through to DB
+      -- Write effect writes to DB, and potentially to cache
       writeEffect cache objType key (Addr sessid (seqno+1)) eff deps
       return $ Response (seqno + 1) res
   -- Reply with result

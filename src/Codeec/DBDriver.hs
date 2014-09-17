@@ -7,7 +7,7 @@ module Codeec.DBDriver (
   cqlWrite,
   createTable,
   dropTable,
-  tryGetLock,
+  getLock,
   releaseLock
 ) where
 
@@ -92,10 +92,18 @@ tryGetLock tname (Key k) sid True = do
   res <- executeTrans (mkLockInsert tname) (k, sid)
   if res then return True
   else tryGetLock tname (Key k) sid False
-tryGetLock tname (Key k) sid False =
-  executeTrans (mkLockUpdate tname) (sid, k, unlockedUUID)
+tryGetLock tname (Key k) sid False = do
+  res <- executeTrans (mkLockUpdate tname) (sid, k, unlockedUUID)
+  if res then return True
+  else tryGetLock tname (Key k) sid False
 
+getLock :: TableName -> Key -> SessUUID -> Cas ()
+getLock tname k sid = do
+  tryGetLock tname k sid True
+  return ()
+
+releaseLock :: TableName -> Key -> SessUUID -> Cas ()
 releaseLock tname (Key k) sid = do
   res <- executeTrans (mkLockUpdate tname) (unlockedUUID, k, sid)
-  if res then return True
+  if res then return ()
   else error $ "releaseLock : key=" ++ show (Key k) ++ " sid=" ++ show sid

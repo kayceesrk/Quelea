@@ -19,9 +19,8 @@ import Control.Lens
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Map.Lens
-import Control.Monad (forever)
+import Control.Monad (forever, when, replicateM, foldM)
 import Data.Maybe (fromJust)
-import Control.Monad (replicateM,foldM)
 import Database.Cassandra.CQL
 import Control.Monad.State
 import System.IO
@@ -84,16 +83,16 @@ cacheMgrCore cm = forever $ do
   locs <- takeMVar $ cm^.hotLocsMVar
   putMVar (cm^.hotLocsMVar) S.empty
   -- Fetch updates
-  fetchUpdates cm $ S.toList locs
+  fetchUpdates ONE cm $ S.toList locs
   -- Wakeup threads that are waiting for the cache to be refreshed
   blockedList <- takeMVar $ cm^.blockedMVar
   putMVar (cm^.blockedMVar) []
   mapM_ (\mv -> putMVar mv ()) blockedList
 
-fetchUpdates :: CacheManager -> [(ObjType, Key)] -> IO ()
-fetchUpdates cm locs = do
+fetchUpdates :: Consistency -> CacheManager -> [(ObjType, Key)] -> IO ()
+fetchUpdates const cm locs = do
   cursor <- readMVar $ cm^.cursorMVar
-  (newEffMap, newAddrMap) <- foldM (getEffectsCore cursor (cm^.pool)) (M.empty, M.empty) locs
+  (newEffMap, newAddrMap) <- foldM (getEffectsCore const cursor (cm^.pool)) (M.empty, M.empty) locs
   -- Update cache state
   cache <- takeMVar $ cm^.cacheMVar
   cursor <- takeMVar $ cm^.cursorMVar
@@ -111,11 +110,11 @@ fetchUpdates cm locs = do
   putMVar (cm^.cursorMVar) newCursor
   putMVar (cm^.depsMVar) newDeps
 
-
-getEffectsCore :: CursorMap -> Pool -> (CacheMap, NearestDepsMap) -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
-getEffectsCore cursor pool acc (ot,k) = do
+getEffectsCore :: Consistency -> CursorMap -> Pool
+               -> (CacheMap, NearestDepsMap) -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
+getEffectsCore const cursor pool acc (ot,k) = do
     -- Read the database
-    rows <- runCas pool $ cqlRead ot ONE k
+    rows <- runCas pool $ cqlRead ot const k
     -- Filter effects that were already seen
     let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
     let unseenRows = Prelude.filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
@@ -212,18 +211,23 @@ writeEffect cm ot k addr eff origDeps = do
   let Addr sid sqn = addr
   -- Empty dependence set causes error with Cassandra serialization. Following circumvents it.
   let deps = if S.size origDeps == 0 then (S.fromList [Addr sid 0]) else origDeps
-  cache <- takeMVar $ cm^.cacheMVar
-  cursor <- takeMVar $ cm^.cursorMVar
-  -- curDeps may be different from the deps seen before the operation was performed.
-  curDeps <- takeMVar $ cm^.depsMVar
-  -- Update cache
-  putMVar (cm^.cacheMVar) $ M.insertWith S.union (ot,k) (S.singleton (addr, eff)) cache
-  -- Update cursor
-  let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
-  let newCursorAtKey = M.insert sid sqn cursorAtKey
-  putMVar (cm^.cursorMVar) $ M.insert (ot,k) newCursorAtKey cursor
-  -- Update dependence
-  putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
+  -- Does cache include the previous effect?
+  isPrevEffectAvailable <- doesCacheInclude cm ot k sid (sqn - 1)
+  -- Only write to cache if the previous effect is available in the cache. This
+  -- maintains the cache to be a causally consistent cut of the updates.
+  when (sqn == 1 || isPrevEffectAvailable) $ do
+    cache <- takeMVar $ cm^.cacheMVar
+    cursor <- takeMVar $ cm^.cursorMVar
+    -- curDeps may be different from the deps seen before the operation was performed.
+    curDeps <- takeMVar $ cm^.depsMVar
+    -- Update cache
+    putMVar (cm^.cacheMVar) $ M.insertWith S.union (ot,k) (S.singleton (addr, eff)) cache
+    -- Update cursor
+    let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
+    let newCursorAtKey = M.insert sid sqn cursorAtKey
+    putMVar (cm^.cursorMVar) $ M.insert (ot,k) newCursorAtKey cursor
+    -- Update dependence
+    putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
   runCas (cm^.pool) $ cqlWrite ot ONE k (sid, sqn, deps, eff)
 
