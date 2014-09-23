@@ -97,13 +97,13 @@ tryGetLock tname (Key k) sid False = do
   if res then return True
   else tryGetLock tname (Key k) sid False
 
-getLock :: TableName -> Key -> SessUUID -> Cas ()
-getLock tname k sid = do
+getLock :: TableName -> Key -> SessUUID -> Pool -> IO ()
+getLock tname k sid pool = runCas pool $ do
   tryGetLock tname k sid True
   return ()
 
-releaseLock :: TableName -> Key -> SessUUID -> Cas ()
-releaseLock tname (Key k) sid = do
+releaseLock :: TableName -> Key -> SessUUID -> Pool -> IO ()
+releaseLock tname (Key k) sid pool = runCas pool $ do
   res <- executeTrans (mkLockUpdate tname) (unlockedUUID, k, sid)
   if res then return ()
   else error $ "releaseLock : key=" ++ show (Key k) ++ " sid=" ++ show sid

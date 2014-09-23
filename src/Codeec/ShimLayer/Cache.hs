@@ -206,8 +206,8 @@ getContext cm ot k = do
   let v2 = case M.lookup (ot,k) deps of {Nothing -> S.empty; Just s -> s}
   return (v1, v2)
 
-writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr -> IO ()
-writeEffect cm ot k addr eff origDeps = do
+writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr -> Consistency -> IO ()
+writeEffect cm ot k addr eff origDeps const = do
   let Addr sid sqn = addr
   -- Empty dependence set causes error with Cassandra serialization. Following circumvents it.
   let deps = if S.size origDeps == 0 then (S.fromList [Addr sid 0]) else origDeps
@@ -229,7 +229,7 @@ writeEffect cm ot k addr eff origDeps = do
     -- Update dependence
     putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
-  runCas (cm^.pool) $ cqlWrite ot ONE k (sid, sqn, deps, eff)
+  runCas (cm^.pool) $ cqlWrite ot const k (sid, sqn, deps, eff)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do

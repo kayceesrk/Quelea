@@ -87,7 +87,7 @@ worker dtLib pool cache = do
     - operation name. -}
     let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
     case av of
-      High -> doOp op cache req sock
+      High -> doOp op cache req sock ONE
       Sticky -> processStickyOp req op cache sock
       Un -> processUnOp req op cache sock pool
   where
@@ -95,28 +95,37 @@ worker dtLib pool cache = do
       -- Check whether this is the first effect in the session <= previous
       -- sequence number is 0.
       if req^.sqnReq == 0
-      then doOp op cache req sock
+      then doOp op cache req sock ONE
       else do
         let ot = req^.objTypeReq
         let k = req^.keyReq
         -- Check whether the current cache includes the previous effect
         res <- doesCacheInclude cache ot k (req^.sidReq) (req^.sqnReq)
         if res
-        then doOp op cache req sock
+        then doOp op cache req sock ONE
         else do
           -- Read DB, and check cache for previous effect
           fetchUpdates ONE cache [(ot,k)]
           res <- doesCacheInclude cache ot k (req^.sidReq) (req^.sqnReq)
           if res
-          then doOp op cache req sock
+          then doOp op cache req sock ONE
           else do
             -- Wait till next cache refresh and repeat the process again
             waitForCacheRefresh cache ot k
             processStickyOp req op cache sock
-    processUnOp req op cache sock pool = error "processUnOp : Not Implemented"
+    processUnOp req op cache sock pool = do
+      let (ot, k, sid) = (req^.objTypeReq, req^.keyReq, req^.sidReq)
+      -- Get Lock
+      getLock ot k sid pool
+      -- Read latest values at the key - under ALL
+      fetchUpdates ALL cache [(ot,k)]
+      -- Perform the op
+      doOp op cache req sock ALL
+      -- Release Lock
+      releaseLock ot k sid pool
 
-doOp :: OperationClass a => GenOpFun -> CacheManager -> Request a -> ZMQ.Socket ZMQ.Rep -> IO ()
-doOp op cache request sock = do
+doOp :: OperationClass a => GenOpFun -> CacheManager -> Request a -> ZMQ.Socket ZMQ.Rep -> Consistency -> IO ()
+doOp op cache request sock const = do
   let (Request objType key operName arg sessid seqno) = request
   -- Fetch the current context
   (ctxt, deps) <- getContext cache objType key
@@ -127,7 +136,7 @@ doOp op cache request sock = do
     Nothing -> return $ Response seqno res
     Just eff -> do
       -- Write effect writes to DB, and potentially to cache
-      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps
+      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const
       return $ Response (seqno + 1) res
   -- Reply with result
   ZMQ.send sock [] $ encode result
