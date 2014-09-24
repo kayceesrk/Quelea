@@ -58,7 +58,7 @@ mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname
 -------------------------------------------------------------------------------
 
 mkCreateLockTable :: TableName -> Query Schema () ()
-mkCreateLockTable tname = query $ pack $ "create table " ++ tname ++ "_LOCK (objid uuid, sessid uuid)"
+mkCreateLockTable tname = query $ pack $ "create table " ++ tname ++ "_LOCK (objid uuid, sessid uuid, primary key (objid))"
 
 mkDropLockTable :: TableName -> Query Schema () ()
 mkDropLockTable tname = query $ pack $ "drop table " ++ tname ++ "_LOCK"
