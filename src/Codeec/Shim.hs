@@ -86,46 +86,48 @@ worker dtLib pool cache = do
     {- Fetch the operation from the datatype library using the object type and
     - operation name. -}
     let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
-    case av of
-      High -> doOp op cache req sock ONE
-      Sticky -> processStickyOp req op cache sock
-      Un -> processUnOp req op cache sock pool
+    (result, ctxtSize) <- case av of
+      High -> doOp op cache req ONE
+      Sticky -> processStickyOp req op cache
+      Un -> processUnOp req op cache pool
+    ZMQ.send sock [] $ encode result
   where
-    processStickyOp req op cache sock =
+    processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous
       -- sequence number is 0.
       if req^.sqnReq == 0
-      then doOp op cache req sock ONE
+      then doOp op cache req ONE
       else do
         let ot = req^.objTypeReq
         let k = req^.keyReq
         -- Check whether the current cache includes the previous effect
         res <- doesCacheInclude cache ot k (req^.sidReq) (req^.sqnReq)
         if res
-        then doOp op cache req sock ONE
+        then doOp op cache req ONE
         else do
           -- Read DB, and check cache for previous effect
           fetchUpdates ONE cache [(ot,k)]
           res <- doesCacheInclude cache ot k (req^.sidReq) (req^.sqnReq)
           if res
-          then doOp op cache req sock ONE
+          then doOp op cache req ONE
           else do
             -- Wait till next cache refresh and repeat the process again
             waitForCacheRefresh cache ot k
-            processStickyOp req op cache sock
-    processUnOp req op cache sock pool = do
+            processStickyOp req op cache
+    processUnOp req op cache pool = do
       let (ot, k, sid) = (req^.objTypeReq, req^.keyReq, req^.sidReq)
       -- Get Lock
       getLock ot k sid pool
       -- Read latest values at the key - under ALL
       fetchUpdates ALL cache [(ot,k)]
       -- Perform the op
-      doOp op cache req sock ALL
+      res <- doOp op cache req ALL
       -- Release Lock
       releaseLock ot k sid pool
+      return res
 
-doOp :: OperationClass a => GenOpFun -> CacheManager -> Request a -> ZMQ.Socket ZMQ.Rep -> Consistency -> IO ()
-doOp op cache request sock const = do
+doOp :: OperationClass a => GenOpFun -> CacheManager -> Request a -> Consistency -> IO (Response, Int)
+doOp op cache request const = do
   let (Request objType key operName arg sessid seqno) = request
   -- Fetch the current context
   (ctxt, deps) <- getContext cache objType key
@@ -138,10 +140,14 @@ doOp op cache request sock const = do
       -- Write effect writes to DB, and potentially to cache
       writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const
       return $ Response (seqno + 1) res
-  -- Reply with result
-  ZMQ.send sock [] $ encode result
+  -- return response
+  return (result, Prelude.length ctxt)
 
-mkDtLib :: OperationClass a => [(a, GenOpFun, Availability, Contract a)] -> DatatypeLibrary a
-mkDtLib l = DatatypeLibrary $ Prelude.foldl core M.empty l
+mkDtLib :: OperationClass a => [(a, (GenOpFun, GenSumFun), Availability)] -> DatatypeLibrary a
+mkDtLib l =
+  let (m1, m2) = Prelude.foldl core (M.empty, M.empty) l
+  in DatatypeLibrary m1 m2
   where
-    core dtlib (op,fun,av,_) = M.insert (getObjType op, op) (fun, av) dtlib
+    core (m1, m2) (op, (fun1, fun2), av) =
+      (M.insert (getObjType op, op) (fun1, av) m1,
+       M.insert (getObjType op) fun2 m2)

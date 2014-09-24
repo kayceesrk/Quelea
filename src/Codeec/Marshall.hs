@@ -1,5 +1,8 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Codeec.Marshall (
-  mkGen,
+  mkGenOp,
+  mkGenSum,
   decodeRequest,
   decodeResponse
 ) where
@@ -24,16 +27,25 @@ instance OperationClass a => Serialize (Request a) where
     return $ Request (read $ unpack s1) (Key $ fromJust $ fromByteString k) (read $ unpack s2) v
       (fromJust $ fromByteString sid) sqn
 
-mkGen :: (Storable eff, Serialize arg, Serialize res)
+mkGenOp :: (Effectish eff, Serialize arg, Serialize res)
           => OpFun eff arg res
-          -> GenOpFun
-mkGen foo ctxt arg =
+          -> ([eff] -> [eff])
+          -> (GenOpFun, GenSumFun)
+mkGenOp foo bar = (fun1 foo, mkGenSum bar)
+  where
+    fun1 foo ctxt arg =
+      let ctxt2 = rights $ map decode ctxt
+          arg2 = case decode arg of
+                  Right v -> v
+                  Left s -> error ("mkGenOp : " ++ s)
+          (res, eff) = foo ctxt2 arg2
+      in (encode res, encode <$> eff)
+
+mkGenSum :: Effectish eff => ([eff] -> [eff]) -> GenSumFun
+mkGenSum foo ctxt =
   let ctxt2 = rights $ map decode ctxt
-      arg2 = case decode arg of
-               Right v -> v
-               Left s -> error ("mkGen : " ++ s)
-      (res, eff) = foo ctxt2 arg2
-  in (encode res, encode <$> eff)
+      ctxt3 = foo ctxt2
+  in encode <$> ctxt3
 
 decodeRequest :: OperationClass a => ByteString -> Request a
 decodeRequest b = case decode b of

@@ -12,6 +12,9 @@ module Codeec.ShimLayer.Cache (
   fetchUpdates
 ) where
 
+-- Minimum high water mark size for GC
+#define LWM 64
+
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Data.ByteString hiding (map, pack, putStrLn)
@@ -31,6 +34,7 @@ import Codeec.DBDriver
 type Effect = ByteString
 
 type CacheMap    = (M.Map (ObjType, Key) (S.Set (Addr, Effect)))
+type HwmMap      = M.Map (ObjType, Key) Int
 type Cache       = MVar CacheMap
 type CursorMap   = (M.Map (ObjType, Key) (M.Map SessUUID SeqNo))
 type Cursor      = MVar CursorMap
@@ -42,6 +46,7 @@ type ThreadQueue = MVar ([MVar ()])
 
 data CacheManager = CacheManager {
   _cacheMVar   :: Cache,
+  _hwmMVar     :: MVar HwmMap,
   _cursorMVar  :: Cursor,
   _depsMVar    :: NearestDeps,
   _hotLocsMVar :: HotLocs,
@@ -182,13 +187,14 @@ isResolved addr = do
 initCacheManager :: Pool -> IO CacheManager
 initCacheManager pool = do
   cache <- newMVar M.empty
+  hwm <- newMVar M.empty
   cursor <- newMVar M.empty
   nearestDeps <- newMVar M.empty
   hotLocs <- newMVar S.empty
   sem <- newEmptyMVar
   blockedList <- newMVar []
   forkIO $ signalGenerator sem
-  let cm = CacheManager cache cursor nearestDeps hotLocs sem blockedList pool
+  let cm = CacheManager cache hwm cursor nearestDeps hotLocs sem blockedList pool
   forkIO $ cacheMgrCore cm
   return $ cm
 

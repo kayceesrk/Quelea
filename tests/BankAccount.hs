@@ -14,6 +14,7 @@ import Codeec.TH
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
+import Codeec.Types (summarize)
 
 fePort :: Int
 fePort = 5558
@@ -27,9 +28,9 @@ data Kind = B | C | S | D deriving (Read, Show)
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-dtLib = mkDtLib [(Deposit, mkGen deposit, $(check Deposit depositCtrt), depositCtrt),
-                 (Withdraw, mkGen withdraw, $(check Withdraw withdrawCtrt), withdrawCtrt),
-                 (GetBalance, mkGen getBalance, $(check GetBalance getBalanceCtrt), getBalanceCtrt)]
+dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(check Deposit depositCtrt)),
+                 (Withdraw, mkGenOp withdraw summarize, $(check Withdraw withdrawCtrt)),
+                 (GetBalance, mkGenOp getBalance summarize, $(check GetBalance getBalanceCtrt))]
 
 main :: IO ()
 main = do

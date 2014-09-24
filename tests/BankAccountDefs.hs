@@ -41,8 +41,6 @@ instance CasType BankAccount where
   putCas = putCas . Blob . encode
   casType _ = CBlob
 
-instance Storable BankAccount where
-
 type Res a = (a, Maybe BankAccount)
 
 deposit :: [BankAccount] -> Int -> Res ()
@@ -64,6 +62,11 @@ getBalance ops () =
     acc s (Deposit_ i) = s + i
     acc s (Withdraw_ i) = s - i
     acc s GetBalance_ = s
+
+instance Effectish BankAccount where
+  summarize ctxt =
+    let (v, _) = getBalance ctxt ()
+    in [Deposit_ v]
 
 mkOperations [''BankAccount]
 

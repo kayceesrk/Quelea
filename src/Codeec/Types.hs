@@ -1,10 +1,11 @@
 {-# Language TemplateHaskell, EmptyDataDecls, ScopedTypeVariables, TypeSynonymInstances, FlexibleInstances #-}
 
 module Codeec.Types (
-  Storable(..),
+  Effectish(..),
   Availability(..),
   DatatypeLibrary(..),
   GenOpFun(..),
+  GenSumFun(..),
   ObjType(..),
   OpFun(..),
   OperationClass(..),
@@ -34,10 +35,12 @@ import Data.Int (Int64)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 
-class (CasType a, Serialize a) => Storable a where
+class (CasType a, Serialize a) => Effectish a where
+  summarize :: [a] -> [a]
 
 type OpFun eff arg res = [eff] -> arg -> (res, Maybe eff)
 type GenOpFun = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
+type GenSumFun = [ByteString] -> [ByteString]
 data Availability = High | Sticky | Un deriving (Show, Eq, Ord)
 
 instance Show GenOpFun where
@@ -53,10 +56,12 @@ class (Show a, Read a, Eq a, Ord a) => OperationClass a where
   getObjType :: a -> String
 
 type AvailabilityMap a = Map (ObjType, a) (GenOpFun, Availability)
+type SummaryMap = Map ObjType ([ByteString] -> [ByteString])
 type DependenceMap a = Map a (S.Set a)
 
-newtype DatatypeLibrary a = DatatypeLibrary {
-  _avMap  :: AvailabilityMap a
+data DatatypeLibrary a = DatatypeLibrary {
+  _avMap  :: AvailabilityMap a,
+  _sumMap :: SummaryMap
 }
 
 newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
