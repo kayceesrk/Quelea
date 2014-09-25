@@ -10,7 +10,7 @@ module Codeec.ShimLayer.Cache (
   doesCacheInclude,
   waitForCacheRefresh,
   fetchUpdates,
-  maybeGC
+  maybeGCCache
 ) where
 
 -- Minimum high water mark size for GC
@@ -70,8 +70,8 @@ data ResolutionState = ResolutionState {
 
 makeLenses ''ResolutionState
 
-maybeGC :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
-maybeGC cm ot k curSize gc | curSize < LWM = return ()
+maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
+maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
                            | otherwise = do
   cache <- takeMVar $ cm^.cacheMVar
   let ctxt = case M.lookup (ot, k) cache of
@@ -83,7 +83,9 @@ maybeGC cm ot k curSize gc | curSize < LWM = return ()
   hwm <- takeMVar $ cm^.hwmMVar
   putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
   putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
-  putStrLn $ "maybeGC : finalSize=" ++ (show $ length newCtxt)
+  putStrLn $ "maybeGCCache : finalSize=" ++ (show $ length newCtxt)
+
+
 
 
 signalGenerator :: Semaphore -> IO ()
