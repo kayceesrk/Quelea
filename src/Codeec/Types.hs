@@ -1,6 +1,9 @@
-{-# Language TemplateHaskell, EmptyDataDecls, ScopedTypeVariables, TypeSynonymInstances, FlexibleInstances #-}
+{-# Language TemplateHaskell, EmptyDataDecls, ScopedTypeVariables,
+    TypeSynonymInstances, FlexibleInstances #-}
 
 module Codeec.Types (
+  Request(..),
+  Cell(..),
   Effectish(..),
   Availability(..),
   DatatypeLibrary(..),
@@ -9,7 +12,7 @@ module Codeec.Types (
   ObjType(..),
   OpFun(..),
   OperationClass(..),
-  Request(..),
+  OperationPayload(..),
   Response(..),
 
   Key(..),
@@ -69,7 +72,7 @@ newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
 type SessUUID = UUID
 type SeqNo = Int64
 
-data Request a = Request {
+data OperationPayload a = OperationPayload {
   _objTypeReq :: ObjType,
   _keyReq     :: Key,
   _opReq      :: a,
@@ -77,6 +80,8 @@ data Request a = Request {
   _sidReq     :: SessUUID,
   _sqnReq     :: SeqNo
 }
+
+data Request = ReqOper | ReqEndSess
 
 data Response = Response SeqNo ByteString
 
@@ -88,12 +93,7 @@ data Addr = Addr {
   _seqno  :: SeqNo
 } deriving (Eq, Ord, Read, Show)
 
-instance CasType Addr where
-  putCas (Addr x y) = do
-    putLazyByteString $ toByteString x
-    (putWord64be . fromIntegral) y
-  getCas = do
-    x <- fromJust . fromByteString <$> getLazyByteString 16
-    y <- fromIntegral <$> getWord64be
-    return $ Addr x y
-  casType _ = CBlob
+-- The type of value stored in a row of the cassandra table
+data Cell = EffectVal ByteString -- An effect value
+          | GCMarker             -- Marks a GC
+          deriving Eq

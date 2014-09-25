@@ -144,10 +144,12 @@ getEffectsCore const cursor pool acc (ot,k) = do
     if unseenRows == []
     then return acc
     else do
+      let effectRows = foldl (\acc v@(a,b,c,d) ->
+            case d of {EffectVal bs -> (a,b,c,bs):acc; otherwise -> acc}) [] unseenRows
       -- Build datastructures
       let (effSet, depsMap) = foldl (\(s1, m2) (sid,sqn,deps,eff) ->
             (S.insert (Addr sid sqn, eff) s1,
-              M.insert (Addr sid sqn) (NotVisited deps) m2)) (S.empty, M.empty) unseenRows
+              M.insert (Addr sid sqn) (NotVisited deps) m2)) (S.empty, M.empty) effectRows
       let filteredSet = filterUnresolved cursorAtKey depsMap effSet
       let (newEffMap, newAddrMap) = acc
       let newEffSet = filteredSet
@@ -253,7 +255,7 @@ writeEffect cm ot k addr eff origDeps const = do
     -- Update dependence
     putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
-  runCas (cm^.pool) $ cqlWrite ot const k (sid, sqn, deps, eff)
+  runCas (cm^.pool) $ cqlWrite ot const k (sid, sqn, deps, EffectVal eff)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do

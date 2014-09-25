@@ -37,7 +37,7 @@ import Control.Concurrent (forkIO, threadDelay)
 
 makeLenses ''Addr
 makeLenses ''DatatypeLibrary
-makeLenses ''Request
+makeLenses ''OperationPayload
 
 -- This is the maximum number of outstanding StickyAvailable requrests.
 #define NUM_WORKERS 5
@@ -82,18 +82,24 @@ worker dtLib pool cache = do
   {- loop forver servicing clients -}
   forever $ do
     binReq <- ZMQ.receive sock
-    let req = decodeRequest binReq
-    {- Fetch the operation from the datatype library using the object type and
-    - operation name. -}
-    let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
-    (result, ctxtSize) <- case av of
-      High -> doOp op cache req ONE
-      Sticky -> processStickyOp req op cache
-      Un -> processUnOp req op cache pool
-    ZMQ.send sock [] $ encode result
-    -- Maybe perform summarization
-    let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-    maybeGC cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+    case getRequestKind binReq of
+      ReqOper -> do
+        let req = decodeOperationPayload binReq
+        {- Fetch the operation from the datatype library using the object type and
+        - operation name. -}
+        let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
+        (result, ctxtSize) <- case av of
+          High -> doOp op cache req ONE
+          Sticky -> processStickyOp req op cache
+          Un -> processUnOp req op cache pool
+        ZMQ.send sock [] $ encode result
+        -- Maybe perform summarization
+        let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
+        maybeGC cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+      ReqEndSess -> do
+        let sid = decodeReqEndSess binReq
+        runCas pool $ markSessionCompleted sid
+        ZMQ.send sock [] $ encode $ Response 0 Data.ByteString.empty
   where
     processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous
@@ -129,9 +135,9 @@ worker dtLib pool cache = do
       releaseLock ot k sid pool
       return res
 
-doOp :: OperationClass a => GenOpFun -> CacheManager -> Request a -> Consistency -> IO (Response, Int)
+doOp :: OperationClass a => GenOpFun -> CacheManager -> OperationPayload a -> Consistency -> IO (Response, Int)
 doOp op cache request const = do
-  let (Request objType key operName arg sessid seqno) = request
+  let (OperationPayload objType key operName arg sessid seqno) = request
   -- Fetch the current context
   (ctxt, deps) <- getContext cache objType key
   let (res, effM) = op ctxt arg

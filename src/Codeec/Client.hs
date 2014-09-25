@@ -22,6 +22,7 @@ import Data.Serialize
 import Codeec.Marshall
 import System.Random (randomIO)
 import Control.Applicative
+import Data.ByteString (cons)
 
 data Session = Session {
   _broker     :: Frontend,
@@ -48,7 +49,10 @@ beginSession fe = do
   return $ Session fe sock serverAddr sessid 0
 
 endSession :: Session -> IO ()
-endSession s = disconnect (s ^. server) (s^.serverAddr)
+endSession s = do
+  send (s^.server) [] $ Data.ByteString.cons 1 $ encode (s^.sessid)
+  receive $ s^.server
+  disconnect (s ^. server) (s^.serverAddr)
 
 getServerAddr :: Session -> String
 getServerAddr s = s^.serverAddr
@@ -57,8 +61,8 @@ invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)
 invoke s key operName arg = do
   let objType = getObjType operName
-  let req = Request objType key operName (encode arg) (s ^. sessid) (s ^. seqno)
-  send (s^.server) [] $ encode req
+  let req = OperationPayload objType key operName (encode arg) (s ^. sessid) (s ^. seqno)
+  send (s^.server) [] $ Data.ByteString.cons 0 $ encode req
   responseBlob <- receive (s^.server)
   let (Response newSeqNo resBlob) = decodeResponse responseBlob
   case decode resBlob of
