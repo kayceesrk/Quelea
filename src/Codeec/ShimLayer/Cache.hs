@@ -9,7 +9,8 @@ module Codeec.ShimLayer.Cache (
   writeEffect,
   doesCacheInclude,
   waitForCacheRefresh,
-  fetchUpdates
+  fetchUpdates,
+  maybeGC
 ) where
 
 -- Minimum high water mark size for GC
@@ -17,7 +18,7 @@ module Codeec.ShimLayer.Cache (
 
 import Control.Concurrent
 import Control.Concurrent.MVar
-import Data.ByteString hiding (map, pack, putStrLn)
+import Data.ByteString hiding (map, pack, putStrLn, foldl, length, filter)
 import Control.Lens
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -27,6 +28,7 @@ import Data.Maybe (fromJust)
 import Database.Cassandra.CQL
 import Control.Monad.State
 import System.IO
+import System.Random (randomIO)
 
 import Codeec.Types
 import Codeec.DBDriver
@@ -67,6 +69,22 @@ data ResolutionState = ResolutionState {
 }
 
 makeLenses ''ResolutionState
+
+maybeGC :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
+maybeGC cm ot k curSize gc | curSize < LWM = return ()
+                           | otherwise = do
+  cache <- takeMVar $ cm^.cacheMVar
+  let ctxt = case M.lookup (ot, k) cache of
+               Nothing -> []
+               Just s -> map (\(a,e) -> e) $ S.toList s
+  let newCtxt = gc ctxt
+  newUUID <- randomIO
+  let (newCache,_) = foldl (\(s,i) e -> (S.insert (Addr newUUID i, e) s, i+1)) (S.empty, 1) newCtxt
+  hwm <- takeMVar $ cm^.hwmMVar
+  putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
+  putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
+  putStrLn $ "maybeGC : finalSize=" ++ (show $ length newCtxt)
+
 
 signalGenerator :: Semaphore -> IO ()
 signalGenerator semMVar = forever $ do
@@ -122,12 +140,12 @@ getEffectsCore const cursor pool acc (ot,k) = do
     rows <- runCas pool $ cqlRead ot const k
     -- Filter effects that were already seen
     let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
-    let unseenRows = Prelude.filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
+    let unseenRows = filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
     if unseenRows == []
     then return acc
     else do
       -- Build datastructures
-      let (effSet, depsMap) = Prelude.foldl (\(s1, m2) (sid,sqn,deps,eff) ->
+      let (effSet, depsMap) = foldl (\(s1, m2) (sid,sqn,deps,eff) ->
             (S.insert (Addr sid sqn, eff) s1,
               M.insert (Addr sid sqn) (NotVisited deps) m2)) (S.empty, M.empty) unseenRows
       let filteredSet = filterUnresolved cursorAtKey depsMap effSet
@@ -147,7 +165,7 @@ filterUnresolved :: M.Map SessUUID SeqNo    -- Key Cursor
              -> S.Set (Addr, Effect)    -- Filtered result
 filterUnresolved kc m1 s2 =
   let addrList = M.keys m1
-      ResolutionState _ vs = Prelude.foldl (\vs addr -> execState (isResolved addr) vs) (ResolutionState kc m1) addrList
+      ResolutionState _ vs = foldl (\vs addr -> execState (isResolved addr) vs) (ResolutionState kc m1) addrList
   in S.filter (\(addr,eff) ->
         case M.lookup addr vs of
           Nothing -> error "filterUnresolved: unexpected state(1)"

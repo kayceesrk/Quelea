@@ -15,6 +15,7 @@ import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
 import Codeec.Types (summarize)
+import Control.Monad (replicateM_)
 
 fePort :: Int
 fePort = 5558
@@ -54,6 +55,11 @@ main = do
       liftIO $ putStrLn "Client : performing getBalance"
       r::Int <- invoke key GetBalance ()
       liftIO . putStrLn $ show r
+
+      replicateM_ 64 $ do
+        r::() <- invoke key Deposit (1::Int)
+        r :: Int <- invoke key GetBalance ()
+        liftIO . putStrLn $ show r
     D -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable "BankAccount"

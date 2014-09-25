@@ -91,6 +91,9 @@ worker dtLib pool cache = do
       Sticky -> processStickyOp req op cache
       Un -> processUnOp req op cache pool
     ZMQ.send sock [] $ encode result
+    -- Maybe perform summarization
+    let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
+    maybeGC cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
   where
     processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous
