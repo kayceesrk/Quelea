@@ -95,7 +95,7 @@ worker dtLib pool cache = do
         ZMQ.send sock [] $ encode result
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-        maybeGC cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+        maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
       ReqEndSess -> do
         let sid = decodeReqEndSess binReq
         runCas pool $ markSessionCompleted sid
