@@ -23,13 +23,14 @@ import Codeec.Marshall
 import System.Random (randomIO)
 import Control.Applicative
 import Data.ByteString (cons)
+import qualified Data.Map as M
 
 data Session = Session {
   _broker     :: Frontend,
   _server     :: Socket Req,
   _serverAddr :: String,
   _sessid     :: SessUUID,
-  _seqno      :: SeqNo
+  _seqMap     :: M.Map (ObjType, Key) SeqNo
 }
 
 makeLenses ''Session
@@ -46,7 +47,7 @@ beginSession fe = do
   -- Create a session id
   sessid <- randomIO
   -- Initialize session
-  return $ Session fe sock serverAddr sessid 0
+  return $ Session fe sock serverAddr sessid M.empty
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
@@ -58,14 +59,18 @@ invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)
 invoke s key operName arg = do
   let objType = getObjType operName
-  let req = OperationPayload objType key operName (encode arg) (s ^. sessid) (s ^. seqno)
+  let seqNo = case M.lookup (objType, key) $ s^.seqMap of
+                Nothing -> 0
+                Just s -> s
+  let req = OperationPayload objType key operName (encode arg) (s ^. sessid) seqNo
   send (s^.server) [] $ encode req
   responseBlob <- receive (s^.server)
   let (Response newSeqNo resBlob) = decodeResponse responseBlob
   case decode resBlob of
     Left s -> error $ "invoke : decode failure " ++ s
     Right res -> do
-      return (res, Session (s^.broker) (s^.server) (s^.serverAddr) (s^.sessid) newSeqNo)
+      let newSeqMap = M.insert (objType, key) newSeqNo $ s^.seqMap
+      return (res, Session (s^.broker) (s^.server) (s^.serverAddr) (s^.sessid) newSeqMap)
 
 newKey :: IO Key
 newKey = Key <$> randomIO
