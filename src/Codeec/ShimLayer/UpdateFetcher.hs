@@ -12,6 +12,7 @@ import Control.Monad.State
 import Control.Monad (when)
 import Database.Cassandra.CQL
 import Control.Concurrent
+import Data.Maybe (fromJust)
 
 import Codeec.Types
 import Codeec.ShimLayer.Types
@@ -37,16 +38,22 @@ fetchUpdate cm const (ot, k) = do
   -- Read the database
   rows <- runCas (cm^.pool) $ cqlRead ot const k
   -- Split the rows into effects and gc markers
-  let (effRows, gcMarkerRows) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val) ->
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val) ->
         case val of
           EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
-          GCMarker -> (effAcc, (sid,sqn,deps):gcAcc)) ([], []) rows
-  -- GC markers?
-  when (length gcMarkerRows /= 0) (error "GC Markers: unexpected!")
+          GCMarker -> case gcAcc of
+                        Nothing -> (effAcc, Just (sid,sqn,deps))
+                        Just _ -> error "Multiple GC Markers") ([], Nothing) rows
+  -- Build the GC cursor
+  let gcCursor = case gcMarker of
+                   Nothing -> M.empty
+                   Just (sid, sqn, deps) ->
+                     S.foldl (\m (Addr sid sqn) -> M.insert sid sqn m)
+                             (M.singleton sid sqn) deps
   cursor <- readMVar $ cm^.cursorMVar
   let cursorAtKey = case M.lookup (ot, k) cursor of
-                      Nothing -> M.empty
-                      Just m -> m
+                      Nothing -> gcCursor
+                      Just m -> mergeCursorsAtKey m gcCursor
   -- Filter effects that were already seen.
   let unseenRows = filter (\(sid, sqn, _, _) -> isUnseen cursorAtKey (Addr sid sqn)) effRows
   -- Build datastructure for filtering out unresolved effects
@@ -57,11 +64,20 @@ fetchUpdate cm const (ot, k) = do
           (S.empty, M.empty) unseenRows
   -- filter unresolved effects i,e) effects whose causal cut is also not visible.
   let filteredSet = filterUnresolved cursorAtKey depsMap effSet
-  -- Update cache state
+  -- Obtain locks; order is important
   cache <- takeMVar $ cm^.cacheMVar
   cursor <- takeMVar $ cm^.cursorMVar
   deps <- takeMVar $ cm^.depsMVar
-  -- Update cache
+  -- Update cache and (maybe) lastGCAddr
+  lastGCAddr <- takeMVar $ cm^.lastGCAddrMVar
+  cache <- if (newGCHasOccurred lastGCAddr gcMarker)
+           then do
+             let (newGCSessUUID, _, _) = fromJust $ gcMarker
+             putMVar (cm^.lastGCAddrMVar) (Just newGCSessUUID)
+             return $ M.insert (ot,k) S.empty cache
+           else do
+             putMVar (cm^.lastGCAddrMVar) lastGCAddr
+             return cache
   let newCache = M.unionWith S.union cache $ M.singleton (ot,k) filteredSet
   putMVar (cm^.cacheMVar) newCache
   -- Update cursor
@@ -70,13 +86,21 @@ fetchUpdate cm const (ot, k) = do
                           case M.lookup sid m of
                             Nothing -> M.insert sid sqn m
                             Just oldSqn -> if oldSqn < sqn
-                                           then M.insert sid sqn m
-                                           else m) cursorAtKey filteredSet
+                                          then M.insert sid sqn m
+                                          else m) cursorAtKey filteredSet
   let newCursor = M.insert (ot,k) newCursorAtKey cursor
   putMVar (cm^.cursorMVar) newCursor
   -- Update dependence
   let newDeps = M.unionWith S.union deps $ M.singleton (ot,k) (S.map (\(a,_) -> a) filteredSet)
   putMVar (cm^.depsMVar) newDeps
+  where
+    newGCHasOccurred fromCache fromDB =
+      case (fromCache, fromDB) of
+        (Nothing, Nothing) -> False
+        (Just _, Nothing) -> error "check for new GC"
+        (Nothing, Just _) -> True
+        (Just a, Just (sid,_,_)) ->  a /= sid
+
 
 -- Returns true if the given effect is not encapsulated by the cursor
 isUnseen :: CursorAtKey -> Addr -> Bool

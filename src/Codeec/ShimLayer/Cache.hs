@@ -71,8 +71,9 @@ initCacheManager pool = do
   hotLocs <- newMVar S.empty
   sem <- newEmptyMVar
   blockedList <- newMVar []
+  lastGC <- newMVar Nothing
   forkIO $ signalGenerator sem
-  let cm = CacheManager cache hwm cursor nearestDeps hotLocs sem blockedList pool
+  let cm = CacheManager cache hwm cursor nearestDeps hotLocs sem blockedList pool lastGC
   forkIO $ cacheMgrCore cm
   return $ cm
   where
