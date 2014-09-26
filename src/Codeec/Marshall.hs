@@ -3,9 +3,7 @@
 module Codeec.Marshall (
   mkGenOp,
   mkGenSum,
-  getRequestKind,
   decodeOperationPayload,
-  decodeReqEndSess,
   decodeResponse
 ) where
 
@@ -49,22 +47,10 @@ mkGenSum foo ctxt =
       ctxt3 = foo ctxt2
   in encode <$> ctxt3
 
-getRequestKind :: ByteString -> Request
-getRequestKind b =
-  case Data.ByteString.head b of
-    0 -> ReqOper
-    1 -> ReqEndSess
-
 decodeOperationPayload :: OperationClass a => ByteString -> OperationPayload a
 decodeOperationPayload b =
-  case decode $ Data.ByteString.tail b of
+  case decode b of
     Left s -> error $ "decodeOperationPayload : " ++ s
-    Right v -> v
-
-decodeReqEndSess :: ByteString -> SessUUID
-decodeReqEndSess b =
-  case decode $ Data.ByteString.tail b of
-    Left s -> error $ "decodeReqEndSess : " ++ s
     Right v -> v
 
 instance Serialize SessUUID where

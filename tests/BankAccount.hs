@@ -62,7 +62,7 @@ main = do
         liftIO . putStrLn $ show r
     D -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ createSessTable >> createTable "BankAccount"
+      runCas pool $ createTable "BankAccount"
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " B"
@@ -72,4 +72,4 @@ main = do
       c <- runCommand $ progName ++ " C"
       threadDelay 5000000
       mapM_ terminateProcess [b,s,c]
-      runCas pool $ dropSessTable >> dropTable "BankAccount"
+      runCas pool $ dropTable "BankAccount"

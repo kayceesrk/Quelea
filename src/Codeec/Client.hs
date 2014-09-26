@@ -49,10 +49,7 @@ beginSession fe = do
   return $ Session fe sock serverAddr sessid 0
 
 endSession :: Session -> IO ()
-endSession s = do
-  send (s^.server) [] $ Data.ByteString.cons 1 $ encode (s^.sessid)
-  receive $ s^.server
-  disconnect (s ^. server) (s^.serverAddr)
+endSession s = disconnect (s ^. server) (s^.serverAddr)
 
 getServerAddr :: Session -> String
 getServerAddr s = s^.serverAddr
@@ -62,7 +59,7 @@ invoke :: (OperationClass on, Serialize arg, Serialize res)
 invoke s key operName arg = do
   let objType = getObjType operName
   let req = OperationPayload objType key operName (encode arg) (s ^. sessid) (s ^. seqno)
-  send (s^.server) [] $ Data.ByteString.cons 0 $ encode req
+  send (s^.server) [] $ encode req
   responseBlob <- receive (s^.server)
   let (Response newSeqNo resBlob) = decodeResponse responseBlob
   case decode resBlob of

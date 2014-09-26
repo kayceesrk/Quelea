@@ -40,7 +40,8 @@ Library
   Other-modules:
     Codeec.Contract.Language
     Codeec.Contract.TypeCheck
+    Codeec.ShimLayer.Types
     Codeec.ShimLayer.Cache
+    Codeec.ShimLayer.UpdateFetcher
   Extensions: CPP
   ghc-options: -Wall
-

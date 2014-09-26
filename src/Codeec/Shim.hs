@@ -82,24 +82,18 @@ worker dtLib pool cache = do
   {- loop forver servicing clients -}
   forever $ do
     binReq <- ZMQ.receive sock
-    case getRequestKind binReq of
-      ReqOper -> do
-        let req = decodeOperationPayload binReq
-        {- Fetch the operation from the datatype library using the object type and
-        - operation name. -}
-        let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
-        (result, ctxtSize) <- case av of
-          High -> doOp op cache req ONE
-          Sticky -> processStickyOp req op cache
-          Un -> processUnOp req op cache pool
-        ZMQ.send sock [] $ encode result
-        -- Maybe perform summarization
-        let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-        maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
-      ReqEndSess -> do
-        let sid = decodeReqEndSess binReq
-        runCas pool $ markSessionCompleted sid
-        ZMQ.send sock [] $ encode $ Response 0 Data.ByteString.empty
+    let req = decodeOperationPayload binReq
+    {- Fetch the operation from the datatype library using the object type and
+    - operation name. -}
+    let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
+    (result, ctxtSize) <- case av of
+      High -> doOp op cache req ONE
+      Sticky -> processStickyOp req op cache
+      Un -> processUnOp req op cache pool
+    ZMQ.send sock [] $ encode result
+    -- Maybe perform summarization
+    let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
+    maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
   where
     processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous

@@ -7,15 +7,10 @@ module Codeec.DBDriver (
 
   createTable,
   dropTable,
-  createSessTable,
-  dropSessTable,
-
   cqlRead,
   cqlWrite,
   getLock,
-  releaseLock,
-  markSessionCompleted,
-  getCompletedSessions
+  releaseLock
 ) where
 
 
@@ -79,20 +74,6 @@ mkLockUpdate tname = query $ pack $ "update " ++ tname ++ "_LOCK set sessid = ? 
 
 -------------------------------------------------------------------------------
 
-mkCreateSessTable :: Query Schema () ()
-mkCreateSessTable = query $ pack $ "create table CompletedSessions (sessid uuid, primary key (sessid))"
-
-mkDropSessTable :: Query Schema () ()
-mkDropSessTable = query $ pack $ "drop table CompletedSessions"
-
-mkInsertSessTable :: Query Write SessUUID ()
-mkInsertSessTable = query $ pack $ "insert into CompletedSessions (sessid) values (?)"
-
-mkReadSessTable :: Query Rows () SessUUID
-mkReadSessTable = query $ pack $ "select * from CompletedSessions"
-
--------------------------------------------------------------------------------
-
 cqlRead :: TableName -> Consistency -> Key -> Cas [Row]
 cqlRead tname c (Key k) = executeRows c (mkRead tname) k
 
@@ -132,15 +113,3 @@ releaseLock tname (Key k) sid pool = runCas pool $ do
   res <- executeTrans (mkLockUpdate tname) (unlockedUUID, k, sid)
   if res then return ()
   else error $ "releaseLock : key=" ++ show (Key k) ++ " sid=" ++ show sid
-
-createSessTable :: Cas ()
-createSessTable = liftIO . print =<< executeSchema ALL mkCreateSessTable ()
-
-dropSessTable :: Cas ()
-dropSessTable = liftIO . print =<< executeSchema ALL mkDropSessTable ()
-
-markSessionCompleted :: SessUUID -> Cas ()
-markSessionCompleted sid = executeWrite ONE mkInsertSessTable sid
-
-getCompletedSessions :: Cas [SessUUID]
-getCompletedSessions = executeRows ONE mkReadSessTable ()

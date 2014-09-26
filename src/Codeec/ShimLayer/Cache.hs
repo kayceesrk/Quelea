@@ -29,46 +29,14 @@ import Database.Cassandra.CQL
 import Control.Monad.State
 import System.IO
 import System.Random (randomIO)
+import Control.Applicative ((<$>))
 
 import Codeec.Types
+import Codeec.ShimLayer.Types
 import Codeec.DBDriver
-
-type Effect = ByteString
-
-type CacheMap    = (M.Map (ObjType, Key) (S.Set (Addr, Effect)))
-type HwmMap      = M.Map (ObjType, Key) Int
-type Cache       = MVar CacheMap
-type CursorMap   = (M.Map (ObjType, Key) (M.Map SessUUID SeqNo))
-type Cursor      = MVar CursorMap
-type NearestDepsMap = (M.Map (ObjType, Key) (S.Set Addr))
-type NearestDeps = MVar NearestDepsMap
-type HotLocs     = MVar (S.Set (ObjType, Key))
-type Semaphore   = MVar ()
-type ThreadQueue = MVar ([MVar ()])
-
-data CacheManager = CacheManager {
-  _cacheMVar   :: Cache,
-  _hwmMVar     :: MVar HwmMap,
-  _cursorMVar  :: Cursor,
-  _depsMVar    :: NearestDeps,
-  _hotLocsMVar :: HotLocs,
-  _semMVar     :: Semaphore,
-  _blockedMVar :: ThreadQueue,
-  _pool        :: Pool
-}
+import Codeec.ShimLayer.UpdateFetcher
 
 makeLenses ''CacheManager
-makeLenses ''Addr
-
-data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
-                  | NotVisited (S.Set Addr)
-
-data ResolutionState = ResolutionState {
-  _keyCursor    :: M.Map SessUUID SeqNo,
-  _visitedState :: M.Map Addr VisitedState
-}
-
-makeLenses ''ResolutionState
 
 maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
 maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
@@ -85,16 +53,35 @@ maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
   putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
   putStrLn $ "maybeGCCache : finalSize=" ++ (show $ length newCtxt)
 
+gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
+gcDB cm ot k gc = do
+  sid <- randomIO
+  rows <- runCas (cm^.pool) $ cqlRead ot ALL k
+  -- get causal cut (rows)
+  -- remove GC markers (rows)
+  -- filter effects from unfinished sessions (rows)
+  releaseLock ot k sid $ cm^.pool
 
-
-
-signalGenerator :: Semaphore -> IO ()
-signalGenerator semMVar = forever $ do
-  isEmpty <- isEmptyMVar semMVar
-  if isEmpty
-  then tryPutMVar semMVar ()
-  else return True
-  threadDelay 1000000 -- 1 second
+initCacheManager :: Pool -> IO CacheManager
+initCacheManager pool = do
+  cache <- newMVar M.empty
+  hwm <- newMVar M.empty
+  cursor <- newMVar M.empty
+  nearestDeps <- newMVar M.empty
+  hotLocs <- newMVar S.empty
+  sem <- newEmptyMVar
+  blockedList <- newMVar []
+  forkIO $ signalGenerator sem
+  let cm = CacheManager cache hwm cursor nearestDeps hotLocs sem blockedList pool
+  forkIO $ cacheMgrCore cm
+  return $ cm
+  where
+    signalGenerator semMVar = forever $ do
+      isEmpty <- isEmptyMVar semMVar
+      if isEmpty
+      then tryPutMVar semMVar ()
+      else return True
+      threadDelay 1000000 -- 1 second
 
 addHotLocation :: CacheManager -> ObjType -> Key -> IO ()
 addHotLocation cm ot k = do
@@ -113,112 +100,6 @@ cacheMgrCore cm = forever $ do
   blockedList <- takeMVar $ cm^.blockedMVar
   putMVar (cm^.blockedMVar) []
   mapM_ (\mv -> putMVar mv ()) blockedList
-
-fetchUpdates :: Consistency -> CacheManager -> [(ObjType, Key)] -> IO ()
-fetchUpdates const cm locs = do
-  cursor <- readMVar $ cm^.cursorMVar
-  (newEffMap, newAddrMap) <- foldM (getEffectsCore const cursor (cm^.pool)) (M.empty, M.empty) locs
-  -- Update cache state
-  cache <- takeMVar $ cm^.cacheMVar
-  cursor <- takeMVar $ cm^.cursorMVar
-  deps <- takeMVar $ cm^.depsMVar
-  let newCache = M.unionWith S.union newEffMap cache
-  putMVar (cm^.cacheMVar) newCache
-  let newDeps = M.unionWith S.union newAddrMap deps
-  -- Create a new cursor map
-  let newCursorMap = M.map (S.foldl (\m (Addr sid sqn) ->
-          case M.lookup sid m of
-            Nothing -> M.insert sid sqn m
-            Just oldSqn -> if oldSqn < sqn then M.insert sid sqn m else m) M.empty) deps
-  -- merge cursors
-  let newCursor = M.unionWith (M.unionWith max) newCursorMap cursor
-  putMVar (cm^.cursorMVar) newCursor
-  putMVar (cm^.depsMVar) newDeps
-
-getEffectsCore :: Consistency -> CursorMap -> Pool
-               -> (CacheMap, NearestDepsMap) -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
-getEffectsCore const cursor pool acc (ot,k) = do
-    -- Read the database
-    rows <- runCas pool $ cqlRead ot const k
-    -- Filter effects that were already seen
-    let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
-    let unseenRows = filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
-    if unseenRows == []
-    then return acc
-    else do
-      let effectRows = foldl (\acc v@(a,b,c,d) ->
-            case d of {EffectVal bs -> (a,b,c,bs):acc; otherwise -> acc}) [] unseenRows
-      -- Build datastructures
-      let (effSet, depsMap) = foldl (\(s1, m2) (sid,sqn,deps,eff) ->
-            (S.insert (Addr sid sqn, eff) s1,
-              M.insert (Addr sid sqn) (NotVisited deps) m2)) (S.empty, M.empty) effectRows
-      let filteredSet = filterUnresolved cursorAtKey depsMap effSet
-      let (newEffMap, newAddrMap) = acc
-      let newEffSet = filteredSet
-      let newAddrSet = S.map (\(addr, _) -> addr) filteredSet
-      return $ (M.insert (ot,k) newEffSet newEffMap, M.insert (ot,k) newAddrSet newAddrMap)
-  where
-    isUnseenEffect cursorAtKey sid sqn =
-      case M.lookup sid cursorAtKey of
-        Nothing -> True
-        Just cursorSqn -> sqn > cursorSqn
-
-filterUnresolved :: M.Map SessUUID SeqNo    -- Key Cursor
-             -> M.Map Addr VisitedState -- Input visited state
-             -> S.Set (Addr, Effect)    -- Unfiltered input
-             -> S.Set (Addr, Effect)    -- Filtered result
-filterUnresolved kc m1 s2 =
-  let addrList = M.keys m1
-      ResolutionState _ vs = foldl (\vs addr -> execState (isResolved addr) vs) (ResolutionState kc m1) addrList
-  in S.filter (\(addr,eff) ->
-        case M.lookup addr vs of
-          Nothing -> error "filterUnresolved: unexpected state(1)"
-          Just (Visited True) -> True
-          Just (Visited False) -> False
-          Just (NotVisited _) -> error "filterUnresolved: unexpected state(2)") s2
-
-isResolved :: Addr -> State ResolutionState Bool
-isResolved addr = do
-  vs <- use visitedState
-  case M.lookup addr vs of
-    Nothing -> do -- Might be an effect already in the cache
-      let Addr sid sqn = addr
-      if sqn == 0 -- Special case to please Cassandra
-      then do
-        visitedState .= M.insert addr (Visited True) vs
-        return True
-      else do
-        kc <- use keyCursor
-        case M.lookup sid kc of
-          -- Session of effect not found in cache => effect unseen
-          Nothing -> do
-            visitedState .= M.insert addr (Visited False) vs
-            return False
-          -- Session found in cache, cache is sufficiently recent?
-          Just maxSqn -> do
-            let res = sqn <= maxSqn
-            visitedState .= M.insert addr (Visited res) vs
-            return res
-    Just (Visited res) -> return res
-    Just (NotVisited deps) -> do
-      res <- foldM (\acc addr -> isResolved addr >>= \r -> return (r && acc)) True $ S.toList deps
-      newVs <- use visitedState
-      visitedState .= M.insert addr (Visited res) newVs
-      return res
-
-initCacheManager :: Pool -> IO CacheManager
-initCacheManager pool = do
-  cache <- newMVar M.empty
-  hwm <- newMVar M.empty
-  cursor <- newMVar M.empty
-  nearestDeps <- newMVar M.empty
-  hotLocs <- newMVar S.empty
-  sem <- newEmptyMVar
-  blockedList <- newMVar []
-  forkIO $ signalGenerator sem
-  let cm = CacheManager cache hwm cursor nearestDeps hotLocs sem blockedList pool
-  forkIO $ cacheMgrCore cm
-  return $ cm
 
 -- Returns the set of effects at the location and a set of nearest dependencies
 -- for this location.

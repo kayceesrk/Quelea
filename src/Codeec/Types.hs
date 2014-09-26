@@ -2,7 +2,6 @@
     TypeSynonymInstances, FlexibleInstances #-}
 
 module Codeec.Types (
-  Request(..),
   Cell(..),
   Effectish(..),
   Availability(..),
@@ -80,8 +79,6 @@ data OperationPayload a = OperationPayload {
   _sidReq     :: SessUUID,
   _sqnReq     :: SeqNo
 }
-
-data Request = ReqOper | ReqEndSess
 
 data Response = Response SeqNo ByteString
 
