@@ -10,11 +10,7 @@ module Codeec.ShimLayer.Cache (
   doesCacheInclude,
   waitForCacheRefresh,
   fetchUpdates,
-  maybeGCCache
 ) where
-
--- Minimum high water mark size for GC
-#define LWM 64
 
 import Control.Concurrent
 import Control.Concurrent.MVar
@@ -28,7 +24,6 @@ import Data.Maybe (fromJust)
 import Database.Cassandra.CQL
 import Control.Monad.State
 import System.IO
-import System.Random (randomIO)
 import Control.Applicative ((<$>))
 
 import Codeec.Types
@@ -37,30 +32,6 @@ import Codeec.DBDriver
 import Codeec.ShimLayer.UpdateFetcher
 
 makeLenses ''CacheManager
-
-maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
-maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
-                           | otherwise = do
-  cache <- takeMVar $ cm^.cacheMVar
-  let ctxt = case M.lookup (ot, k) cache of
-               Nothing -> []
-               Just s -> map (\(a,e) -> e) $ S.toList s
-  let newCtxt = gc ctxt
-  newUUID <- randomIO
-  let (newCache,_) = foldl (\(s,i) e -> (S.insert (Addr newUUID i, e) s, i+1)) (S.empty, 1) newCtxt
-  hwm <- takeMVar $ cm^.hwmMVar
-  putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
-  putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
-  putStrLn $ "maybeGCCache : finalSize=" ++ (show $ length newCtxt)
-
-gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
-gcDB cm ot k gc = do
-  sid <- randomIO
-  rows <- runCas (cm^.pool) $ cqlRead ot ALL k
-  -- get causal cut (rows)
-  -- remove GC markers (rows)
-  -- filter effects from unfinished sessions (rows)
-  releaseLock ot k sid $ cm^.pool
 
 initCacheManager :: Pool -> IO CacheManager
 initCacheManager pool = do

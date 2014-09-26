@@ -12,6 +12,7 @@ import Codeec.NameService.SimpleBroker
 import Codeec.Marshall
 import Codeec.DBDriver
 import Codeec.ShimLayer.Cache
+import Codeec.ShimLayer.GC
 import Codeec.Contract.Language
 
 import System.Directory

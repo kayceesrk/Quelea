@@ -43,5 +43,6 @@ Library
     Codeec.ShimLayer.Types
     Codeec.ShimLayer.Cache
     Codeec.ShimLayer.UpdateFetcher
+    Codeec.ShimLayer.GC
   Extensions: CPP
   ghc-options: -Wall
