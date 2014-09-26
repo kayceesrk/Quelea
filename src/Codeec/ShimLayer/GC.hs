@@ -7,8 +7,9 @@ module Codeec.ShimLayer.GC (
 import Codeec.Types
 import Codeec.ShimLayer.Types
 import Codeec.DBDriver
-import Control.Lens
+import Codeec.ShimLayer.UpdateFetcher
 
+import Control.Lens
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Control.Concurrent.MVar
@@ -22,12 +23,51 @@ makeLenses ''CacheManager
 
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
 gcDB cm ot k gc = do
-  sid <- randomIO
+  gcSid <- randomIO
+  getLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ALL k
-  -- get causal cut (rows)
-  -- remove GC markers (rows)
-  -- filter effects from unfinished sessions (rows)
-  releaseLock ot k sid $ cm^.pool
+  -- Split the rows into effects and gc markers
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val) ->
+        case val of
+          EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
+          GCMarker -> case gcAcc of
+                        Nothing -> (effAcc, Just (sid,sqn,deps))
+                        Just _ -> error "Multiple GC Markers") ([], Nothing) rows
+  -- Build the GC cursor
+  let gcCursor = case gcMarker of
+                   Nothing -> M.empty
+                   Just (sid, sqn, deps) ->
+                     S.foldl (\m (Addr sid sqn) -> M.insert sid sqn m)
+                             (M.singleton sid sqn) deps
+  -- Build datastructure for filtering out unresolved effects
+  let (effSet, depsMap) =
+        foldl (\(setAcc, mapAcc) (sid, sqn, deps, eff) ->
+                  (S.insert (Addr sid sqn, eff) setAcc,
+                   M.insert (Addr sid sqn) (NotVisited deps) mapAcc))
+          (S.empty, M.empty) effRows
+  -- filter unresolved effects i,e) effects whose causal cut is also not visible.
+  let filteredSet = filterUnresolved gcCursor depsMap effSet
+  let (addrList, effList) = unzip (S.toList filteredSet)
+  let gcedEffList = gc effList
+  -- Allocate new session id
+  let gcAddr = Addr gcSid 1
+  let (outRows, count) =
+        foldl (\(acc, idx) eff ->
+                  ((gcSid, idx, S.singleton gcAddr, EffectVal eff):acc, idx+1))
+              ([],2) gcedEffList
+  putStrLn $ "gcDB: count=" ++ show (count-2)
+  runCas (cm^.pool) $ do
+    -- Insert new effects
+    mapM_ (\r -> cqlInsert ot ALL k r) outRows
+    -- Delete previous marker if it exists
+    case gcMarker of
+      Nothing -> return ()
+      Just (sid, sqn, _) -> cqlDelete ot k sid sqn
+    -- Insert marker
+    cqlInsert ot ALL k (gcSid, 1, S.fromList addrList, GCMarker)
+    -- Delete old rows
+    mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
+  releaseLock ot k gcSid $ cm^.pool
 
 
 maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
@@ -44,4 +84,3 @@ maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
   putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
   putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
   putStrLn $ "maybeGCCache : finalSize=" ++ (show $ length newCtxt)
-

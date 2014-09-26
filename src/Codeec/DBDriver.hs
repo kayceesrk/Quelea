@@ -8,7 +8,8 @@ module Codeec.DBDriver (
   createTable,
   dropTable,
   cqlRead,
-  cqlWrite,
+  cqlInsert,
+  cqlDelete,
   getLock,
   releaseLock
 ) where
@@ -59,6 +60,9 @@ mkDropTable tname = query $ pack $ "drop table " ++ tname
 mkInsert :: TableName -> Query Write RowValue ()
 mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value) values (?, ?, ?, ?, ?)"
 
+mkDelete :: TableName -> Query Write (UUID, SessUUID, SeqNo) ()
+mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and sessid = ? and seqno = ?"
+
 mkRead :: TableName -> Query Rows (UUID) Row
 mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname ++ " where objid = ? order by sessid, seqno"
 
@@ -81,11 +85,14 @@ mkLockUpdate tname = query $ pack $ "update " ++ tname ++ "_LOCK set sessid = ? 
 cqlRead :: TableName -> Consistency -> Key -> Cas [Row]
 cqlRead tname c (Key k) = executeRows c (mkRead tname) k
 
-cqlWrite :: TableName -> Consistency -> Key -> Row -> Cas ()
-cqlWrite tname c (Key k) (sid,sqn,dep,val) = do
+cqlInsert :: TableName -> Consistency -> Key -> Row -> Cas ()
+cqlInsert tname c (Key k) (sid,sqn,dep,val) = do
   if S.size dep > 0
   then executeWrite c (mkInsert tname) (k,sid,sqn,dep,val)
   else executeWrite c (mkInsert tname) (k,sid,sqn, S.singleton $ Addr sid 0, val)
+
+cqlDelete :: TableName -> Key -> SessUUID -> SeqNo -> Cas ()
+cqlDelete tname (Key k) sid sqn = executeWrite ALL (mkDelete tname) (k,sid,sqn)
 
 createTable :: TableName -> Cas ()
 createTable tname = do

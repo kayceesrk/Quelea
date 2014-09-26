@@ -3,6 +3,8 @@
 
 module Codeec.ShimLayer.Types (
   CacheManager(..),
+  VisitedState(..),
+  ResolutionState(..),
   CacheMap,
   NearestDeps,
   NearestDepsMap,
@@ -45,3 +47,13 @@ data CacheManager = CacheManager {
   _pool           :: Pool,
   _lastGCAddrMVar :: MVar (Maybe SessUUID)
 }
+
+data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
+                  | NotVisited (S.Set Addr)
+
+data ResolutionState = ResolutionState {
+  _keyCursor    :: M.Map SessUUID SeqNo,
+  _visitedState :: M.Map Addr VisitedState
+}
+
+

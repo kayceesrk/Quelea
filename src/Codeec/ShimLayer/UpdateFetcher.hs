@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse  #-}
 
 module Codeec.ShimLayer.UpdateFetcher (
-  fetchUpdates
+  fetchUpdates,
+  filterUnresolved
 ) where
 
 import Control.Concurrent.MVar
@@ -17,14 +18,6 @@ import Data.Maybe (fromJust)
 import Codeec.Types
 import Codeec.ShimLayer.Types
 import Codeec.DBDriver
-
-data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
-                  | NotVisited (S.Set Addr)
-
-data ResolutionState = ResolutionState {
-  _keyCursor    :: M.Map SessUUID SeqNo,
-  _visitedState :: M.Map Addr VisitedState
-}
 
 makeLenses ''CacheManager
 makeLenses ''Addr
