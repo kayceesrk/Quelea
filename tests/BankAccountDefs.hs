@@ -6,6 +6,7 @@ module BankAccountDefs (
   withdraw, withdrawCtrt,
   getBalance, getBalanceCtrt,
   Operation(..),
+  summarize
 ) where
 
 import Database.Cassandra.CQL as CQL

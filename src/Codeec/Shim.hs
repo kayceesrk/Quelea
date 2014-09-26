@@ -109,7 +109,7 @@ worker dtLib pool cache = do
         then doOp op cache req ONE
         else do
           -- Read DB, and check cache for previous effect
-          fetchUpdates ONE cache [(ot,k)]
+          fetchUpdates cache ONE [(ot,k)]
           res <- doesCacheInclude cache ot k (req^.sidReq) (req^.sqnReq)
           if res
           then doOp op cache req ONE
@@ -122,7 +122,7 @@ worker dtLib pool cache = do
       -- Get Lock
       getLock ot k sid pool
       -- Read latest values at the key - under ALL
-      fetchUpdates ALL cache [(ot,k)]
+      fetchUpdates cache ALL [(ot,k)]
       -- Perform the op
       res <- doOp op cache req ALL
       -- Release Lock

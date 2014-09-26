@@ -95,7 +95,7 @@ cacheMgrCore cm = forever $ do
   locs <- takeMVar $ cm^.hotLocsMVar
   putMVar (cm^.hotLocsMVar) S.empty
   -- Fetch updates
-  fetchUpdates ONE cm $ S.toList locs
+  fetchUpdates cm ONE $ S.toList locs
   -- Wakeup threads that are waiting for the cache to be refreshed
   blockedList <- takeMVar $ cm^.blockedMVar
   putMVar (cm^.blockedMVar) []

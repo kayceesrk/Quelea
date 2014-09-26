@@ -46,6 +46,10 @@ type Row = (SessUUID, SeqNo, S.Set Addr, Cell)
 unlockedUUID :: SessUUID
 unlockedUUID = fromJust $ fromString $ "123e4567-e89b-12d3-a456-426655440000"
 
+-- A Row either corresponds to an effect (Cell is EffectVal bs) or a gc marker
+-- (Cell is GCMarker). In case of GCMarker, the dependence set (deps value in
+-- the row) is interpreted as a "Cursor". All effects that are encapsulated by
+-- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++ " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, value blob, primary key (objid, sessid, seqno)) "
 

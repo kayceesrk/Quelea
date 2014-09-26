@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Lens
 import Control.Monad.State
+import Control.Monad (when)
 import Database.Cassandra.CQL
 import Control.Concurrent
 
@@ -28,56 +29,70 @@ makeLenses ''CacheManager
 makeLenses ''Addr
 makeLenses ''ResolutionState
 
-fetchUpdates :: Consistency -> CacheManager -> [(ObjType, Key)] -> IO ()
-fetchUpdates const cm locs = do
+fetchUpdates :: CacheManager -> Consistency -> [(ObjType, Key)] -> IO ()
+fetchUpdates cm const = mapM_ $ fetchUpdate cm const
+
+fetchUpdate :: CacheManager -> Consistency -> (ObjType, Key) -> IO ()
+fetchUpdate cm const (ot, k) = do
+  -- Read the database
+  rows <- runCas (cm^.pool) $ cqlRead ot const k
+  -- Split the rows into effects and gc markers
+  let (effRows, gcMarkerRows) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val) ->
+        case val of
+          EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
+          GCMarker -> (effAcc, (sid,sqn,deps):gcAcc)) ([], []) rows
+  -- GC markers?
+  when (length gcMarkerRows /= 0) (error "GC Markers: unexpected!")
   cursor <- readMVar $ cm^.cursorMVar
-  (newEffMap, newAddrMap) <- foldM (getEffectsCore const cursor (cm^.pool)) (M.empty, M.empty) locs
+  let cursorAtKey = case M.lookup (ot, k) cursor of
+                      Nothing -> M.empty
+                      Just m -> m
+  -- Filter effects that were already seen.
+  let unseenRows = filter (\(sid, sqn, _, _) -> isUnseen cursorAtKey (Addr sid sqn)) effRows
+  -- Build datastructure for filtering out unresolved effects
+  let (effSet, depsMap) =
+        foldl (\(setAcc, mapAcc) (sid, sqn, deps, eff) ->
+                  (S.insert (Addr sid sqn, eff) setAcc,
+                   M.insert (Addr sid sqn) (NotVisited deps) mapAcc))
+          (S.empty, M.empty) unseenRows
+  -- filter unresolved effects i,e) effects whose causal cut is also not visible.
+  let filteredSet = filterUnresolved cursorAtKey depsMap effSet
   -- Update cache state
   cache <- takeMVar $ cm^.cacheMVar
   cursor <- takeMVar $ cm^.cursorMVar
   deps <- takeMVar $ cm^.depsMVar
-  let newCache = M.unionWith S.union newEffMap cache
+  -- Update cache
+  let newCache = M.unionWith S.union cache $ M.singleton (ot,k) filteredSet
   putMVar (cm^.cacheMVar) newCache
-  let newDeps = M.unionWith S.union newAddrMap deps
-  -- Create a new cursor map
-  let newCursorMap = M.map (S.foldl (\m (Addr sid sqn) ->
-          case M.lookup sid m of
-            Nothing -> M.insert sid sqn m
-            Just oldSqn -> if oldSqn < sqn then M.insert sid sqn m else m) M.empty) deps
-  -- merge cursors
-  let newCursor = M.unionWith (M.unionWith max) newCursorMap cursor
+  -- Update cursor
+  let cursorAtKey = case M.lookup (ot, k) cursor of {Nothing -> M.empty; Just m -> m}
+  let newCursorAtKey = S.foldl (\m (Addr sid sqn, _) ->
+                          case M.lookup sid m of
+                            Nothing -> M.insert sid sqn m
+                            Just oldSqn -> if oldSqn < sqn
+                                           then M.insert sid sqn m
+                                           else m) cursorAtKey filteredSet
+  let newCursor = M.insert (ot,k) newCursorAtKey cursor
   putMVar (cm^.cursorMVar) newCursor
+  -- Update dependence
+  let newDeps = M.unionWith S.union deps $ M.singleton (ot,k) (S.map (\(a,_) -> a) filteredSet)
   putMVar (cm^.depsMVar) newDeps
 
-getEffectsCore :: Consistency -> CursorMap -> Pool -> (CacheMap, NearestDepsMap)
-               -> (ObjType,Key) -> IO (CacheMap, NearestDepsMap)
-getEffectsCore const cursor pool acc (ot,k) = do
-    -- Read the database
-    rows <- runCas pool $ cqlRead ot const k
-    -- Filter effects that were already seen
-    let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
-    let unseenRows = filter (\(sid,sqn,_,_) -> isUnseenEffect cursorAtKey sid sqn) rows
-    if unseenRows == []
-    then return acc
-    else do
-      let effectRows = foldl (\acc v@(a,b,c,d) ->
-            case d of {EffectVal bs -> (a,b,c,bs):acc; otherwise -> acc}) [] unseenRows
-      -- Build datastructures
-      let (effSet, depsMap) = foldl (\(s1, m2) (sid,sqn,deps,eff) ->
-            (S.insert (Addr sid sqn, eff) s1,
-              M.insert (Addr sid sqn) (NotVisited deps) m2)) (S.empty, M.empty) effectRows
-      let filteredSet = filterUnresolved cursorAtKey depsMap effSet
-      let (newEffMap, newAddrMap) = acc
-      let newEffSet = filteredSet
-      let newAddrSet = S.map (\(addr, _) -> addr) filteredSet
-      return $ (M.insert (ot,k) newEffSet newEffMap, M.insert (ot,k) newAddrSet newAddrMap)
-  where
-    isUnseenEffect cursorAtKey sid sqn =
-      case M.lookup sid cursorAtKey of
-        Nothing -> True
-        Just cursorSqn -> sqn > cursorSqn
+-- Returns true if the given effect is not encapsulated by the cursor
+isUnseen :: CursorAtKey -> Addr -> Bool
+isUnseen cak (Addr sid sqn) =
+  case M.lookup sid cak of
+    Nothing -> True
+    Just cursorSqn -> sqn > cursorSqn
 
-filterUnresolved :: M.Map SessUUID SeqNo    -- Key Cursor
+-- Combines curors at a particular key. Since a cursor at a given (key, sessid)
+-- records the largest sequence number seen so far, given two cursors at some
+-- key k, the merge operation picks the larger of the sequence numbers for each
+-- sessid.
+mergeCursorsAtKey :: CursorAtKey -> CursorAtKey -> CursorAtKey
+mergeCursorsAtKey = M.unionWith max
+
+filterUnresolved :: CursorAtKey             -- Key Cursor
                  -> M.Map Addr VisitedState -- Input visited state
                  -> S.Set (Addr, Effect)    -- Unfiltered input
                  -> S.Set (Addr, Effect)    -- Filtered result
