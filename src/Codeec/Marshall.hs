@@ -53,11 +53,9 @@ decodeOperationPayload b =
     Left s -> error $ "decodeOperationPayload : " ++ s
     Right v -> v
 
-instance Serialize SessUUID where
-  put sid = S.put $ toByteString sid
-  get = do
-    sid <- S.get
-    return $ fromJust $ fromByteString sid
+instance Serialize UUID where
+  put = putLazyByteString . toByteString
+  get = fromJust . fromByteString <$> getLazyByteString 16
 
 instance Serialize Response where
   put (Response seqno res) = S.put (seqno, res)
@@ -88,11 +86,47 @@ instance CasType Cell where
 
 instance CasType Addr where
   putCas (Addr x y) = do
-    putLazyByteString $ toByteString x
+    put x
     (putWord64be . fromIntegral) y
   getCas = do
-    x <- fromJust . fromByteString <$> getLazyByteString 16
+    x <- get
     y <- fromIntegral <$> getWord64be
     return $ Addr x y
   casType _ = CBlob
 
+instance CasType TxnDep where
+  putCas (TxnDep ot (Key k) sid sqn) = do
+    let otbs = pack ot
+    putWord32be $ fromIntegral . Data.ByteString.length $ otbs
+    putByteString otbs
+    put k
+    put sid
+    putWord64be . fromIntegral $ sqn
+  getCas = do
+    length <- fromIntegral <$> getWord32be
+    otbs <- getByteString length
+    k <- get
+    sid <- get
+    sqn <- fromIntegral <$> getWord64be
+    return $ TxnDep (unpack otbs) (Key k) sid sqn
+
+instance Serialize TxnDep where
+  put = putCas
+  get = getCas
+
+instance OperationClass a => Serialize (Request a) where
+  put (ReqOper op) = do
+    putWord8 0
+    put op
+  put (ReqTxnCommit txid dep) = do
+    putWord8 1
+    put txid
+    put dep
+  get = do
+    i <- getWord8
+    case i of
+      0 -> ReqOper <$> get
+      1 -> do
+        txid <- get
+        dep <- get
+        return $ ReqTxnCommit txid dep

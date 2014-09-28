@@ -37,8 +37,8 @@ import Data.Maybe (fromJust)
 
 -- Simply an alias for Types.ObjType
 type TableName = String
-type RowValue = (UUID, SessUUID, SeqNo, S.Set Addr, Cell)
-type Row = (SessUUID, SeqNo, S.Set Addr, Cell)
+type RowValue = (UUID, SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
+type Row = (SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 
 --------------------------------------------------------------------------------
 -- Cassandra Link Layer
@@ -52,19 +52,20 @@ unlockedUUID = fromJust $ fromString $ "123e4567-e89b-12d3-a456-426655440000"
 -- the row) is interpreted as a "Cursor". All effects that are encapsulated by
 -- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
-mkCreateTable tname = query $ pack $ "create table " ++ tname ++ " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, value blob, primary key (objid, sessid, seqno)) "
+mkCreateTable tname = query $ pack $ "create table " ++ tname ++
+                      " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno)) "
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
 
 mkInsert :: TableName -> Query Write RowValue ()
-mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value) values (?, ?, ?, ?, ?)"
+mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value, txnid) values (?, ?, ?, ?, ?)"
 
 mkDelete :: TableName -> Query Write (UUID, SessUUID, SeqNo) ()
 mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and sessid = ? and seqno = ?"
 
 mkRead :: TableName -> Query Rows (UUID) Row
-mkRead tname = query $ pack $ "select sessid, seqno, deps, value from " ++ tname ++ " where objid = ? order by sessid, seqno"
+mkRead tname = query $ pack $ "select sessid, seqno, deps, value, txnid from " ++ tname ++ " where objid = ? order by sessid, seqno"
 
 -------------------------------------------------------------------------------
 
@@ -82,17 +83,43 @@ mkLockUpdate tname = query $ pack $ "update " ++ tname ++ "_LOCK set sessid = ? 
 
 -------------------------------------------------------------------------------
 
+mkCreateTxnTable :: Query Schema () ()
+mkCreateTxnTable = "create table Txns (txnid uuid, deps set<blob>, primary key (txnid))"
+
+mkDropTxnTable :: Query Schema () ()
+mkDropTxnTable = "drop table Txns"
+
+mkInsertTxnTable :: Query Write (TxnID, S.Set TxnDep) ()
+mkInsertTxnTable = "insert info Txns (txnid, deps) values (?, ?)"
+
+mkReadTxnTable :: Query Rows (TxnID) (S.Set TxnDep)
+mkReadTxnTable = "select deps from Txns where txnid = ?"
+
+-------------------------------------------------------------------------------
+
 cqlRead :: TableName -> Consistency -> Key -> Cas [Row]
 cqlRead tname c (Key k) = executeRows c (mkRead tname) k
 
 cqlInsert :: TableName -> Consistency -> Key -> Row -> Cas ()
-cqlInsert tname c (Key k) (sid,sqn,dep,val) = do
+cqlInsert tname c (Key k) (sid,sqn,dep,val,txid) = do
   if S.size dep > 0
-  then executeWrite c (mkInsert tname) (k,sid,sqn,dep,val)
-  else executeWrite c (mkInsert tname) (k,sid,sqn, S.singleton $ Addr sid 0, val)
+  then executeWrite c (mkInsert tname) (k,sid,sqn,dep,val,txid)
+  else executeWrite c (mkInsert tname) (k,sid,sqn, S.singleton $ Addr sid 0, val, txid)
 
 cqlDelete :: TableName -> Key -> SessUUID -> SeqNo -> Cas ()
 cqlDelete tname (Key k) sid sqn = executeWrite ALL (mkDelete tname) (k,sid,sqn)
+
+createTxnTable :: Cas ()
+createTxnTable = liftIO . print =<< executeSchema ALL mkCreateTxnTable ()
+
+dropTxnTable :: Cas ()
+dropTxnTable = liftIO . print =<< executeSchema ALL mkDropTxnTable ()
+
+insertTxn :: TxnID -> S.Set TxnDep -> Cas ()
+insertTxn txnid deps = executeWrite ONE mkInsertTxnTable (txnid, deps)
+
+readTxn :: TxnID -> Cas (Maybe (S.Set TxnDep))
+readTxn txnid = executeRow ONE mkReadTxnTable txnid
 
 createTable :: TableName -> Cas ()
 createTable tname = do

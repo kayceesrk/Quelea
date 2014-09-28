@@ -79,7 +79,6 @@ worker dtLib pool cache = do
   sock <- ZMQ.socket ctxt ZMQ.Rep
   pid <- getProcessID
   ZMQ.connect sock $ "ipc:///tmp/quelea/" ++ show pid
-
   {- loop forver servicing clients -}
   forever $ do
     binReq <- ZMQ.receive sock

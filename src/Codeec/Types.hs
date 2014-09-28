@@ -12,11 +12,14 @@ module Codeec.Types (
   OpFun(..),
   OperationClass(..),
   OperationPayload(..),
+  Request(..),
   Response(..),
 
   Key(..),
   Addr(..),
   SessUUID,
+  TxnID,
+  TxnDep(..),
   SeqNo,
 
   operationsTyConStr
@@ -68,6 +71,7 @@ data DatatypeLibrary a = DatatypeLibrary {
 
 newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
 
+type TxnID = UUID
 type SessUUID = UUID
 type SeqNo = Int64
 
@@ -80,6 +84,10 @@ data OperationPayload a = OperationPayload {
   _sqnReq     :: SeqNo
 }
 
+data Request a =
+    ReqOper (OperationPayload a)
+  | ReqTxnCommit TxnID (S.Set TxnDep)
+
 data Response = Response SeqNo ByteString
 
 operationsTyConStr :: String
@@ -89,6 +97,13 @@ data Addr = Addr {
   _sessid :: SessUUID,
   _seqno  :: SeqNo
 } deriving (Eq, Ord, Read, Show)
+
+data TxnDep = TxnDep {
+  _objTypeTx :: ObjType,
+  _keyTx     :: Key,
+  _sidTx     :: SessUUID,
+  _sqnTx     :: SeqNo
+} deriving (Eq, Ord)
 
 -- The type of value stored in a row of the cassandra table
 data Cell = EffectVal ByteString -- An effect value

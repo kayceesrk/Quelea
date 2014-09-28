@@ -31,7 +31,7 @@ fetchUpdate cm const (ot, k) = do
   -- Read the database
   rows <- runCas (cm^.pool) $ cqlRead ot const k
   -- Split the rows into effects and gc markers
-  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val) ->
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val,_) ->
         case val of
           EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
           GCMarker -> case gcAcc of

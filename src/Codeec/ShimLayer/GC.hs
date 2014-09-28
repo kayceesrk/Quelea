@@ -28,7 +28,7 @@ gcDB cm ot k gc = do
   getLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ALL k
   -- Split the rows into effects and gc markers
-  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val) ->
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val, _) ->
         case val of
           EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
           GCMarker -> case gcAcc of
@@ -54,7 +54,7 @@ gcDB cm ot k gc = do
   let gcAddr = Addr gcSid 1
   let (outRows, count) =
         foldl (\(acc, idx) eff ->
-                  ((gcSid, idx, S.singleton gcAddr, EffectVal eff):acc, idx+1))
+                  ((gcSid, idx, S.singleton gcAddr, EffectVal eff, Nothing):acc, idx+1))
               ([],2) gcedEffList
   putStrLn $ "gcDB: count=" ++ show (count-2)
   runCas (cm^.pool) $ do
@@ -71,7 +71,7 @@ gcDB cm ot k gc = do
                  Just oldSqn -> M.insert sid (max oldSqn sqn) m) M.empty addrList
     let newCursor = M.unionWith max am gcCursor
     let newDeps = S.fromList $ map (\(sid,sqn) -> Addr sid sqn) $ M.toList newCursor
-    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker)
+    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker, Nothing)
     -- Delete old rows
     mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
   releaseLock ot k gcSid $ cm^.pool

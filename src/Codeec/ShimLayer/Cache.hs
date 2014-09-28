@@ -110,7 +110,7 @@ writeEffect cm ot k addr eff origDeps const = do
     -- Update dependence
     putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
-  runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff)
+  runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, Nothing)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do
