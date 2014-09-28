@@ -47,7 +47,9 @@ fetchUpdate cm const (ot, k) = do
   let cursorAtKey = case M.lookup (ot, k) cursor of
                       Nothing -> gcCursor
                       Just m -> mergeCursorsAtKey m gcCursor
-  -- Filter effects that were already seen.
+  -- Filter effects that were already seen. Since the "cursorAtKey" includes
+  -- the gcCursor, those effects that were GC'ed will be considered to have been
+  -- already seen, and will not be included in the "unseenRows".
   let unseenRows = filter (\(sid, sqn, _, _) -> isUnseen cursorAtKey (Addr sid sqn)) effRows
   -- Build datastructure for filtering out unresolved effects
   let (effSet, depsMap) =
