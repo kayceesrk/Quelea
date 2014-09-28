@@ -7,7 +7,8 @@ module Codeec.ClientMonad (
   runSession,
   invoke,
   newKey,
-  getServerAddr
+  atomically,
+  getServerAddr,
 ) where
 
 import Codeec.Types
@@ -42,3 +43,10 @@ getServerAddr :: CSN String
 getServerAddr = do
   s <- use serverAddr
   return s
+
+atomically :: CSN a -> CSN a
+atomically m = do
+  get >>= liftIO . beginTxn >>= put
+  r <- m
+  get >>= liftIO . endTxn >>= put
+  return r

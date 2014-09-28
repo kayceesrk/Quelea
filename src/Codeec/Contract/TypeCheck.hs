@@ -196,9 +196,6 @@ dummyZ3Sort = do
   makeDatatype
 
 
-instance OperationClass () where
-  getObjType _ = fail "requesting ObjType of ()"
-
 -------------------------------------------------------------------------------
 -- Contract to Z3 translation
 

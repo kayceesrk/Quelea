@@ -47,7 +47,7 @@ mkGenSum foo ctxt =
       ctxt3 = foo ctxt2
   in encode <$> ctxt3
 
-decodeOperationPayload :: OperationClass a => ByteString -> OperationPayload a
+decodeOperationPayload :: OperationClass a => ByteString -> Request a
 decodeOperationPayload b =
   case decode b of
     Left s -> error $ "decodeOperationPayload : " ++ s

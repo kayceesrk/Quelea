@@ -60,6 +60,9 @@ type ObjType = String
 class (Show a, Read a, Eq a, Ord a) => OperationClass a where
   getObjType :: a -> String
 
+instance OperationClass () where
+  getObjType _ = fail "requesting ObjType of ()"
+
 type AvailabilityMap a = Map (ObjType, a) (GenOpFun, Availability)
 type SummaryMap = Map ObjType ([ByteString] -> [ByteString])
 type DependenceMap a = Map a (S.Set a)

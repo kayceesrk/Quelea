@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
 module Codeec.Client (
   Key,
@@ -10,13 +10,16 @@ module Codeec.Client (
   newKey,
   mkKey,
   getUUID,
-  getServerAddr
+  getServerAddr,
+  beginTxn,
+  endTxn
 ) where
 
 import Data.UUID
 import Codeec.Types
 import Codeec.NameService.SimpleBroker
 import Control.Lens
+import Control.Monad (when)
 import System.ZMQ4
 import Data.Serialize
 import Codeec.Marshall
@@ -24,13 +27,16 @@ import System.Random (randomIO)
 import Control.Applicative
 import Data.ByteString (cons)
 import qualified Data.Map as M
+import qualified Data.Set as S
+import Data.Maybe (fromJust)
 
 data Session = Session {
   _broker     :: Frontend,
   _server     :: Socket Req,
   _serverAddr :: String,
   _sessid     :: SessUUID,
-  _seqMap     :: M.Map (ObjType, Key) SeqNo
+  _seqMap     :: M.Map (ObjType, Key) SeqNo,
+  _curTxn     :: Maybe (TxnID, S.Set TxnDep)
 }
 
 makeLenses ''Session
@@ -47,10 +53,25 @@ beginSession fe = do
   -- Create a session id
   sessid <- randomIO
   -- Initialize session
-  return $ Session fe sock serverAddr sessid M.empty
+  return $ Session fe sock serverAddr sessid M.empty Nothing
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
+
+beginTxn :: Session -> IO Session
+beginTxn s = do
+  when (s^.curTxn /= Nothing) $ error "beginTxn: Nested transactions are not supported!"
+  txnID <- randomIO
+  return $ s {_curTxn = Just (txnID, S.empty)}
+
+endTxn :: Session -> IO Session
+endTxn s = do
+  when (s^.curTxn == Nothing) $ error "endTxn: No transaction in progress!"
+  let (txnID, deps) = fromJust $ s^.curTxn
+  let txnCommit :: Request () = ReqTxnCommit txnID deps
+  send (s^.server) [] $ encode txnCommit
+  receive (s^.server)
+  return $ s {_curTxn = Nothing}
 
 getServerAddr :: Session -> String
 getServerAddr s = s^.serverAddr
@@ -62,7 +83,7 @@ invoke s key operName arg = do
   let seqNo = case M.lookup (objType, key) $ s^.seqMap of
                 Nothing -> 0
                 Just s -> s
-  let req = OperationPayload objType key operName (encode arg) (s ^. sessid) seqNo
+  let req = ReqOper $ OperationPayload objType key operName (encode arg) (s ^. sessid) seqNo
   send (s^.server) [] $ encode req
   responseBlob <- receive (s^.server)
   let (Response newSeqNo resBlob) = decodeResponse responseBlob
@@ -70,7 +91,16 @@ invoke s key operName arg = do
     Left s -> error $ "invoke : decode failure " ++ s
     Right res -> do
       let newSeqMap = M.insert (objType, key) newSeqNo $ s^.seqMap
-      return (res, Session (s^.broker) (s^.server) (s^.serverAddr) (s^.sessid) newSeqMap)
+      let partialSessRV = Session (s^.broker) (s^.server) (s^.serverAddr)
+                                  (s^.sessid) newSeqMap
+      case s^.curTxn of
+        Nothing -> return (res, partialSessRV Nothing)
+        Just (txid, deps) ->
+          if newSeqNo == seqNo
+          then return (res, partialSessRV (Just (txid, deps)))
+          else do
+            let newDeps = S.insert (TxnDep objType key (s^.sessid) newSeqNo) deps
+            return (res, partialSessRV (Just (txid, newDeps)))
 
 newKey :: IO Key
 newKey = Key <$> randomIO
