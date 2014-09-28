@@ -23,6 +23,7 @@ makeLenses ''CacheManager
 
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
 gcDB cm ot k gc = do
+  -- Allocate new session id
   gcSid <- randomIO
   getLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ALL k
@@ -49,7 +50,7 @@ gcDB cm ot k gc = do
   let filteredSet = filterUnresolved gcCursor depsMap effSet
   let (addrList, effList) = unzip (S.toList filteredSet)
   let gcedEffList = gc effList
-  -- Allocate new session id
+  -- Allocate new gc address
   let gcAddr = Addr gcSid 1
   let (outRows, count) =
         foldl (\(acc, idx) eff ->
@@ -64,11 +65,16 @@ gcDB cm ot k gc = do
       Nothing -> return ()
       Just (sid, sqn, _) -> cqlDelete ot k sid sqn
     -- Insert marker
-    cqlInsert ot ALL k (gcSid, 1, S.fromList addrList, GCMarker)
+    let am = foldl (\m (Addr sid sqn) ->
+               case M.lookup sid m of
+                 Nothing -> M.insert sid sqn m
+                 Just oldSqn -> M.insert sid (max oldSqn sqn) m) M.empty addrList
+    let newCursor = M.unionWith max am gcCursor
+    let newDeps = S.fromList $ map (\(sid,sqn) -> Addr sid sqn) $ M.toList newCursor
+    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker)
     -- Delete old rows
     mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
   releaseLock ot k gcSid $ cm^.pool
-
 
 maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
 maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
