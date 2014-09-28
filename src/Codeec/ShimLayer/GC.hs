@@ -28,12 +28,15 @@ gcDB cm ot k gc = do
   getLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ALL k
   -- Split the rows into effects and gc markers
-  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val, _) ->
-        case val of
-          EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
-          GCMarker -> case gcAcc of
-                        Nothing -> (effAcc, Just (sid,sqn,deps))
-                        Just _ -> error "Multiple GC Markers") ([], Nothing) rows
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val, txnid) ->
+        case txnid of
+          Just _ -> error "gcDB: Cannot handle transactions yet!"
+          Nothing ->
+            case val of
+              EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
+              GCMarker -> case gcAcc of
+                            Nothing -> (effAcc, Just (sid,sqn,deps))
+                            Just _ -> error "Multiple GC Markers") ([], Nothing) rows
   -- Build the GC cursor
   let gcCursor = case gcMarker of
                    Nothing -> M.empty

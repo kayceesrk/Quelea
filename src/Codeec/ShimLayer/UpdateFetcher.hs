@@ -78,7 +78,7 @@ fetchUpdate cm const (ot, k) = do
   -- Update cursor
   let cursorAtKey = case M.lookup (ot, k) cursor of
                       Nothing -> gcCursor
-                      Just m -> mergeCursorsAtKey k gcCursor
+                      Just m -> mergeCursorsAtKey gcCursor m
   let newCursorAtKey = S.foldl (\m (Addr sid sqn, _) ->
                           case M.lookup sid m of
                             Nothing -> M.insert sid sqn m
