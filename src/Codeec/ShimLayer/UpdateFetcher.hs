@@ -74,7 +74,9 @@ fetchUpdate cm const (ot, k) = do
   let newCache = M.unionWith S.union cache $ M.singleton (ot,k) filteredSet
   putMVar (cm^.cacheMVar) newCache
   -- Update cursor
-  let cursorAtKey = case M.lookup (ot, k) cursor of {Nothing -> M.empty; Just m -> m}
+  let cursorAtKey = case M.lookup (ot, k) cursor of
+                      Nothing -> gcCursor
+                      Just m -> mergeCursorsAtKey k gcCursor
   let newCursorAtKey = S.foldl (\m (Addr sid sqn, _) ->
                           case M.lookup sid m of
                             Nothing -> M.insert sid sqn m
