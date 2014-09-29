@@ -49,8 +49,6 @@ type ReadRow = (SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 -- Cassandra Link Layer
 --------------------------------------------------------------------------------
 
-unlockedUUID :: SessUUID
-unlockedUUID = fromJust $ fromString $ "123e4567-e89b-12d3-a456-426655440000"
 
 -- A Row either corresponds to an effect (Cell is EffectVal bs) or a gc marker
 -- (Cell is GCMarker). In case of GCMarker, the dependence set (deps value in
@@ -142,7 +140,7 @@ tryGetLock tname (Key k) sid True = do
   if res then return True
   else tryGetLock tname (Key k) sid False
 tryGetLock tname (Key k) sid False = do
-  res <- executeTrans (mkLockUpdate tname) (sid, k, unlockedUUID)
+  res <- executeTrans (mkLockUpdate tname) (sid, k, knownUUID)
   if res then return True
   else tryGetLock tname (Key k) sid False
 
@@ -153,6 +151,6 @@ getLock tname k sid pool = runCas pool $ do
 
 releaseLock :: TableName -> Key -> SessUUID -> Pool -> IO ()
 releaseLock tname (Key k) sid pool = runCas pool $ do
-  res <- executeTrans (mkLockUpdate tname) (unlockedUUID, k, sid)
+  res <- executeTrans (mkLockUpdate tname) (knownUUID, k, sid)
   if res then return ()
   else error $ "releaseLock : key=" ++ show (Key k) ++ " sid=" ++ show sid

@@ -21,6 +21,7 @@ module Codeec.Types (
   TxnID,
   TxnDep(..),
   SeqNo,
+  knownUUID,
 
   operationsTyConStr
 ) where
@@ -106,7 +107,7 @@ data TxnDep = TxnDep {
   _keyTx     :: Key,
   _sidTx     :: SessUUID,
   _sqnTx     :: SeqNo
-} deriving (Eq, Ord)
+} deriving (Eq, Ord, Show)
 
 
 -- The type of value stored in a row of the cassandra table
@@ -118,3 +119,6 @@ data Cell = EffectVal ByteString -- An effect value
  - to the transactions to which the GC'ed effects belonged to. Otherwise, do
  - not GC effects that belong to a transaction.
  -}
+
+knownUUID :: SessUUID
+knownUUID = fromJust $ fromString $ "123e4567-e89b-12d3-a456-426655440000"

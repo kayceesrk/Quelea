@@ -36,13 +36,14 @@ type ThreadQueue = MVar ([MVar ()])
 
 data CacheManager = CacheManager {
   _cacheMVar        :: Cache,
-  _hwmMVar          :: MVar HwmMap,
   _cursorMVar       :: Cursor,
   _depsMVar         :: NearestDeps,
+  _lastGCAddrMVar   :: MVar (M.Map (ObjType, Key) SessUUID),
+  _includedTxnsMVar :: MVar (S.Set TxnID),
+
+  _hwmMVar          :: MVar HwmMap,
   _hotLocsMVar      :: HotLocs,
   _semMVar          :: Semaphore,
   _blockedMVar      :: ThreadQueue,
-  _pool             :: Pool,
-  _lastGCAddrMVar   :: MVar (Maybe SessUUID),
-  _includedTxnsMVar :: MVar (S.Set TxnID)
+  _pool             :: Pool
 }

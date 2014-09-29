@@ -34,7 +34,7 @@ import Data.Int (Int64)
 import qualified Data.Set as S
 import Data.Text hiding (map)
 import Debug.Trace
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, myThreadId, threadDelay)
 
 makeLenses ''Addr
 makeLenses ''DatatypeLibrary
@@ -42,6 +42,17 @@ makeLenses ''OperationPayload
 
 -- This is the maximum number of outstanding StickyAvailable requrests.
 #define NUM_WORKERS 5
+
+-- #define DEBUG
+
+debugPrint :: String -> IO ()
+#ifdef DEBUG
+debugPrint s = do
+  tid <- myThreadId
+  putStrLn $ "[" ++ (show tid) ++ "] " ++ s
+#else
+debugPrint _ = return ()
+#endif
 
 runShimNode :: OperationClass a
             => DatatypeLibrary a
@@ -87,11 +98,13 @@ worker dtLib pool cache = do
         {- Fetch the operation from the datatype library using the object type and
         - operation name. -}
         let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
+        debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
         (result, ctxtSize) <- case av of
           High -> doOp op cache req ONE
           Sticky -> processStickyOp req op cache
           Un -> processUnOp req op cache pool
         ZMQ.send sock [] $ encode result
+        debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
         maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
@@ -123,6 +136,7 @@ worker dtLib pool cache = do
       let (ot, k, sid) = (req^.objTypeReq, req^.keyReq, req^.sidReq)
       -- Get Lock
       getLock ot k sid pool
+      debugPrint $ "processUnOp: obtained lock"
       -- Read latest values at the key - under ALL
       fetchUpdates cache ALL [(ot,k)]
       -- Perform the op

@@ -36,17 +36,18 @@ makeLenses ''CacheManager
 initCacheManager :: Pool -> IO CacheManager
 initCacheManager pool = do
   cache <- newMVar M.empty
-  hwm <- newMVar M.empty
   cursor <- newMVar M.empty
   nearestDeps <- newMVar M.empty
+  lastGC <- newMVar M.empty
+  seenTxns <- newMVar S.empty
+  hwm <- newMVar M.empty
   hotLocs <- newMVar S.empty
   sem <- newEmptyMVar
   blockedList <- newMVar []
-  lastGC <- newMVar Nothing
-  seenTxns <- newMVar S.empty
-  forkIO $ signalGenerator sem
-  let cm = CacheManager cache hwm cursor nearestDeps hotLocs sem blockedList pool lastGC seenTxns
+  let cm = CacheManager cache cursor nearestDeps lastGC seenTxns hwm hotLocs
+                        sem blockedList pool
   forkIO $ cacheMgrCore cm
+  forkIO $ signalGenerator sem
   return $ cm
   where
     signalGenerator semMVar = forever $ do
