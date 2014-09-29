@@ -3,8 +3,6 @@
 
 module Codeec.ShimLayer.Types (
   CacheManager(..),
-  VisitedState(..),
-  ResolutionState(..),
   CacheMap,
   NearestDeps,
   NearestDepsMap,
@@ -37,23 +35,14 @@ type ThreadQueue = MVar ([MVar ()])
 
 
 data CacheManager = CacheManager {
-  _cacheMVar      :: Cache,
-  _hwmMVar        :: MVar HwmMap,
-  _cursorMVar     :: Cursor,
-  _depsMVar       :: NearestDeps,
-  _hotLocsMVar    :: HotLocs,
-  _semMVar        :: Semaphore,
-  _blockedMVar    :: ThreadQueue,
-  _pool           :: Pool,
-  _lastGCAddrMVar :: MVar (Maybe SessUUID)
+  _cacheMVar        :: Cache,
+  _hwmMVar          :: MVar HwmMap,
+  _cursorMVar       :: Cursor,
+  _depsMVar         :: NearestDeps,
+  _hotLocsMVar      :: HotLocs,
+  _semMVar          :: Semaphore,
+  _blockedMVar      :: ThreadQueue,
+  _pool             :: Pool,
+  _lastGCAddrMVar   :: MVar (Maybe SessUUID),
+  _includedTxnsMVar :: MVar (S.Set TxnID)
 }
-
-data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
-                  | NotVisited (S.Set Addr)
-
-data ResolutionState = ResolutionState {
-  _keyCursor    :: M.Map SessUUID SeqNo,
-  _visitedState :: M.Map Addr VisitedState
-}
-
-

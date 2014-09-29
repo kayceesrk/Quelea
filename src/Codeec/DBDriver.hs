@@ -3,7 +3,7 @@
 
 module Codeec.DBDriver (
   TableName(..),
-  RowValue(..),
+  ReadRow,
 
   createTable,
   dropTable,
@@ -11,7 +11,12 @@ module Codeec.DBDriver (
   cqlInsert,
   cqlDelete,
   getLock,
-  releaseLock
+  releaseLock,
+
+  createTxnTable,
+  dropTxnTable,
+  readTxn,
+  insertTxn
 ) where
 
 
@@ -37,8 +42,8 @@ import Data.Maybe (fromJust)
 
 -- Simply an alias for Types.ObjType
 type TableName = String
-type RowValue = (UUID, SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
-type Row = (SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
+type WriteRow = (UUID, SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
+type ReadRow = (SessUUID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 
 --------------------------------------------------------------------------------
 -- Cassandra Link Layer
@@ -58,13 +63,13 @@ mkCreateTable tname = query $ pack $ "create table " ++ tname ++
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
 
-mkInsert :: TableName -> Query Write RowValue ()
+mkInsert :: TableName -> Query Write WriteRow ()
 mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value, txnid) values (?, ?, ?, ?, ?, ?)"
 
 mkDelete :: TableName -> Query Write (UUID, SessUUID, SeqNo) ()
 mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and sessid = ? and seqno = ?"
 
-mkRead :: TableName -> Query Rows (UUID) Row
+mkRead :: TableName -> Query Rows (UUID) ReadRow
 mkRead tname = query $ pack $ "select sessid, seqno, deps, value, txnid from " ++ tname ++ " where objid = ? order by sessid, seqno"
 
 -------------------------------------------------------------------------------
@@ -97,10 +102,10 @@ mkReadTxnTable = "select deps from Txns where txnid = ?"
 
 -------------------------------------------------------------------------------
 
-cqlRead :: TableName -> Consistency -> Key -> Cas [Row]
+cqlRead :: TableName -> Consistency -> Key -> Cas [ReadRow]
 cqlRead tname c (Key k) = executeRows c (mkRead tname) k
 
-cqlInsert :: TableName -> Consistency -> Key -> Row -> Cas ()
+cqlInsert :: TableName -> Consistency -> Key -> ReadRow -> Cas ()
 cqlInsert tname c (Key k) (sid,sqn,dep,val,txid) = do
   if S.size dep > 0
   then executeWrite c (mkInsert tname) (k,sid,sqn,dep,val,txid)
