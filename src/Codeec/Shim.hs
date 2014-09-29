@@ -108,7 +108,9 @@ worker dtLib pool cache = do
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
         maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
-      ReqTxnCommit txid deps -> error "not implemented"
+      ReqTxnCommit txid deps -> do
+        runCas pool $ insertTxn txid deps
+        ZMQ.send sock [] $ Data.ByteString.singleton 0
   where
     processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous
@@ -145,9 +147,10 @@ worker dtLib pool cache = do
       releaseLock ot k sid pool
       return res
 
+-- TODO: FIX transaction does not see its own effects!
 doOp :: OperationClass a => GenOpFun -> CacheManager -> OperationPayload a -> Consistency -> IO (Response, Int)
 doOp op cache request const = do
-  let (OperationPayload objType key operName arg sessid seqno) = request
+  let (OperationPayload objType key operName arg sessid seqno mbtxnid) = request
   -- Fetch the current context
   (ctxt, deps) <- getContext cache objType key
   let (res, effM) = op ctxt arg
@@ -157,7 +160,7 @@ doOp op cache request const = do
     Nothing -> return $ Response seqno res
     Just eff -> do
       -- Write effect writes to DB, and potentially to cache
-      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const
+      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const mbtxnid
       return $ Response (seqno + 1) res
   -- return response
   return (result, Prelude.length ctxt)

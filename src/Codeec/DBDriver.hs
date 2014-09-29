@@ -93,7 +93,7 @@ mkDropTxnTable :: Query Schema () ()
 mkDropTxnTable = "drop table Txns"
 
 mkInsertTxnTable :: Query Write (TxnID, S.Set TxnDep) ()
-mkInsertTxnTable = "insert info Txns (txnid, deps) values (?, ?)"
+mkInsertTxnTable = "insert into Txns (txnid, deps) values (?, ?)"
 
 mkReadTxnTable :: Query Rows (TxnID) (S.Set TxnDep)
 mkReadTxnTable = "select deps from Txns where txnid = ?"

@@ -85,7 +85,8 @@ data OperationPayload a = OperationPayload {
   _opReq      :: a,
   _valReq     :: ByteString,
   _sidReq     :: SessUUID,
-  _sqnReq     :: SeqNo
+  _sqnReq     :: SeqNo,
+  _txnReq     :: Maybe TxnID
 }
 
 data Request a =

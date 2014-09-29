@@ -21,11 +21,27 @@ import Data.Maybe (fromJust)
 import Data.Word
 
 instance OperationClass a => Serialize (OperationPayload a) where
-  put (OperationPayload ot (Key k) on v sessid seqno) = S.put (pack $ show ot, toByteString k, pack $ show on, v, toByteString sessid, seqno)
+  put (OperationPayload ot k on v sessid seqno mbtxnid) = do
+    put ot
+    put k
+    put $ show on
+    put v
+    put sessid
+    put seqno
+    put mbtxnid
   get = do
-    (s1,k,s2,v,sid,sqn) <- S.get
-    return $ OperationPayload (read $ unpack s1) (Key $ fromJust $ fromByteString k) (read $ unpack s2) v
-      (fromJust $ fromByteString sid) sqn
+    ot <- get
+    k <- get
+    on <- get
+    v <- get
+    sessid <- get
+    seqno <- get
+    mbtxnid <- get
+    return $ OperationPayload ot k (read on) v sessid seqno mbtxnid
+
+instance Serialize Key where
+  put (Key k) = put k
+  get = Key <$> get
 
 mkGenOp :: (Effectish eff, Serialize arg, Serialize res)
           => OpFun eff arg res
@@ -109,6 +125,7 @@ instance CasType TxnDep where
     sid <- get
     sqn <- fromIntegral <$> getWord64be
     return $ TxnDep (unpack otbs) (Key k) sid sqn
+  casType _ = CBlob
 
 instance Serialize TxnDep where
   put = putCas

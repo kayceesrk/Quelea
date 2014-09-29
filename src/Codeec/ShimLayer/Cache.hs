@@ -89,16 +89,20 @@ getContext cm ot k = do
   let v2 = case M.lookup (ot,k) deps of {Nothing -> S.empty; Just s -> s}
   return (v1, v2)
 
-writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr -> Consistency -> IO ()
-writeEffect cm ot k addr eff origDeps const = do
+writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr
+            -> Consistency -> Maybe TxnID -> IO ()
+writeEffect cm ot k addr eff origDeps const mbtxnid = do
   let Addr sid sqn = addr
   -- Empty dependence set causes error with Cassandra serialization. Following circumvents it.
   let deps = if S.size origDeps == 0 then (S.fromList [Addr sid 0]) else origDeps
   -- Does cache include the previous effect?
   isPrevEffectAvailable <- doesCacheInclude cm ot k sid (sqn - 1)
+  let isTxn = case mbtxnid of {Nothing -> False; otherwise -> True}
   -- Only write to cache if the previous effect is available in the cache. This
-  -- maintains the cache to be a causally consistent cut of the updates.
-  when (sqn == 1 || isPrevEffectAvailable) $ do
+  -- maintains the cache to be a causally consistent cut of the updates. But do
+  -- not update cache if the effect is in a transaction. This prevents
+  -- uncommitted effects from being made visible.
+  when (not isTxn && (sqn == 1 || isPrevEffectAvailable)) $ do
     cache <- takeMVar $ cm^.cacheMVar
     cursor <- takeMVar $ cm^.cursorMVar
     -- curDeps may be different from the deps seen before the operation was performed.
@@ -112,7 +116,7 @@ writeEffect cm ot k addr eff origDeps const = do
     -- Update dependence
     putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
   -- Write to database
-  runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, Nothing)
+  runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do

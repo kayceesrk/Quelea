@@ -29,6 +29,7 @@ import Data.ByteString (cons)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Maybe (fromJust)
+import Data.Tuple.Select
 
 data Session = Session {
   _broker     :: Frontend,
@@ -83,7 +84,8 @@ invoke s key operName arg = do
   let seqNo = case M.lookup (objType, key) $ s^.seqMap of
                 Nothing -> 0
                 Just s -> s
-  let req = ReqOper $ OperationPayload objType key operName (encode arg) (s ^. sessid) seqNo
+  let req = ReqOper $ OperationPayload objType key operName (encode arg)
+                        (s ^. sessid) seqNo (sel1 <$> (s^.curTxn))
   send (s^.server) [] $ encode req
   responseBlob <- receive (s^.server)
   let (Response newSeqNo resBlob) = decodeResponse responseBlob
