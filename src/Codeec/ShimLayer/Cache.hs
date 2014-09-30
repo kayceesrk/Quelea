@@ -10,6 +10,7 @@ module Codeec.ShimLayer.Cache (
   doesCacheInclude,
   waitForCacheRefresh,
   fetchUpdates,
+  includedTxns
 ) where
 
 import Control.Concurrent
@@ -102,7 +103,7 @@ writeEffect cm ot k addr eff origDeps const mbtxnid = do
   -- maintains the cache to be a causally consistent cut of the updates. But do
   -- not update cache if the effect is in a transaction. This prevents
   -- uncommitted effects from being made visible.
-  when (not isTxn && (sqn == 1 || isPrevEffectAvailable)) $ do
+  when ((not isTxn) && (sqn == 1 || isPrevEffectAvailable)) $ do
     cache <- takeMVar $ cm^.cacheMVar
     cursor <- takeMVar $ cm^.cursorMVar
     -- curDeps may be different from the deps seen before the operation was performed.
@@ -118,7 +119,7 @@ writeEffect cm ot k addr eff origDeps const mbtxnid = do
   -- Write to database
   runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
 
-doesCacheInclude :: CacheManager -> ObjType -> Key -> SessUUID -> SeqNo -> IO Bool
+doesCacheInclude :: CacheManager -> ObjType -> Key -> SessID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do
   cursor <- readMVar $ cm^.cursorMVar
   case M.lookup (ot,k) cursor of
@@ -136,3 +137,8 @@ waitForCacheRefresh cm ot k = do
   putMVar (cm^.hotLocsMVar) $ S.insert (ot,k) hotLocs
   putMVar (cm^.blockedMVar) $ mv:blockedList
   takeMVar mv
+
+includedTxns :: CacheManager -> IO (S.Set TxnID)
+includedTxns cm = do
+  txns <- readMVar (cm^.includedTxnsMVar)
+  return txns

@@ -17,8 +17,8 @@ module Codeec.Types (
 
   Key(..),
   Addr(..),
-  SessUUID,
-  TxnID,
+  SessID(..),
+  TxnID(..),
   TxnDep(..),
   SeqNo,
   knownUUID,
@@ -36,10 +36,11 @@ import qualified Data.Map as Map
 import Data.ByteString.Char8 (pack, unpack)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
-import Data.UUID
+import Data.UUID hiding (show)
 import Data.Int (Int64)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
+import Data.Tuple.Select (sel1)
 
 class (CasType a, Serialize a) => Effectish a where
   summarize :: [a] -> [a]
@@ -73,40 +74,58 @@ data DatatypeLibrary a = DatatypeLibrary {
   _sumMap :: SummaryMap
 }
 
-newtype Key = Key { unKey :: UUID } deriving (Eq, Ord, Show)
+newtype Key = Key { unKey :: UUID } deriving (Eq, Ord)
 
-type TxnID = UUID
-type SessUUID = UUID
+instance Show Key where
+  show (Key uuid) = "Key " ++ (show . sel1 . toWords $ uuid)
+
+
 type SeqNo = Int64
+
+newtype TxnID = TxnID { unTxnID :: UUID } deriving (Eq, Ord)
+
+instance Show TxnID where
+  show (TxnID uuid) = "TxnID " ++ (show . sel1 . toWords $ uuid)
+
+newtype SessID = SessID { unSessID :: UUID } deriving (Eq, Ord)
+
+instance Show SessID where
+  show (SessID uuid) = "SessID " ++ (show . sel1 . toWords $ uuid)
+
+type EffectVal = ByteString
 
 data OperationPayload a = OperationPayload {
   _objTypeReq :: ObjType,
   _keyReq     :: Key,
   _opReq      :: a,
   _valReq     :: ByteString,
-  _sidReq     :: SessUUID,
+  _sidReq     :: SessID,
   _sqnReq     :: SeqNo,
-  _txnReq     :: Maybe TxnID
+  _txnReq     :: Maybe (TxnID, [EffectVal])
 }
 
 data Request a =
     ReqOper (OperationPayload a)
   | ReqTxnCommit TxnID (S.Set TxnDep)
 
-data Response = Response SeqNo ByteString
+data Response = Response {
+  seqno :: SeqNo,
+  result :: ByteString,
+  effect :: Maybe EffectVal
+}
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"
 
 data Addr = Addr {
-  _sessid :: SessUUID,
+  _sessid :: SessID,
   _seqno  :: SeqNo
-} deriving (Eq, Ord, Read, Show)
+} deriving (Eq, Ord, Show)
 
 data TxnDep = TxnDep {
   _objTypeTx :: ObjType,
   _keyTx     :: Key,
-  _sidTx     :: SessUUID,
+  _sidTx     :: SessID,
   _sqnTx     :: SeqNo
 } deriving (Eq, Ord, Show)
 
@@ -114,12 +133,12 @@ data TxnDep = TxnDep {
 -- The type of value stored in a row of the cassandra table
 data Cell = EffectVal ByteString -- An effect value
           | GCMarker             -- Marks a GC
-          deriving Eq
+          deriving (Show, Eq)
 
 {- TODO: GCMarker should include a set of transaction identifiers corresponding
  - to the transactions to which the GC'ed effects belonged to. Otherwise, do
  - not GC effects that belong to a transaction.
  -}
 
-knownUUID :: SessUUID
+knownUUID :: UUID
 knownUUID = fromJust $ fromString $ "123e4567-e89b-12d3-a456-426655440000"

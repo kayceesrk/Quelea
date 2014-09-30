@@ -35,6 +35,7 @@ import qualified Data.Set as S
 import Data.Text hiding (map)
 import Debug.Trace
 import Control.Concurrent (forkIO, myThreadId, threadDelay)
+import Data.Tuple.Select
 
 makeLenses ''Addr
 makeLenses ''DatatypeLibrary
@@ -93,6 +94,7 @@ worker dtLib pool cache = do
   {- loop forver servicing clients -}
   forever $ do
     binReq <- ZMQ.receive sock
+    txns <- includedTxns cache
     case decodeOperationPayload binReq of
       ReqOper req -> do
         {- Fetch the operation from the datatype library using the object type and
@@ -109,6 +111,7 @@ worker dtLib pool cache = do
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
         maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
       ReqTxnCommit txid deps -> do
+        putStrLn $ "Committing transaction " ++ show txid
         runCas pool $ insertTxn txid deps
         ZMQ.send sock [] $ Data.ByteString.singleton 0
   where
@@ -147,21 +150,23 @@ worker dtLib pool cache = do
       releaseLock ot k sid pool
       return res
 
--- TODO: FIX transaction does not see its own effects!
 doOp :: OperationClass a => GenOpFun -> CacheManager -> OperationPayload a -> Consistency -> IO (Response, Int)
 doOp op cache request const = do
-  let (OperationPayload objType key operName arg sessid seqno mbtxnid) = request
+  let (OperationPayload objType key operName arg sessid seqno mbtxid) = request
+  let clientEffList = case mbtxid of {Nothing -> []; Just (txid, effList) -> effList}
   -- Fetch the current context
   (ctxt, deps) <- getContext cache objType key
-  let (res, effM) = op ctxt arg
+  let (res, effM) = op (clientEffList ++ ctxt) arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
   result <- case effM of
-    Nothing -> return $ Response seqno res
+    Nothing -> return $ Response seqno res Nothing
     Just eff -> do
       -- Write effect writes to DB, and potentially to cache
-      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const mbtxnid
-      return $ Response (seqno + 1) res
+      writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const $ sel1 <$> mbtxid
+      case mbtxid of
+        Nothing -> return $ Response (seqno + 1) res Nothing
+        Just _ -> return $ Response (seqno + 1) res (Just eff)
   -- return response
   return (result, Prelude.length ctxt)
 

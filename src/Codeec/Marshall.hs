@@ -43,6 +43,19 @@ instance Serialize Key where
   put (Key k) = put k
   get = Key <$> get
 
+instance Serialize SessID where
+  put (SessID k) = put k
+  get = SessID <$> get
+
+instance Serialize TxnID where
+  put (TxnID t) = put t
+  get = TxnID <$> get
+
+instance CasType TxnID where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
 mkGenOp :: (Effectish eff, Serialize arg, Serialize res)
           => OpFun eff arg res
           -> ([eff] -> [eff])
@@ -74,10 +87,10 @@ instance Serialize UUID where
   get = fromJust . fromByteString <$> getLazyByteString 16
 
 instance Serialize Response where
-  put (Response seqno res) = S.put (seqno, res)
+  put (Response seqno res eff) = S.put (seqno, res, eff)
   get = do
-    (a,b) <- S.get
-    return $ Response a b
+    (a,b,c) <- S.get
+    return $ Response a b c
 
 decodeResponse :: ByteString -> Response
 decodeResponse b = case decode b of

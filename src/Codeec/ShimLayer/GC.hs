@@ -16,6 +16,7 @@ import qualified Data.Map as M
 import Control.Concurrent.MVar
 import System.Random (randomIO)
 import Database.Cassandra.CQL
+import Control.Applicative ((<$>))
 
 makeLenses ''CacheManager
 
@@ -26,7 +27,7 @@ data VisitedState = Visited Bool  -- Boolean indicates whether the effect is res
                   | NotVisited (S.Set Addr)
 
 data ResolutionState = ResolutionState {
-  _keyCursor    :: M.Map SessUUID SeqNo,
+  _keyCursor    :: M.Map SessID SeqNo,
   _visitedState :: M.Map Addr VisitedState
 }
 
@@ -35,7 +36,7 @@ makeLenses ''ResolutionState
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
 gcDB cm ot k gc = do
   -- Allocate new session id
-  gcSid <- randomIO
+  gcSid <- SessID <$> randomIO
   getLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ALL k
   -- Split the rows into effects and gc markers
@@ -98,7 +99,7 @@ maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
                Nothing -> []
                Just s -> map (\(a,e) -> e) $ S.toList s
   let newCtxt = gc ctxt
-  newUUID <- randomIO
+  newUUID <- SessID <$> randomIO
   let (newCache,_) = foldl (\(s,i) e -> (S.insert (Addr newUUID i, e) s, i+1)) (S.empty, 1) newCtxt
   hwm <- takeMVar $ cm^.hwmMVar
   putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
