@@ -39,7 +39,7 @@ data Session = Session {
   _serverAddr :: String,
   _sessid     :: SessID,
   _seqMap     :: M.Map (ObjType, Key) SeqNo,
-  _curTxn     :: Maybe (TxnID, S.Set TxnDep, M.Map (ObjType, Key) [Effect])
+  _curTxn     :: Maybe (TxnID, S.Set TxnDep, M.Map (ObjType, Key) (S.Set (Addr, Effect)))
 }
 
 makeLenses ''Session
@@ -105,13 +105,13 @@ invoke s key operName arg = do
             Nothing -> return (res, partialSessRV (Just (txid, deps, cache)))
             Just newEff -> do
               let newDeps = S.insert (TxnDep objType key (s^.sessid) newSeqNo) deps
-              let (_, el) = fromJust txnReq
-              let newCache = M.insert (objType, key) (newEff:el) cache
+              let (_, es) = fromJust txnReq
+              let newCache = M.insert (objType, key) (S.insert (Addr (s^.sessid) newSeqNo, newEff) es) cache
               return (res, partialSessRV (Just (txid, newDeps, newCache)))
   where
     mkTxnReq ot k Nothing = Nothing
     mkTxnReq ot k (Just (txid, _, cache)) =
-      Just (txid, case M.lookup (ot,k) cache of {Nothing -> []; Just el -> el})
+      Just (txid, case M.lookup (ot,k) cache of {Nothing -> S.empty; Just el -> el})
 
 newKey :: IO Key
 newKey = Key <$> randomIO

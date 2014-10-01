@@ -113,14 +113,16 @@ instance CasType Cell where
       1 -> return $ GCMarker
   casType _ = CBlob
 
-instance CasType Addr where
-  putCas (Addr x y) = do
-    put x
-    (putWord64be . fromIntegral) y
-  getCas = do
+instance Serialize Addr where
+  put (Addr x y) = put x >> put y
+  get = do
     x <- get
-    y <- fromIntegral <$> getWord64be
+    y <- get
     return $ Addr x y
+
+instance CasType Addr where
+  putCas = put
+  getCas = get
   casType _ = CBlob
 
 instance CasType TxnDep where

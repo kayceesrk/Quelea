@@ -101,7 +101,7 @@ data OperationPayload a = OperationPayload {
   _valReq     :: ByteString,
   _sidReq     :: SessID,
   _sqnReq     :: SeqNo,
-  _txnReq     :: Maybe (TxnID, [EffectVal])
+  _txnReq     :: Maybe (TxnID, S.Set (Addr, EffectVal))
 }
 
 data Request a =

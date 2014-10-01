@@ -111,7 +111,7 @@ worker dtLib pool cache = do
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
         maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
       ReqTxnCommit txid deps -> do
-        putStrLn $ "Committing transaction " ++ show txid
+        debugPrint $ "Committing transaction " ++ show txid
         runCas pool $ insertTxn txid deps
         ZMQ.send sock [] $ Data.ByteString.singleton 0
   where
@@ -153,10 +153,16 @@ worker dtLib pool cache = do
 doOp :: OperationClass a => GenOpFun -> CacheManager -> OperationPayload a -> Consistency -> IO (Response, Int)
 doOp op cache request const = do
   let (OperationPayload objType key operName arg sessid seqno mbtxid) = request
-  let clientEffList = case mbtxid of {Nothing -> []; Just (txid, effList) -> effList}
   -- Fetch the current context
-  (ctxt, deps) <- getContext cache objType key
-  let (res, effM) = op (clientEffList ++ ctxt) arg
+  (ctxtVanilla, depsVanilla) <- getContext cache objType key
+  -- Add any extra effects and deps
+  let (ctxt, deps) = case mbtxid of
+                       Nothing -> (ctxtVanilla, depsVanilla)
+                       Just (_,l) ->
+                         let (el, as) = S.foldl (\(el,as) (addr, eff) ->
+                                          (eff:el, S.insert addr as)) ([],S.empty) l
+                         in (el ++ ctxtVanilla, S.union as depsVanilla)
+  let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
   result <- case effM of
