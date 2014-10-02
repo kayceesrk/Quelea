@@ -19,7 +19,7 @@ import System.Directory
 import System.Posix.Process
 import Data.Serialize
 import Control.Applicative ((<$>))
-import Control.Monad (forever, replicateM)
+import Control.Monad (forever, replicateM, when)
 import Data.ByteString hiding (map, pack, putStrLn)
 import Data.Either (rights)
 import Data.Map (Map)
@@ -112,7 +112,7 @@ worker dtLib pool cache = do
         maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
       ReqTxnCommit txid deps -> do
         debugPrint $ "Committing transaction " ++ show txid
-        runCas pool $ insertTxn txid deps
+        when (S.size deps > 0) $ runCas pool $ insertTxn txid deps
         ZMQ.send sock [] $ encode ResCommit
       ReqSnapshot objs -> do
         fetchUpdates cache ALL $ S.toList objs

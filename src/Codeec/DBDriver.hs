@@ -39,6 +39,7 @@ import qualified Data.Set as S
 import Data.Text hiding (map)
 import Control.Monad.Trans (liftIO)
 import Data.Maybe (fromJust)
+import Control.Monad (when)
 
 -- Simply an alias for Types.ObjType
 type TableName = String
@@ -127,6 +128,7 @@ dropTxnTable = liftIO . print =<< executeSchema ALL mkDropTxnTable ()
 
 insertTxn :: TxnID -> S.Set TxnDep -> Cas ()
 insertTxn (TxnID txnid) deps = do
+  when (S.size deps == 0) $ error "insertTxn: Txn has no actions"
   executeWrite ONE mkInsertTxnTable (txnid, deps)
 
 readTxn :: TxnID -> Cas (Maybe (S.Set TxnDep))
