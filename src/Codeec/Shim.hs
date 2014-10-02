@@ -113,7 +113,14 @@ worker dtLib pool cache = do
       ReqTxnCommit txid deps -> do
         debugPrint $ "Committing transaction " ++ show txid
         runCas pool $ insertTxn txid deps
-        ZMQ.send sock [] $ Data.ByteString.singleton 0
+        ZMQ.send sock [] $ encode ResCommit
+      ReqSnapshot objs -> do
+        fetchUpdates cache ALL $ S.toList objs
+        snapshot <- snapshotCache cache
+        let filteredSnapshot = M.foldlWithKey (\m k v ->
+              if S.member k objs then M.insert k v m else m) M.empty snapshot
+        ZMQ.send sock [] $ encode $ ResSnapshot filteredSnapshot
+
   where
     processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous
@@ -153,28 +160,43 @@ worker dtLib pool cache = do
 doOp :: OperationClass a => GenOpFun -> CacheManager -> OperationPayload a -> Consistency -> IO (Response, Int)
 doOp op cache request const = do
   let (OperationPayload objType key operName arg sessid seqno mbtxid) = request
-  -- Fetch the current context
-  (ctxtVanilla, depsVanilla) <- getContext cache objType key
-  -- Add any extra effects and deps
-  let (ctxt, deps) = case mbtxid of
-                       Nothing -> (ctxtVanilla, depsVanilla)
-                       Just (_,l) ->
-                         let (el, as) = S.foldl (\(el,as) (addr, eff) ->
-                                          (eff:el, S.insert addr as)) ([],S.empty) l
-                         in (el ++ ctxtVanilla, S.union as depsVanilla)
+  -- Build the context
+  (ctxt, deps) <- buildContext objType key mbtxid
+  -- Perform the operation on this context
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
   result <- case effM of
-    Nothing -> return $ Response seqno res Nothing
+    Nothing -> return $ ResOper seqno res Nothing Nothing
     Just eff -> do
       -- Write effect writes to DB, and potentially to cache
       writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const $ sel1 <$> mbtxid
       case mbtxid of
-        Nothing -> return $ Response (seqno + 1) res Nothing
-        Just _ -> return $ Response (seqno + 1) res (Just eff)
+        Nothing -> return $ ResOper (seqno + 1) res Nothing Nothing
+        Just (_,MAV _ _) -> do
+          txns <- getInclTxnsAt cache objType key
+          return $ ResOper (seqno + 1) res (Just eff) (Just txns)
+        otherwise -> return $ ResOper (seqno + 1) res (Just eff) Nothing
   -- return response
   return (result, Prelude.length ctxt)
+  where
+    buildContext ot k Nothing = getContext cache ot k
+    buildContext ot k (Just (_, RC l)) = do
+      (ctxtVanilla, depsVanilla) <- buildContext ot k Nothing
+      let (el, as) = S.foldl (\(el,as) (addr, eff) ->
+                      (eff:el, S.insert addr as)) ([],S.empty) l
+      return (el ++ ctxtVanilla, S.union as depsVanilla)
+    buildContext ot k (Just (txid, MAV l txndeps)) = do
+      res <- doesCacheIncludeTxns cache txndeps
+      if res then buildContext ot k (Just (txid,RC l))
+      else do
+        fetchTxns cache txndeps
+        buildContext ot k (Just (txid, MAV l txndeps))
+    buildContext ot k (Just (_,PSI effSet)) = return $
+      S.foldl (\(el,as) (addr, eff) -> (eff:el, S.insert addr as))
+              ([], S.empty) effSet
+    buildContext ot k (Just (_,SER)) = error "Serializability not implemented"
+
 
 mkDtLib :: OperationClass a => [(a, (GenOpFun, GenSumFun), Availability)] -> DatatypeLibrary a
 mkDtLib l =

@@ -3,6 +3,7 @@
 module Codeec.ClientMonad (
   Key,
   Session,
+  TxnKind(..),
 
   runSession,
   invoke,
@@ -44,9 +45,9 @@ getServerAddr = do
   s <- use serverAddr
   return s
 
-atomically :: CSN a -> CSN a
-atomically m = do
-  get >>= liftIO . beginTxn >>= put
+atomically :: TxnKind -> CSN a -> CSN a
+atomically tk m = do
+  get >>= liftIO . (flip beginTxn tk) >>= put
   r <- m
   get >>= liftIO . endTxn >>= put
   return r

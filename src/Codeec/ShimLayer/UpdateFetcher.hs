@@ -18,6 +18,7 @@ import Control.Concurrent (myThreadId)
 import Debug.Trace
 import System.IO (hFlush, stdout)
 import System.Posix.Process (getProcessID)
+import Data.Tuple.Select
 
 import Codeec.Types
 import Codeec.ShimLayer.Types
@@ -67,7 +68,7 @@ data CacheUpdateState = CacheUpdateState {
   _cursorCUS     :: CursorMap,
   _depsCUS       :: NearestDepsMap,
   _lastGCAddrCUS :: M.Map (ObjType, Key) SessID,
-  _inclTxnsCUS   :: S.Set TxnID
+  _inclTxnsCUS   :: (S.Set TxnID, M.Map (ObjType, Key) (S.Set TxnID))
 }
 
 makeLenses ''CacheUpdateState
@@ -79,7 +80,7 @@ fetchUpdates cm const todoList = do
   inclTxns <- readMVar $ cm^.includedTxnsMVar
 
   let todoObjsCRS = S.fromList todoList
-  let crs = CollectRowsState inclTxns todoObjsCRS M.empty M.empty
+  let crs = CollectRowsState (sel1 inclTxns) todoObjsCRS M.empty M.empty
   CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) const) crs
   -- Construct uncovered effects and cursor (constructed from cursor in cache
   -- as well as any gc cursor, if present)
@@ -175,16 +176,17 @@ fetchUpdates cm const todoList = do
       let newDeps = M.unionWith S.union deps $ M.singleton (ot,k) (S.map (\(a,_,_) -> a) filteredSet)
       depsCUS .= newDeps
       -- Update included transactions
-      inclTxns <- use inclTxnsCUS
-      let newTxnsCRS = S.foldl (\acc (_,_,mbTxid) ->
+      (inclTxnsSet, inclTxnsMap) <- use inclTxnsCUS
+      let newTxns = S.foldl (\acc (_,_,mbTxid) ->
                         case mbTxid of
                           Nothing -> acc
                           Just txid -> S.insert txid acc) S.empty filteredSet
-      let newInclTxns = S.union inclTxns newTxnsCRS
+      let newInclTxns = (S.union inclTxnsSet newTxns, M.insertWith S.union (ot,k) newTxns inclTxnsMap)
       inclTxnsCUS .= newInclTxns
 
     newGCHasOccurred fromCache Nothing = False
     newGCHasOccurred fromCache (Just (fromDB,_,_)) = fromCache /= fromDB
+
 
 isCovered :: CursorMap -> ObjType -> Key -> SessID -> SeqNo -> Bool
 isCovered cursor ot k sid sqn =

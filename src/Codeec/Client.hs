@@ -3,6 +3,7 @@
 module Codeec.Client (
   Key,
   Session,
+  TxnKind(..),
 
   beginSession,
   endSession,
@@ -30,8 +31,20 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Maybe (fromJust)
 import Data.Tuple.Select
+import Debug.Trace
 
 type Effect = ByteString
+
+
+data TxnState = TxnState {
+  _txnidTS    :: TxnID,
+  _txnKindTS  :: TxnKind,
+  _txnEffsTS  :: S.Set TxnDep,
+  _snapshotTS :: M.Map (ObjType, Key) (S.Set (Addr, Effect)),
+  _seenTxnsTS :: S.Set TxnID
+} deriving Eq
+
+makeLenses ''TxnState
 
 data Session = Session {
   _broker     :: Frontend,
@@ -39,7 +52,8 @@ data Session = Session {
   _serverAddr :: String,
   _sessid     :: SessID,
   _seqMap     :: M.Map (ObjType, Key) SeqNo,
-  _curTxn     :: Maybe (TxnID, S.Set TxnDep, M.Map (ObjType, Key) (S.Set (Addr, Effect)))
+  _readObjs   :: S.Set (ObjType, Key),
+  _curTxn     :: Maybe TxnState
 }
 
 makeLenses ''Session
@@ -56,22 +70,31 @@ beginSession fe = do
   -- Create a session id
   sessid <- SessID <$> randomIO
   -- Initialize session
-  return $ Session fe sock serverAddr sessid M.empty Nothing
+  return $ Session fe sock serverAddr sessid M.empty S.empty Nothing
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
 
-beginTxn :: Session -> IO Session
-beginTxn s = do
+beginTxn :: Session -> TxnKind -> IO Session
+beginTxn s tk = do
   when (s^.curTxn /= Nothing) $ error "beginTxn: Nested transactions are not supported!"
   txnID <- TxnID <$> randomIO
-  return $ s {_curTxn = Just (txnID, S.empty, M.empty)}
+  snapshot <-
+    if (tk == ParallelSnapshotIsolation)
+    then do
+      let req :: Request () = ReqSnapshot $ s^.readObjs
+      send (s^.server) [] $ encode req
+      responseBlob <- receive (s^.server)
+      let (ResSnapshot s) = decodeResponse responseBlob
+      return $ Just s
+    else return Nothing
+  return $ s {_curTxn = Just $ TxnState txnID tk S.empty M.empty S.empty}
 
 endTxn :: Session -> IO Session
 endTxn s = do
   when (s^.curTxn == Nothing) $ error "endTxn: No transaction in progress!"
-  let (txnID, deps, _) = fromJust $ s^.curTxn
-  let txnCommit :: Request () = ReqTxnCommit txnID deps
+  let txnState = fromJust $ s^.curTxn
+  let txnCommit :: Request () = ReqTxnCommit (txnState^.txnidTS) (txnState^.txnEffsTS)
   send (s^.server) [] $ encode txnCommit
   receive (s^.server)
   return $ s {_curTxn = Nothing}
@@ -82,36 +105,59 @@ getServerAddr s = s^.serverAddr
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)
 invoke s key operName arg = do
-  let objType = getObjType operName
-  let seqNo = case M.lookup (objType, key) $ s^.seqMap of
+  let ot = getObjType operName
+  let seqNo = case M.lookup (ot, key) $ s^.seqMap of
                 Nothing -> 0
                 Just s -> s
-  let txnReq = mkTxnReq objType key $ s^.curTxn
-  let req = ReqOper $ OperationPayload objType key operName (encode arg)
+  let txnReq = mkTxnReq ot key $ s^.curTxn
+  let req = ReqOper $ OperationPayload ot key operName (encode arg)
                         (s ^. sessid) seqNo txnReq
   send (s^.server) [] $ encode req
   responseBlob <- receive (s^.server)
-  let (Response newSeqNo resBlob mbNewEff) = decodeResponse responseBlob
+  let (ResOper newSeqNo resBlob mbNewEff mbTxns) = decodeResponse responseBlob
   case decode resBlob of
     Left s -> error $ "invoke : decode failure " ++ s
     Right res -> do
-      let newSeqMap = M.insert (objType, key) newSeqNo $ s^.seqMap
+      let newSeqMap = M.insert (ot, key) newSeqNo $ s^.seqMap
+      let newReadObjs = S.insert (ot,key) $ s^.readObjs
       let partialSessRV = Session (s^.broker) (s^.server) (s^.serverAddr)
-                                  (s^.sessid) newSeqMap
+                                  (s^.sessid) newSeqMap newReadObjs
       case s^.curTxn of
         Nothing -> return (res, partialSessRV Nothing)
-        Just (txid, deps, cache) ->
+        Just orig@(TxnState txid txnKind deps cache seenTxns) -> do
           case mbNewEff of
-            Nothing -> return (res, partialSessRV (Just (txid, deps, cache)))
+            Nothing -> return (res, partialSessRV (Just orig))
             Just newEff -> do
-              let newDeps = S.insert (TxnDep objType key (s^.sessid) newSeqNo) deps
-              let (_, es) = fromJust txnReq
-              let newCache = M.insert (objType, key) (S.insert (Addr (s^.sessid) newSeqNo, newEff) es) cache
-              return (res, partialSessRV (Just (txid, newDeps, newCache)))
+              let newDeps = S.insert (TxnDep ot key (s^.sessid) newSeqNo) deps
+              let (_, txnPayload) = fromJust txnReq
+              let newSeenTxns = case mbTxns of
+                              Nothing -> seenTxns
+                              Just ts -> S.union ts seenTxns
+              let newCache =
+                    case getEffectSet txnPayload of
+                      Nothing -> cache
+                      Just es -> M.insert (ot, key) (S.insert (Addr (s^.sessid) newSeqNo, newEff) es) cache
+              return (res, partialSessRV (Just (TxnState txid txnKind newDeps newCache newSeenTxns)))
   where
+    getEffectSet SER = Nothing
+    getEffectSet (RC es) = Just es
+    getEffectSet (MAV es _) = Just es
+    getEffectSet (PSI es) = Just es
+
     mkTxnReq ot k Nothing = Nothing
-    mkTxnReq ot k (Just (txid, _, cache)) =
-      Just (txid, case M.lookup (ot,k) cache of {Nothing -> S.empty; Just el -> el})
+    mkTxnReq ot k (Just ts) =
+      let cache = ts^.snapshotTS
+          txid = ts^.txnidTS
+          es = case M.lookup (ot,k) cache of
+                 Nothing -> S.empty
+                 Just s -> s
+      in Just $ case ts^.txnKindTS of
+           ReadCommitted ->
+             (txid, RC es)
+           ParallelSnapshotIsolation ->
+             (txid, PSI es)
+           Serializability -> (txid, SER)
+           MonotonicAtomicView -> (txid, MAV es $ ts^.seenTxnsTS)
 
 newKey :: IO Key
 newKey = Key <$> randomIO

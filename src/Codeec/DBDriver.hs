@@ -126,7 +126,8 @@ dropTxnTable :: Cas ()
 dropTxnTable = liftIO . print =<< executeSchema ALL mkDropTxnTable ()
 
 insertTxn :: TxnID -> S.Set TxnDep -> Cas ()
-insertTxn (TxnID txnid) deps = executeWrite ONE mkInsertTxnTable (txnid, deps)
+insertTxn (TxnID txnid) deps = do
+  executeWrite ONE mkInsertTxnTable (txnid, deps)
 
 readTxn :: TxnID -> Cas (Maybe (S.Set TxnDep))
 readTxn (TxnID txnid) = executeRow ONE mkReadTxnTable txnid

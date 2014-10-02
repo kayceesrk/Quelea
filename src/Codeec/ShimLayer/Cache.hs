@@ -10,7 +10,11 @@ module Codeec.ShimLayer.Cache (
   doesCacheInclude,
   waitForCacheRefresh,
   fetchUpdates,
-  includedTxns
+  includedTxns,
+  doesCacheIncludeTxns,
+  fetchTxns,
+  snapshotCache,
+  getInclTxnsAt
 ) where
 
 import Control.Concurrent
@@ -26,6 +30,7 @@ import Database.Cassandra.CQL
 import Control.Monad.State
 import System.IO
 import Control.Applicative ((<$>))
+import Data.Tuple.Select
 
 import Codeec.Types
 import Codeec.ShimLayer.Types
@@ -40,7 +45,7 @@ initCacheManager pool = do
   cursor <- newMVar M.empty
   nearestDeps <- newMVar M.empty
   lastGC <- newMVar M.empty
-  seenTxns <- newMVar S.empty
+  seenTxns <- newMVar (S.empty, M.empty)
   hwm <- newMVar M.empty
   hotLocs <- newMVar S.empty
   sem <- newEmptyMVar
@@ -57,6 +62,13 @@ initCacheManager pool = do
       then tryPutMVar semMVar ()
       else return True
       threadDelay 1000000 -- 1 second
+
+getInclTxnsAt :: CacheManager -> ObjType -> Key -> IO (S.Set TxnID)
+getInclTxnsAt cm ot k = do
+  inclTxns <- readMVar $ cm^.includedTxnsMVar
+  case M.lookup (ot,k) $ sel2 inclTxns of
+    Nothing -> return S.empty
+    Just s -> return s
 
 addHotLocation :: CacheManager -> ObjType -> Key -> IO ()
 addHotLocation cm ot k = do
@@ -92,10 +104,8 @@ getContext cm ot k = do
 
 writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr
             -> Consistency -> Maybe TxnID -> IO ()
-writeEffect cm ot k addr eff origDeps const mbtxnid = do
+writeEffect cm ot k addr eff deps const mbtxnid = do
   let Addr sid sqn = addr
-  -- Empty dependence set causes error with Cassandra serialization. Following circumvents it.
-  let deps = if S.size origDeps == 0 then (S.fromList [Addr sid 0]) else origDeps
   -- Does cache include the previous effect?
   isPrevEffectAvailable <- doesCacheInclude cm ot k sid (sqn - 1)
   let isTxn = case mbtxnid of {Nothing -> False; otherwise -> True}
@@ -141,4 +151,28 @@ waitForCacheRefresh cm ot k = do
 includedTxns :: CacheManager -> IO (S.Set TxnID)
 includedTxns cm = do
   txns <- readMVar (cm^.includedTxnsMVar)
-  return txns
+  return $ sel1 txns
+
+doesCacheIncludeTxns :: CacheManager -> S.Set TxnID -> IO Bool
+doesCacheIncludeTxns cm deps = do
+  incl <- includedTxns cm
+  return $ deps `S.isSubsetOf` incl
+
+fetchTxns :: CacheManager -> S.Set TxnID -> IO ()
+fetchTxns cm deps = do
+  incl <- includedTxns cm
+  let diffSet = S.difference deps incl
+  objs <- foldM (\acc txid -> do
+            objs <- getObjs txid
+            return $ S.union acc objs) S.empty $ S.toList diffSet
+  fetchUpdates cm ONE (S.toList objs)
+  where
+    getObjs txid = do
+      res <- runCas (cm^.pool) $ readTxn txid
+      case res of
+        Nothing -> return $ S.empty
+        Just s -> return $ S.map (\(TxnDep ot k _ _) -> (ot,k)) s
+
+snapshotCache :: CacheManager -> IO CacheMap
+snapshotCache cm = do
+  readMVar $ cm^.cacheMVar

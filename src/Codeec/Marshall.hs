@@ -87,10 +87,29 @@ instance Serialize UUID where
   get = fromJust . fromByteString <$> getLazyByteString 16
 
 instance Serialize Response where
-  put (Response seqno res eff) = S.put (seqno, res, eff)
+  put (ResOper seqno res eff txns) = do
+    put (0::Word8)
+    put seqno
+    put res
+    put eff
+    put txns
+  put (ResSnapshot v) = do
+    put (1::Word8)
+    put v
+  put ResCommit = put (2::Word8)
   get = do
-    (a,b,c) <- S.get
-    return $ Response a b c
+    i::Word8 <- get
+    case i of
+      0 -> do
+        seqno <- get
+        res <- get
+        eff <- get
+        txns <- get
+        return $ ResOper seqno res eff txns
+      1 -> do
+        v <- get
+        return $ ResSnapshot v
+      2 -> return ResCommit
 
 decodeResponse :: ByteString -> Response
 decodeResponse b = case decode b of
@@ -125,6 +144,29 @@ instance CasType Addr where
   getCas = get
   casType _ = CBlob
 
+instance Serialize TxnPayload where
+  put (RC wb) = do
+    put (0::Word8)
+    put wb
+  put (MAV wb deps) = do
+    put (1::Word8)
+    put wb
+    put deps
+  put (PSI snapshot) = do
+    put (2::Word8)
+    put snapshot
+  put SER = put (3::Word8)
+  get = do
+    i::Word8 <- get
+    case i of
+      0 -> RC <$> get
+      1 -> do
+        x <- get
+        y <- get
+        return $ MAV x y
+      2 -> PSI <$> get
+      3 -> return SER
+
 instance CasType TxnDep where
   putCas (TxnDep ot (Key k) sid sqn) = do
     let otbs = pack ot
@@ -154,6 +196,9 @@ instance OperationClass a => Serialize (Request a) where
     putWord8 1
     put txid
     put dep
+  put (ReqSnapshot s) = do
+    putWord8 2
+    put s
   get = do
     i <- getWord8
     case i of
@@ -162,3 +207,6 @@ instance OperationClass a => Serialize (Request a) where
         txid <- get
         dep <- get
         return $ ReqTxnCommit txid dep
+      2 -> do
+        s <- get
+        return $ ReqSnapshot s

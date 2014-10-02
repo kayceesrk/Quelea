@@ -14,6 +14,8 @@ module Codeec.Types (
   OperationPayload(..),
   Request(..),
   Response(..),
+  TxnPayload(..),
+  TxnKind(..),
 
   Key(..),
   Addr(..),
@@ -40,6 +42,7 @@ import Data.UUID hiding (show)
 import Data.Int (Int64)
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
+import qualified Data.Map as M
 import Data.Tuple.Select (sel1)
 
 class (CasType a, Serialize a) => Effectish a where
@@ -49,6 +52,11 @@ type OpFun eff arg res = [eff] -> arg -> (res, Maybe eff)
 type GenOpFun = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
 type GenSumFun = [ByteString] -> [ByteString]
 data Availability = High | Sticky | Un deriving (Show, Eq, Ord)
+
+data TxnKind = ReadCommitted
+             | MonotonicAtomicView
+             | ParallelSnapshotIsolation
+             | Serializability deriving (Show, Eq, Ord)
 
 instance Show GenOpFun where
   show f = "GenOpFun"
@@ -94,6 +102,12 @@ instance Show SessID where
 
 type EffectVal = ByteString
 
+data TxnPayload = RC  {writeBuffer :: S.Set (Addr, EffectVal)}
+                | MAV {writeBuffer :: S.Set (Addr, EffectVal),
+                       txnDepsMAV :: S.Set TxnID}
+                | PSI {cacheSI :: S.Set (Addr, EffectVal)}
+                | SER
+
 data OperationPayload a = OperationPayload {
   _objTypeReq :: ObjType,
   _keyReq     :: Key,
@@ -101,18 +115,21 @@ data OperationPayload a = OperationPayload {
   _valReq     :: ByteString,
   _sidReq     :: SessID,
   _sqnReq     :: SeqNo,
-  _txnReq     :: Maybe (TxnID, S.Set (Addr, EffectVal))
+  _txnReq     :: Maybe (TxnID, TxnPayload)
 }
 
 data Request a =
     ReqOper (OperationPayload a)
   | ReqTxnCommit TxnID (S.Set TxnDep)
+  | ReqSnapshot (S.Set (ObjType,Key))
 
-data Response = Response {
-  seqno :: SeqNo,
-  result :: ByteString,
-  effect :: Maybe EffectVal
-}
+data Response = ResOper {
+                  seqno :: SeqNo,
+                  result :: ByteString,
+                  effect :: Maybe EffectVal,  {- Only relevant for RC, MAV and PSI transactions -}
+                  coveredTxns :: Maybe (S.Set TxnID)} {- Only relevant for MAV transactions -}
+              | ResSnapshot (M.Map (ObjType, Key) (S.Set (Addr, EffectVal)))
+              | ResCommit
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"
