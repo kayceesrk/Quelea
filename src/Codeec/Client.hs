@@ -139,7 +139,6 @@ invoke s key operName arg = do
                       Just es -> M.insert (ot, key) (S.insert (Addr (s^.sessid) newSeqNo, newEff) es) cache
               return (res, partialSessRV (Just (TxnState txid txnKind newDeps newCache newSeenTxns)))
   where
-    getEffectSet SER = Nothing
     getEffectSet (RC es) = Just es
     getEffectSet (MAV es _) = Just es
     getEffectSet (PSI es) = Just es
@@ -156,7 +155,6 @@ invoke s key operName arg = do
              (txid, RC es)
            ParallelSnapshotIsolation ->
              (txid, PSI es)
-           Serializability -> (txid, SER)
            MonotonicAtomicView -> (txid, MAV es $ ts^.seenTxnsTS)
 
 newKey :: IO Key

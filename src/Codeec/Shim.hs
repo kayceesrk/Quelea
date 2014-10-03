@@ -194,7 +194,6 @@ doOp op cache request const = do
     buildContext ot k (Just (_,PSI effSet)) = return $
       S.foldl (\(el,as) (addr, eff) -> (eff:el, S.insert addr as))
               ([], S.empty) effSet
-    buildContext ot k (Just (_,SER)) = error "Serializability not implemented"
 
 
 mkDtLib :: OperationClass a => [(a, (GenOpFun, GenSumFun), Availability)] -> DatatypeLibrary a

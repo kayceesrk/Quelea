@@ -55,8 +55,7 @@ data Availability = High | Sticky | Un deriving (Show, Eq, Ord)
 
 data TxnKind = ReadCommitted
              | MonotonicAtomicView
-             | ParallelSnapshotIsolation
-             | Serializability deriving (Show, Eq, Ord)
+             | ParallelSnapshotIsolation deriving (Show, Eq, Ord)
 
 instance Show GenOpFun where
   show f = "GenOpFun"
@@ -106,7 +105,6 @@ data TxnPayload = RC  {writeBuffer :: S.Set (Addr, EffectVal)}
                 | MAV {writeBuffer :: S.Set (Addr, EffectVal),
                        txnDepsMAV :: S.Set TxnID}
                 | PSI {cacheSI :: S.Set (Addr, EffectVal)}
-                | SER
 
 data OperationPayload a = OperationPayload {
   _objTypeReq :: ObjType,
