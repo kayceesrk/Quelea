@@ -120,7 +120,6 @@ worker dtLib pool cache = do
         let filteredSnapshot = M.foldlWithKey (\m k v ->
               if S.member k objs then M.insert k v m else m) M.empty snapshot
         ZMQ.send sock [] $ encode $ ResSnapshot filteredSnapshot
-
   where
     processStickyOp req op cache =
       -- Check whether this is the first effect in the session <= previous

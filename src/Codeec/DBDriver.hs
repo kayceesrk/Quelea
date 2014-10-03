@@ -102,11 +102,24 @@ mkReadTxnTable = "select deps from Txns where txnid = ?"
 
 -------------------------------------------------------------------------------
 
+mkCreateGlobalLockTable :: Query Schema () ()
+mkCreateGlobalLockTable = "create table GlobalLock (id uuid, txnid uuid, primary key id)"
+
+mkDropGlobalLockTable :: Query Schema () ()
+mkDropGlobalLockTable = "drop table GlobalLock"
+
+mkGlobalLockInsert :: Query Write (UUID, UUID) ()
+mkGlobalLockInsert = "insert into GlobalLock (id, txnid) values (?,?)"
+
+mkGlobalLockUpdate :: Query Write (UUID {- New TxnID -}, UUID {- ID -}, UUID {- Old TxnID -}) ()
+mkGlobalLockUpdate = "update GlobalLock set txnid = ? where id = ? if txnid = ?"
+
+-------------------------------------------------------------------------------
+
 cqlRead :: TableName -> Consistency -> Key -> Cas [ReadRow]
 cqlRead tname c (Key k) = do
   rows <- executeRows c (mkRead tname) k
   return $ map (\(sid, sqn, deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
-
 
 cqlInsert :: TableName -> Consistency -> Key -> ReadRow -> Cas ()
 cqlInsert tname c (Key k) (SessID sid,sqn,dep,val,txid) = do
@@ -164,3 +177,20 @@ releaseLock tname (Key k) (SessID sid) pool = runCas pool $ do
   res <- executeTrans (mkLockUpdate tname) (knownUUID, k, sid)
   if res then return ()
   else error $ "releaseLock : key=" ++ show (Key k) ++ " sid=" ++ show sid
+
+createGlobalLockTable :: Cas ()
+createGlobalLockTable = do
+  liftIO . print =<< executeSchema ALL mkCreateGlobalLockTable ()
+  executeWrite ALL mkGlobalLockInsert (knownUUID, knownUUID)
+
+getGlobalLock :: TxnID -> Pool -> IO ()
+getGlobalLock (TxnID txnid) pool = runCas pool loop
+  where
+    loop = do
+      success <- executeTrans mkGlobalLockUpdate (txnid, knownUUID, knownUUID)
+      when (not success) loop
+
+releaseGlobalLock :: TxnID -> Pool -> IO ()
+releaseGlobalLock (TxnID txnid) pool = runCas pool $ do
+  success <- executeTrans mkGlobalLockUpdate (knownUUID, knownUUID, txnid)
+  when (not success) (error $ "releaseGlobalLock: key=" ++ show (TxnID txnid))
