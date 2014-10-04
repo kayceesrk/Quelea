@@ -33,6 +33,20 @@ data ResolutionState = ResolutionState {
 
 makeLenses ''ResolutionState
 
+{- TODO: How to GC a transactional effect?
+ -----------------------------------------
+ - When GCing a set of effects {a@t1,b@t2} belonging to transactions t1 and t2,
+ - one needs to ensure that the transaction markers are preserved after the GC.
+ - Assume c is the new effect that summarizes a and b, and GCM is the gc
+ - marker. Now the final state after GC will be:
+
+    {c} --introduced by--> {GCM@{t1,t2}} --GCs--> {a,b}
+
+ - where the set of transactions of the effects that were GCed are included in
+ - the GC marker. Now, if c is included in any shim layer node, the
+ - transactions t1 and t2 also need to be processed.
+ -}
+
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
 gcDB cm ot k gc = do
   -- Allocate new session id
@@ -40,9 +54,9 @@ gcDB cm ot k gc = do
   getLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ALL k
   -- Split the rows into effects and gc markers
-  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val, txnid) ->
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val,txnid) ->
         case txnid of
-          Just _ -> error "gcDB: Cannot handle transactions yet!"
+          Just _ -> error "gcDB: Cannot handle transactions yet! TODO."
           Nothing ->
             case val of
               EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
