@@ -2,7 +2,8 @@
 
 module Codeec.TH (
   mkOperations,
-  checkOp
+  checkOp,
+  checkTxn
 ) where
 
 
@@ -42,4 +43,9 @@ mkOperations l = do
 checkOp :: OperationClass a => a -> Contract a -> ExpQ
 checkOp kind c = do
   a <- classifyOperContract c $ show kind
+  lift a
+
+checkTxn :: OperationClass a => String -> Fol a -> ExpQ
+checkTxn str c = do
+  a <- classifyTxnContract c str
   lift a

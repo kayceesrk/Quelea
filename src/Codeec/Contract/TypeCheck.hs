@@ -4,6 +4,7 @@ module Codeec.Contract.TypeCheck (
   classifyOperContract,
   classifyTxnContract,
   isValid,
+  isSat,
   fol2Z3Ctrt
 ) where
 
@@ -32,9 +33,9 @@ makeLenses ''Z3CtrtState
 -------------------------------------------------------------------------------
 -- Helper
 
--- #define DEBUG_SHOW
--- #define DEBUG_CHECK
--- #define DEBUG_SANITY
+#define DEBUG_SHOW
+#define DEBUG_CHECK
+#define DEBUG_SANITY
 
 check :: Z3 Result
 #ifdef DEBUG_SHOW
@@ -322,16 +323,32 @@ assertBasicAxioms :: StateT Z3CtrtState Z3 ()
 assertBasicAxioms = do
   assertProp "ThinAir" $ fol2Z3Ctrt thinAir
   assertProp "doVis" $ fol2Z3Ctrt doVis
-  assertProp "soTrans" $ fol2Z3Ctrt $ relTrans so
-  assertProp "sameTxnTrans" $ fol2Z3Ctrt $ relTrans sameTxn
-  assertProp "reflSameTrans" $ fol2Z3Ctrt $ reflSameTrans
+  assertProp "soTrans" $ fol2Z3Ctrt $ transRel so
+
+  assertProp "reflRelSameTxn" $ fol2Z3Ctrt $ reflRel sameTxn
+  assertProp "symRelSameTxn" $ fol2Z3Ctrt $ symRel sameTxn
+  assertProp "transRelSameTxn" $ fol2Z3Ctrt $ transRel sameTxn
+  assertProp "txnFollowsSess" $ fol2Z3Ctrt $ txnFollowsSess
+
+  assertProp "reflRelSameObj" $ fol2Z3Ctrt $ reflRel sameObj
+  assertProp "symRelSameObj" $ fol2Z3Ctrt $ symRel sameObj
+  assertProp "transRelSameObj" $ fol2Z3Ctrt $ transRel sameObj
+
   return ()
   where
     thinAir :: Fol () = forall_ $ \x -> liftProp . Not $ hb x x
-    doVis :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $ vis a b ⇒ appRel SameObj a b
-    relTrans :: (Effect -> Effect -> Prop ()) -> Fol ()
-    relTrans rel = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $ rel a b ∧ rel b c ⇒  rel a c
-    reflSameTrans :: Fol () = forall_ $ \x -> liftProp $ sameTxn x x
+    doVis :: Fol () = forall2_ $ \a b -> liftProp $ vis a b ⇒ appRel SameObj a b
+    txnFollowsSess :: Fol () = forall2_ $ \a b -> liftProp $ sameTxn a b ⇒  (so a b ∨ so b a ∨ sameEff a b)
+
+    reflRel :: (Effect -> Effect -> Prop ()) -> Fol ()
+    reflRel rel = forall_ $ \x -> liftProp $ rel x x
+
+    symRel :: (Effect -> Effect -> Prop ()) -> Fol ()
+    symRel rel = forall2_ $ \a b -> liftProp $ rel a b ⇒  rel b a
+
+    transRel :: (Effect -> Effect -> Prop ()) -> Fol ()
+    transRel rel = forall3_ $ \a b c -> liftProp $ rel a b ∧ rel b c ⇒  rel a c
+
 
 mkZ3CtrtState :: Sort -> Z3 Z3CtrtState
 mkZ3CtrtState operSort = do
@@ -387,14 +404,14 @@ cv :: Contract ()
 cv x = forall2_ $ \a b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
 
 rc :: Fol ()
-rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObj [a,b,c] ∧ vis a c ⇒ vis b c
+rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
 
 mav :: Fol ()
-mav = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj [b,d] ∧ vis c a ∧
+mav = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧
                                AppRel (So ∪ SameEff) a b ⇒ vis d b
 
 psi :: Fol ()
-psi = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj [b,d] ∧ vis c a ⇒ vis d b
+psi = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b
 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
@@ -513,3 +530,10 @@ isValid str c = typecheck dummyZ3Sort $ do
   assertBasicAxioms
   assertProp str $ not_ $ fol2Z3Ctrt c
   lift $ res2Bool <$> check
+
+isSat :: OperationClass a => String -> Fol a -> IO Bool
+isSat str c = typecheck dummyZ3Sort $ do
+  assertBasicAxioms
+  assertProp str $ fol2Z3Ctrt c
+  r <- lift $ check
+  return $ case r of {Unsat -> False; Sat -> True}

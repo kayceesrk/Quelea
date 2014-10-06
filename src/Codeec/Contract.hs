@@ -9,8 +9,11 @@ module Codeec.Contract (
   vis,
   so,
   soo,
-  sameeff,
+  sameEff,
   appRel,
+  sameObj,
+  sameObjList,
+  trans,
   hb,
   (∩),
   (∪),
@@ -21,8 +24,13 @@ module Codeec.Contract (
 
   liftProp,
   forall_,
+  forall2_,
+  forall3_,
+  forall4_,
   forallQ_,
   isValid,
+  isSat,
+
   fol2Z3Ctrt
 ) where
 
