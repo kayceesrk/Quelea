@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse #-}
 
 module Codeec.Contract.TypeCheck (
-  classifyContract,
+  classifyOperContract,
+  classifyTxnContract,
   isValid,
   fol2Z3Ctrt
 ) where
@@ -206,8 +207,9 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
   case r of
     Vis -> mkApp1 visRel e1 e2
     So -> mkApp1 soRel e1 e2
-    Sameobj -> mkApp1 sameobjRel e1 e2
-    Sameeff -> do
+    SameObj -> mkApp1 sameobjRel e1 e2
+    SameTxn -> mkApp1 sameTxnRel e1 e2
+    SameEff -> do
       a1 <- lookupEff e1
       a2 <- lookupEff e2
       lift $ mkEq a1 a2
@@ -230,17 +232,17 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
           let newRm = at r .~ Just newR $ rm
           tcRelMap .= newRm
           -- Prop 1
-          let f1 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
+          let f1 :: Fol () = forall2_ $ \a b -> liftProp $
                   (Raw $ rel2Z3Ctrt r a b) ⇒ (Raw . Z3Ctrt $ mkApp2 newR a b)
           p1 <- unZ3Ctrt $ fol2Z3Ctrt f1
           -- Prop 2
-          let f2 :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
+          let f2 :: Fol () = forall3_ $ \a b c -> liftProp $
                   ((Raw . Z3Ctrt $ mkApp2 newR a b) ∧ (Raw .Z3Ctrt $ mkApp2 newR b c)) ⇒
                   (Raw . Z3Ctrt $ mkApp2 newR a c)
           p2 <- unZ3Ctrt $ fol2Z3Ctrt f2
 #ifdef EXISTS
           -- Prop 3
-          let f3 :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $
+          let f3 :: Fol () = forall2_ $ \a b -> liftProp $
                 (Raw . Z3Ctrt $ mkApp2 newR a b) ⇒ ((Raw $ rel2Z3Ctrt r a b) ∨
                 (exists $ \c -> (Raw $ rel2Z3Ctrt r a b) ∧ (Raw . Z3Ctrt $ mkApp2 newR b c)))
           p3 <- unZ3Ctrt $ fol2Z3Ctrt f3
@@ -316,20 +318,20 @@ exists f = Raw $ Z3Ctrt $ do
 -------------------------------------------------------------------------------
 -- Type checking helper
 
-thinAir :: Fol ()
-thinAir = forall_ $ \x -> liftProp . Not $ hb x x
-
-doVis :: Fol ()
-doVis = forall_ $ \a -> forall_ $ \b -> liftProp $ vis a b ⇒ appRel Sameobj a b
-
 assertBasicAxioms :: StateT Z3CtrtState Z3 ()
 assertBasicAxioms = do
   assertProp "ThinAir" $ fol2Z3Ctrt thinAir
   assertProp "doVis" $ fol2Z3Ctrt doVis
-  let soTrans :: Fol () = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $
-                            so a b ∧ so b c ⇒  so a c
-  assertProp "soTrans" $ fol2Z3Ctrt soTrans
+  assertProp "soTrans" $ fol2Z3Ctrt $ relTrans so
+  assertProp "sameTxnTrans" $ fol2Z3Ctrt $ relTrans sameTxn
+  assertProp "reflSameTrans" $ fol2Z3Ctrt $ reflSameTrans
   return ()
+  where
+    thinAir :: Fol () = forall_ $ \x -> liftProp . Not $ hb x x
+    doVis :: Fol () = forall_ $ \a -> forall_ $ \b -> liftProp $ vis a b ⇒ appRel SameObj a b
+    relTrans :: (Effect -> Effect -> Prop ()) -> Fol ()
+    relTrans rel = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> liftProp $ rel a b ∧ rel b c ⇒  rel a c
+    reflSameTrans :: Fol () = forall_ $ \x -> liftProp $ sameTxn x x
 
 mkZ3CtrtState :: Sort -> Z3 Z3CtrtState
 mkZ3CtrtState operSort = do
@@ -339,9 +341,10 @@ mkZ3CtrtState operSort = do
   visRel <- mkFreshFuncDecl "vis" [effSort, effSort] boolSort
   soRel <- mkFreshFuncDecl "so" [effSort, effSort] boolSort
   sameobjRel <- mkFreshFuncDecl "sameobj" [effSort, effSort] boolSort
+  sameTxnRel <- mkFreshFuncDecl "sameTxn" [effSort, effSort] boolSort
   operRel <- mkFreshFuncDecl "oper" [effSort] operSort
 
-  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel operRel M.empty [] M.empty
+  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel sameTxnRel operRel M.empty [] M.empty
 
 res2Bool :: Result -> Bool
 res2Bool Unsat = True
@@ -370,10 +373,10 @@ isWellTyped c mkOperSort = typecheck mkOperSort $ do
   lift $ res2Bool <$> check
 
 hbo :: OperationClass a => Effect -> Effect -> Prop a
-hbo = AppRel $ TC $ ((So ∩ Sameobj) ∪ Vis)
+hbo = AppRel $ TC $ ((So ∩ SameObj) ∪ Vis)
 
 sc :: Contract ()
-sc x = forall_ $ \a ->  liftProp $ (hbo a x ∨ hbo x a ∨ AppRel Sameeff a x) ∧
+sc x = forall_ $ \a ->  liftProp $ (hbo a x ∨ hbo x a ∨ AppRel SameEff a x) ∧
                                    (hbo a x ⇒ vis a x) ∧
                                    (hbo x a ⇒ vis x a)
 
@@ -381,10 +384,25 @@ cc :: Contract ()
 cc x = forall_ $ \a -> liftProp $ hbo a x ⇒ vis a x
 
 cv :: Contract ()
-cv x = forall_ $ \a -> forall_ $ \b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
+cv x = forall2_ $ \a b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
+
+rc :: Fol ()
+rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObj [a,b,c] ∧ vis a c ⇒ vis b c
+
+mav :: Fol ()
+mav = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj [b,d] ∧ vis c a ∧
+                               AppRel (So ∪ SameEff) a b ⇒ vis d b
+
+psi :: Fol ()
+psi = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj [b,d] ∧ vis c a ⇒ vis d b
 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
+
+mkRawImpl2 :: (OperationClass a, OperationClass b) => Fol a -> Fol b -> Z3Ctrt
+mkRawImpl2 a b =
+  let p::Prop () = (Raw $ fol2Z3Ctrt a) ⇒ (Raw $ fol2Z3Ctrt b)
+  in prop2Z3Ctrt p
 
 isUnavailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
 isUnavailable c mkOperSort =
@@ -402,8 +420,6 @@ isUnavailable c mkOperSort =
     let test2 = prop2Z3Ctrt $ Not $ mkRawImpl an2 cn2
     assertProp "CTRT_NOT_IMPL_CC" $ not_ test2
     lift $ res2Bool <$> check
-
-
 
 isStickyAvailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
 isStickyAvailable c mkOperSort =
@@ -434,8 +450,49 @@ isHighlyAvailable c mkOperSort =
     assertProp "CV_IMPL_CTRT" $ not_ test1
     lift $ res2Bool <$> check
 
-classifyContract :: OperationClass a => Contract a -> String -> Q Availability
-classifyContract c info = do
+underReadCommitted :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underReadCommitted c mkOperSort =
+  typecheck mkOperSort $ do
+    assertBasicAxioms
+    assertProp "RC_IMPL_CTRT" $ not_ (mkRawImpl2 rc c)
+    lift $ res2Bool <$> check
+
+underMonotonicAtomicView :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underMonotonicAtomicView c mkOperSort =
+  typecheck mkOperSort $ do
+    assertBasicAxioms
+    let test1 = mkRawImpl2 mav c
+    let test2 = mkRawImpl2 c rc
+    assertProp "MAV_IMPL_CTRT" $ not_ test1
+    assertProp "CTRT_IMPL_RC" $ not_ test2
+    lift $ res2Bool <$> check
+
+underParallelSnapshotIsolation :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underParallelSnapshotIsolation c mkOperSort =
+  typecheck mkOperSort $ do
+    assertBasicAxioms
+    let test1 = mkRawImpl2 psi c
+    let test2 = mkRawImpl2 c mav
+    assertProp "PSI_IMPL_CTRT" $ not_ test1
+    assertProp "CTRT_IMPL_MAV" $ not_ test2
+    lift $ res2Bool <$> check
+
+classifyTxnContract :: OperationClass a => Fol a -> String -> Q TxnKind
+classifyTxnContract c info = do
+  mkOperSort <- mkMkZ3OperSort
+  runIO $ do
+    res <- underReadCommitted c mkOperSort
+    if res then return ReadCommitted
+    else do
+      res <- underMonotonicAtomicView c mkOperSort
+      if res then return MonotonicAtomicView
+      else do
+        res <- underParallelSnapshotIsolation c mkOperSort
+        if res then return ParallelSnapshotIsolation
+        else fail $ info ++ " contract is not well-typed"
+
+classifyOperContract :: OperationClass a => Contract a -> String -> Q Availability
+classifyOperContract c info = do
   mkOperSort <- mkMkZ3OperSort
   runIO $ do
     isWt <- isWellTyped c mkOperSort

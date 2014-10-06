@@ -2,7 +2,7 @@
 
 module Codeec.TH (
   mkOperations,
-  check
+  checkOp
 ) where
 
 
@@ -39,7 +39,7 @@ mkOperations l = do
       NormalC conName _ <- con
       return $ Clause [ConP conName []] (NormalB (LitE (StringL objType))) []
 
-check :: OperationClass a => a -> Contract a -> ExpQ
-check kind c = do
-  a <- classifyContract c $ show kind
+checkOp :: OperationClass a => a -> Contract a -> ExpQ
+checkOp kind c = do
+  a <- classifyOperContract c $ show kind
   lift a

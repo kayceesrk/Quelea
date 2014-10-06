@@ -29,9 +29,9 @@ data Kind = B | C | S | D deriving (Read, Show)
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(check "Deposit" depositCtrt)),
-                 (Withdraw, mkGenOp withdraw summarize, $(check "Withdraw" withdrawCtrt)),
-                 (GetBalance, mkGenOp getBalance summarize, $(check "Withdraw" getBalanceCtrt))]
+dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(checkOp "Deposit" depositCtrt)),
+                 (Withdraw, mkGenOp withdraw summarize, $(checkOp "Withdraw" withdrawCtrt)),
+                 (GetBalance, mkGenOp getBalance summarize, $(checkOp "Withdraw" getBalanceCtrt))]
 
 main :: IO ()
 main = do

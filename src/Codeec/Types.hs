@@ -60,6 +60,11 @@ data TxnKind = ReadCommitted
 instance Show GenOpFun where
   show f = "GenOpFun"
 
+instance Lift TxnKind where
+  lift ReadCommitted = [| ReadCommitted |]
+  lift MonotonicAtomicView = [| MonotonicAtomicView |]
+  lift ParallelSnapshotIsolation = [| ParallelSnapshotIsolation |]
+
 instance Lift Availability where
   lift High = [| High |]
   lift Sticky = [| Sticky |]
