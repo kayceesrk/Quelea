@@ -31,7 +31,7 @@ module Codeec.Types (
 import Database.Cassandra.CQL
 import Data.Serialize as S
 import Control.Applicative ((<$>))
-import Data.ByteString (ByteString)
+import Data.ByteString (ByteString, head)
 import Data.Either (rights)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -86,10 +86,10 @@ data DatatypeLibrary a = DatatypeLibrary {
   _sumMap :: SummaryMap
 }
 
-newtype Key = Key { unKey :: UUID } deriving (Eq, Ord)
+newtype Key = Key { unKey :: ByteString } deriving (Eq, Ord)
 
 instance Show Key where
-  show (Key uuid) = "Key " ++ (show . sel1 . toWords $ uuid)
+  show (Key kv) = "Key " ++ (show $ Data.ByteString.head kv)
 
 
 type SeqNo = Int64

@@ -33,9 +33,9 @@ makeLenses ''Z3CtrtState
 -------------------------------------------------------------------------------
 -- Helper
 
-#define DEBUG_SHOW
-#define DEBUG_CHECK
-#define DEBUG_SANITY
+-- #define DEBUG_SHOW
+-- #define DEBUG_CHECK
+-- #define DEBUG_SANITY
 
 check :: Z3 Result
 #ifdef DEBUG_SHOW

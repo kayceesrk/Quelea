@@ -43,7 +43,7 @@ import Control.Monad (when)
 
 -- Simply an alias for Types.ObjType
 type TableName = String
-type WriteRow = (UUID, UUID, SeqNo, S.Set Addr, Cell, Maybe UUID)
+type WriteRow = (Key, UUID, SeqNo, S.Set Addr, Cell, Maybe UUID)
 type ReadRowInternal = (UUID, SeqNo, S.Set Addr, Cell, Maybe UUID)
 type ReadRow = (SessID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 
@@ -58,7 +58,7 @@ type ReadRow = (SessID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 -- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++
-                      " (objid uuid, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno)) "
+                      " (objid blob, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno)) "
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
@@ -66,24 +66,24 @@ mkDropTable tname = query $ pack $ "drop table " ++ tname
 mkInsert :: TableName -> Query Write WriteRow ()
 mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value, txnid) values (?, ?, ?, ?, ?, ?)"
 
-mkDelete :: TableName -> Query Write (UUID, UUID, SeqNo) ()
+mkDelete :: TableName -> Query Write (Key, UUID, SeqNo) ()
 mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and sessid = ? and seqno = ?"
 
-mkRead :: TableName -> Query Rows (UUID) ReadRowInternal
+mkRead :: TableName -> Query Rows (Key) ReadRowInternal
 mkRead tname = query $ pack $ "select sessid, seqno, deps, value, txnid from " ++ tname ++ " where objid = ? order by sessid, seqno"
 
 -------------------------------------------------------------------------------
 
 mkCreateLockTable :: TableName -> Query Schema () ()
-mkCreateLockTable tname = query $ pack $ "create table " ++ tname ++ "_LOCK (objid uuid, sessid uuid, primary key (objid))"
+mkCreateLockTable tname = query $ pack $ "create table " ++ tname ++ "_LOCK (objid blob, sessid uuid, primary key (objid))"
 
 mkDropLockTable :: TableName -> Query Schema () ()
 mkDropLockTable tname = query $ pack $ "drop table " ++ tname ++ "_LOCK"
 
-mkLockInsert :: TableName -> Query Write (UUID, UUID) ()
+mkLockInsert :: TableName -> Query Write (Key, UUID) ()
 mkLockInsert tname = query $ pack $ "insert into " ++ tname ++ "_LOCK (objid, sessid) values (?, ?) if not exists"
 
-mkLockUpdate :: TableName -> Query Write (UUID {- New -}, UUID, UUID {- Old -}) ()
+mkLockUpdate :: TableName -> Query Write (UUID {- New -}, Key, UUID {- Old -}) ()
 mkLockUpdate tname = query $ pack $ "update " ++ tname ++ "_LOCK set sessid = ? where objid = ? if sessid = ?"
 
 -------------------------------------------------------------------------------
@@ -117,12 +117,12 @@ mkGlobalLockUpdate = "update GlobalLock set txnid = ? where id = ? if txnid = ?"
 -------------------------------------------------------------------------------
 
 cqlRead :: TableName -> Consistency -> Key -> Cas [ReadRow]
-cqlRead tname c (Key k) = do
+cqlRead tname c k = do
   rows <- executeRows c (mkRead tname) k
   return $ map (\(sid, sqn, deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
 
 cqlInsert :: TableName -> Consistency -> Key -> ReadRow -> Cas ()
-cqlInsert tname c (Key k) (SessID sid,sqn,dep,val,txid) = do
+cqlInsert tname c k (SessID sid,sqn,dep,val,txid) = do
   if sqn == 0
   then error "cqlInsert : sqn is 0"
   else do
@@ -131,7 +131,7 @@ cqlInsert tname c (Key k) (SessID sid,sqn,dep,val,txid) = do
     else executeWrite c (mkInsert tname) (k,sid,sqn, S.singleton $ Addr (SessID sid) 0, val, unTxnID <$> txid)
 
 cqlDelete :: TableName -> Key -> SessID -> SeqNo -> Cas ()
-cqlDelete tname (Key k) (SessID sid) sqn = executeWrite ALL (mkDelete tname) (k,sid,sqn)
+cqlDelete tname k (SessID sid) sqn = executeWrite ALL (mkDelete tname) (k,sid,sqn)
 
 createTxnTable :: Cas ()
 createTxnTable = liftIO . print =<< executeSchema ALL mkCreateTxnTable ()
@@ -158,14 +158,14 @@ dropTable tname = do
   liftIO . print =<< executeSchema ALL (mkDropLockTable tname) ()
 
 tryGetLock :: TableName -> Key -> SessID -> Bool {- tryInsert -} -> Cas Bool
-tryGetLock tname (Key k) (SessID sid) True = do
+tryGetLock tname k (SessID sid) True = do
   res <- executeTrans (mkLockInsert tname) (k, sid)
   if res then return True
-  else tryGetLock tname (Key k) (SessID sid) False
-tryGetLock tname (Key k) (SessID sid) False = do
+  else tryGetLock tname k (SessID sid) False
+tryGetLock tname k (SessID sid) False = do
   res <- executeTrans (mkLockUpdate tname) (sid, k, knownUUID)
   if res then return True
-  else tryGetLock tname (Key k) (SessID sid) False
+  else tryGetLock tname k (SessID sid) False
 
 getLock :: TableName -> Key -> SessID -> Pool -> IO ()
 getLock tname k sid pool = runCas pool $ do
@@ -173,10 +173,10 @@ getLock tname k sid pool = runCas pool $ do
   return ()
 
 releaseLock :: TableName -> Key -> SessID -> Pool -> IO ()
-releaseLock tname (Key k) (SessID sid) pool = runCas pool $ do
+releaseLock tname k (SessID sid) pool = runCas pool $ do
   res <- executeTrans (mkLockUpdate tname) (knownUUID, k, sid)
   if res then return ()
-  else error $ "releaseLock : key=" ++ show (Key k) ++ " sid=" ++ show sid
+  else error $ "releaseLock : key=" ++ show k ++ " sid=" ++ show sid
 
 createGlobalLockTable :: Cas ()
 createGlobalLockTable = do

@@ -182,6 +182,11 @@ instance CasType TxnDep where
     return $ TxnDep (unpack otbs) (Key k) sid sqn
   casType _ = CBlob
 
+instance CasType Key where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
 instance Serialize TxnDep where
   put = putCas
   get = getCas

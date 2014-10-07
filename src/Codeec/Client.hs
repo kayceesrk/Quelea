@@ -10,7 +10,6 @@ module Codeec.Client (
   invoke,
   newKey,
   mkKey,
-  getUUID,
   getServerAddr,
   beginTxn,
   endTxn
@@ -158,10 +157,9 @@ invoke s key operName arg = do
            MonotonicAtomicView -> (txid, MAV es $ ts^.seenTxnsTS)
 
 newKey :: IO Key
-newKey = Key <$> randomIO
+newKey = Key . encodeUUID <$> randomIO
+  where
+    encodeUUID (uuid :: UUID) = encode uuid
 
-mkKey :: UUID -> Key
-mkKey uuid = Key uuid
-
-getUUID :: Key -> UUID
-getUUID (Key k) = k
+mkKey :: Serialize a => a -> Key
+mkKey kv = Key $ encode kv
