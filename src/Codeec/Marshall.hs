@@ -152,7 +152,7 @@ instance Serialize TxnPayload where
     put (1::Word8)
     put wb
     put deps
-  put (PSI snapshot) = do
+  put (SVI snapshot) = do
     put (2::Word8)
     put snapshot
   get = do
@@ -163,7 +163,7 @@ instance Serialize TxnPayload where
         x <- get
         y <- get
         return $ MAV x y
-      2 -> PSI <$> get
+      2 -> SVI <$> get
 
 instance CasType TxnDep where
   putCas (TxnDep ot (Key k) sid sqn) = do

@@ -484,13 +484,13 @@ underMonotonicAtomicView c mkOperSort =
     assertProp "CTRT_IMPL_RC" $ not_ test2
     lift $ res2Bool <$> check
 
-underParallelSnapshotIsolation :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
-underParallelSnapshotIsolation c mkOperSort =
+underStableViewIsolation :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underStableViewIsolation c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
     let test1 = mkRawImpl2 psi c
     let test2 = mkRawImpl2 c mav
-    assertProp "PSI_IMPL_CTRT" $ not_ test1
+    assertProp "SVI_IMPL_CTRT" $ not_ test1
     assertProp "CTRT_IMPL_MAV" $ not_ test2
     lift $ res2Bool <$> check
 
@@ -504,8 +504,8 @@ classifyTxnContract c info = do
       res <- underMonotonicAtomicView c mkOperSort
       if res then return MonotonicAtomicView
       else do
-        res <- underParallelSnapshotIsolation c mkOperSort
-        if res then return ParallelSnapshotIsolation
+        res <- underStableViewIsolation c mkOperSort
+        if res then return StableViewIsolation
         else fail $ info ++ " contract is not well-typed"
 
 classifyOperContract :: OperationClass a => Contract a -> String -> Q Availability
