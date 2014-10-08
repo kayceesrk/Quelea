@@ -191,7 +191,7 @@ doOp op cache request const = do
       else do
         fetchTxns cache txndeps
         buildContext ot k (Just (txid, MAV l txndeps))
-    buildContext ot k (Just (_,SVI effSet)) = return $
+    buildContext ot k (Just (_,RR effSet)) = return $
       S.foldl (\(el,as) (addr, eff) -> (eff:el, S.insert addr as))
               ([], S.empty) effSet
 

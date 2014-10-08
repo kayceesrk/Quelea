@@ -79,7 +79,7 @@ beginTxn s tk = do
   when (s^.curTxn /= Nothing) $ error "beginTxn: Nested transactions are not supported!"
   txnID <- TxnID <$> randomIO
   snapshot <-
-    if (tk == StableViewIsolation)
+    if (tk == RepeatableRead)
     then do
       let req :: Request () = ReqSnapshot $ s^.readObjs
       send (s^.server) [] $ encode req
@@ -140,7 +140,7 @@ invoke s key operName arg = do
   where
     getEffectSet (RC es) = Just es
     getEffectSet (MAV es _) = Just es
-    getEffectSet (SVI es) = Just es
+    getEffectSet (RR es) = Just es
 
     mkTxnReq ot k Nothing = Nothing
     mkTxnReq ot k (Just ts) =
@@ -152,8 +152,8 @@ invoke s key operName arg = do
       in Just $ case ts^.txnKindTS of
            ReadCommitted ->
              (txid, RC es)
-           StableViewIsolation ->
-             (txid, SVI es)
+           RepeatableRead ->
+             (txid, RR es)
            MonotonicAtomicView -> (txid, MAV es $ ts^.seenTxnsTS)
 
 newKey :: IO Key

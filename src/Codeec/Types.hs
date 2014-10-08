@@ -55,7 +55,7 @@ data Availability = High | Sticky | Un deriving (Show, Eq, Ord)
 
 data TxnKind = ReadCommitted
              | MonotonicAtomicView
-             | StableViewIsolation deriving (Show, Eq, Ord)
+             | RepeatableRead deriving (Show, Eq, Ord)
 
 instance Show GenOpFun where
   show f = "GenOpFun"
@@ -63,7 +63,7 @@ instance Show GenOpFun where
 instance Lift TxnKind where
   lift ReadCommitted = [| ReadCommitted |]
   lift MonotonicAtomicView = [| MonotonicAtomicView |]
-  lift StableViewIsolation = [| StableViewIsolation |]
+  lift RepeatableRead = [| RepeatableRead |]
 
 instance Lift Availability where
   lift High = [| High |]
@@ -109,7 +109,7 @@ type EffectVal = ByteString
 data TxnPayload = RC  {writeBuffer :: S.Set (Addr, EffectVal)}
                 | MAV {writeBuffer :: S.Set (Addr, EffectVal),
                        txnDepsMAV :: S.Set TxnID}
-                | SVI {cacheSI :: S.Set (Addr, EffectVal)}
+                | RR {cacheSI :: S.Set (Addr, EffectVal)}
 
 data OperationPayload a = OperationPayload {
   _objTypeReq :: ObjType,
@@ -129,7 +129,7 @@ data Request a =
 data Response = ResOper {
                   seqno :: SeqNo,
                   result :: ByteString,
-                  effect :: Maybe EffectVal,  {- Only relevant for RC, MAV and SVI transactions -}
+                  effect :: Maybe EffectVal,  {- Only relevant for RC, MAV and RR transactions -}
                   coveredTxns :: Maybe (S.Set TxnID)} {- Only relevant for MAV transactions -}
               | ResSnapshot (M.Map (ObjType, Key) (S.Set (Addr, EffectVal)))
               | ResCommit
