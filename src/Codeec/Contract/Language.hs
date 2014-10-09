@@ -31,6 +31,10 @@ module Codeec.Contract.Language (
   forall3_,
   forall4_,
   forallQ_,
+  forallQ2_,
+  forallQ3_,
+  forallQ4_,
+
   trans
 ) where
 
@@ -161,6 +165,16 @@ forall4_ f = forall_ $ \a -> forall_ $ \b -> forall_ $ \c -> forall_ $ \d -> f a
 
 forallQ_ :: OperationClass a => [a] -> (Effect -> Fol a) -> Fol a
 forallQ_ q f = Forall q f
+
+forallQ2_ :: OperationClass a => [a] -> [a] -> (Effect -> Effect -> Fol a) -> Fol a
+forallQ2_ l1 l2 f = forallQ_ l1 $ \a -> forallQ_ l2 $ \b -> f a b
+
+forallQ3_ :: OperationClass a => [a] -> [a] -> [a] -> (Effect -> Effect -> Effect -> Fol a) -> Fol a
+forallQ3_ l1 l2 l3 f = forallQ_ l1 $ \a -> forallQ_ l2 $ \b -> forallQ_ l3 $ \c -> f a b c
+
+forallQ4_ :: OperationClass a => [a] -> [a] -> [a] -> [a] -> (Effect -> Effect -> Effect -> Effect -> Fol a) -> Fol a
+forallQ4_ l1 l2 l3 l4 f = forallQ_ l1 $ \a -> forallQ_ l2 $ \b -> forallQ_ l3 $ \c -> forallQ_ l4 $ \d -> f a b c d
+
 
 sameEff :: Effect -> Effect -> Prop a
 sameEff a b = AppRel SameEff a b

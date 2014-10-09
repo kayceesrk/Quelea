@@ -1,11 +1,16 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
 module MicroBlog1Ctrts (
-  addNewUserTxnCtrt
+  addNewUserTxnCtrt,
+  getPasswordTxnCtrt
 ) where
 
 import MicroBlogDefs
 import Codeec.Contract
 
 addNewUserTxnCtrt :: Fol Operation
-addNewUserTxnCtrt = forallQ_ [AddUsername] $ \a -> forallQ_ [AddUser] $ \b -> forall_ $ \c -> undefined
+addNewUserTxnCtrt = liftProp $ true
+
+getPasswordTxnCtrt :: Fol Operation
+getPasswordTxnCtrt = forallQ4_ [GetUserID] [GetUserInfo] [AddUsername] [AddUser] $ \a b c d -> liftProp $
+                       trans[[a,b],[c,d]] ∧ so a b ∧ vis c a ∧ sameObj b d ⇒ vis d b

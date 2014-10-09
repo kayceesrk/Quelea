@@ -9,7 +9,8 @@ module MicroBlogDefs (
 
   addUser, addUserCtrt,
   addUsername, addUsernameCtrt,
-  getUserID, getUserIDCtrt
+  getUserID, getUserIDCtrt,
+  getUserInfo, getUserInfoCtrt
 ) where
 
 
@@ -30,6 +31,7 @@ import Codeec.DBDriver
 newtype UserID = UserID UUID deriving Eq
 
 data UserEffect = AddUser_ String {- username -} String {- password -}
+                | GetUserInfo_
                 | UpdateUser_ String String
                 | AddFollowing_ UserID {- follows -}
                 | AddFollower_ UserID {- followedBy -}
@@ -63,6 +65,14 @@ instance Effectish UserEffect where
 
 addUser :: [UserEffect] -> (String, String) -> ((), Maybe UserEffect)
 addUser _ (userName,password) = ((), Just $ AddUser_ userName password)
+
+getUserInfo :: [UserEffect] -> () -> (Maybe (String, String), Maybe UserEffect)
+getUserInfo effs _ =
+  let res = foldl (\acc eff ->
+              case eff of
+                AddUser_ userName password -> Just (userName, password)
+                otherwise -> acc) Nothing effs
+  in (res, Nothing)
 
 addFollower :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
 addFollower _ uid = ((), Just $ AddFollower_ uid)
@@ -195,6 +205,9 @@ addUserCtrt = trueCtrt
 
 getUserIDCtrt :: Contract Operation
 getUserIDCtrt = trueCtrt
+
+getUserInfoCtrt :: Contract Operation
+getUserInfoCtrt = trueCtrt
 
 addUsernameCtrt :: Contract Operation
 addUsernameCtrt a = forallQ_ [AddUsername] $ \b -> liftProp $ vis a b ∨ vis b a ∨ sameEff a b

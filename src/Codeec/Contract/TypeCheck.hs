@@ -413,6 +413,9 @@ cv x = forall2_ $ \a b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
 rc :: Fol ()
 rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
 
+enrichWithRC :: OperationClass a => Fol a -> Fol ()
+enrichWithRC c = liftProp $ Raw (fol2Z3Ctrt c) ∧ Raw (fol2Z3Ctrt rc)
+
 mav :: Fol ()
 mav = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
         (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧ AppRel (So ∪ SameEff) a b ⇒ vis d b) ∧
@@ -425,6 +428,7 @@ rr = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
+
 
 mkRawImpl2 :: (OperationClass a, OperationClass b) => Fol a -> Fol b -> Z3Ctrt
 mkRawImpl2 a b =
@@ -486,8 +490,9 @@ underReadCommitted c mkOperSort =
 
 underMonotonicAtomicView :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
 underMonotonicAtomicView c mkOperSort = do
-    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 mav c
-    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 c rc
+    let cWithRC = enrichWithRC c
+    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 mav cWithRC
+    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 cWithRC rc
     r1 <- isValidProto mkOperSort "MAV_IMPL_CTRT" test1
     if r1
     then isValidProto mkOperSort "CTRT_IMPL_RC" test2
@@ -495,8 +500,9 @@ underMonotonicAtomicView c mkOperSort = do
 
 underRepeatableRead :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
 underRepeatableRead c mkOperSort = do
-    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr c
-    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 c mav
+    let cWithRC = enrichWithRC c
+    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr cWithRC
+    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 cWithRC mav
     r1 <- isValidProto mkOperSort "RR_IMPL_CTRT" test1
     if r1
     then isValidProto mkOperSort "CTRT_IMPL_MAV" test2
@@ -506,15 +512,18 @@ classifyTxnContract :: OperationClass a => Fol a -> String -> Q TxnKind
 classifyTxnContract c info = do
   mkOperSort <- mkMkZ3OperSort
   runIO $ do
-    res <- underReadCommitted c mkOperSort
-    if res then return ReadCommitted
-    else do
-      res <- underMonotonicAtomicView c mkOperSort
-      if res then return MonotonicAtomicView
+    res <- do
+      res <- underReadCommitted c mkOperSort
+      if res then return ReadCommitted
       else do
-        res <- underRepeatableRead c mkOperSort
-        if res then return RepeatableRead
-        else fail $ info ++ " contract is not well-typed"
+        res <- underMonotonicAtomicView c mkOperSort
+        if res then return MonotonicAtomicView
+        else do
+          res <- underRepeatableRead c mkOperSort
+          if res then return RepeatableRead
+          else fail $ info ++ " contract is not well-typed"
+    when (head info == '_') (putStrLn $ "classifyTxnContract: " ++ info ++ " is " ++ show res)
+    return res
 
 classifyOperContract :: OperationClass a => Contract a -> String -> Q Availability
 classifyOperContract c info = do

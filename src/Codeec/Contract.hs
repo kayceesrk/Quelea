@@ -28,6 +28,9 @@ module Codeec.Contract (
   forall3_,
   forall4_,
   forallQ_,
+  forallQ2_,
+  forallQ3_,
+  forallQ4_,
   isValid,
   isSat,
 
