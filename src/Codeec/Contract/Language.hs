@@ -52,6 +52,7 @@ data Z3CtrtState = Z3CtrtState {
   _soRel      :: FuncDecl, -- Effect -> Effect -> Bool
   _sameobjRel :: FuncDecl, -- Effect -> Effect -> Bool
   _sameTxnRel :: FuncDecl, -- Effect -> Effect -> Bool
+  _curTxnRel  :: FuncDecl, -- Effect -> Bool
   _operRel    :: FuncDecl, -- Effect -> Oper
   -- Map
   _effMap :: M.Map Effect AST,
@@ -85,7 +86,7 @@ instance Eq Rel where
 
 
 data OperationClass a => Prop a =
-    PTrue | Not (Prop a) | AppRel Rel Effect Effect | Conj (Prop a) (Prop a)
+    PTrue | Not (Prop a) | AppRel Rel Effect Effect | Conj (Prop a) (Prop a) | CurTxn Effect
   | Disj (Prop a) (Prop a) | Impl (Prop a) (Prop a) | Oper Effect a | Raw Z3Ctrt
 data OperationClass a => Fol a = Forall [a] (Effect -> Fol a) | Plain (Prop a)
 
@@ -171,8 +172,11 @@ trans lol =
   let stRel = foldl (\acc el -> acc ∧ (mkRelTxn (AppRel SameTxn) el)) true lol
       pick1List = foldl (\acc el -> case el of {x:xs -> x:acc; [] -> acc}) [] lol
       dtRel = mkRelTxn (\x y -> Not $ AppRel SameTxn x y) pick1List
-  in stRel ∧ dtRel
+  in (mkCurTxn lol) ∧ stRel ∧ dtRel
   where
+    mkCurTxn (xl:xsl) =
+      let e:_ = xl
+      in CurTxn e
     mkRelTxn rel [] = PTrue
     mkRelTxn rel (x:xs) =
       let stList = map (\y -> rel x y) xs

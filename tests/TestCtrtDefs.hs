@@ -32,8 +32,10 @@ rc :: Fol ()
 rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
 
 mav :: Fol ()
-mav = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧
-                               AppRel (So ∪ SameEff) a b ⇒ vis d b
+mav = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
+        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧ AppRel (So ∪ SameEff) a b ⇒ vis d b) ∧
+        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
 
 psi :: Fol ()
-psi = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b
+psi = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
+        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b) ∧

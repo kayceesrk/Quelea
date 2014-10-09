@@ -265,6 +265,10 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
 prop2Z3Ctrt :: OperationClass a => Prop a -> Z3Ctrt
 prop2Z3Ctrt PTrue = Z3Ctrt $ lift mkTrue
 prop2Z3Ctrt (AppRel r e1 e2) = rel2Z3Ctrt r e1 e2
+prop2Z3Ctrt (CurTxn e) = Z3Ctrt $ do
+  ctRel <- use curTxnRel
+  effAST <- lookupEff e
+  lift $ mkApp ctRel [effAST]
 prop2Z3Ctrt (Conj p1 p2) = Z3Ctrt $ do
   a1 <- unZ3Ctrt $ prop2Z3Ctrt p1
   a2 <- unZ3Ctrt $ prop2Z3Ctrt p2
@@ -334,8 +338,10 @@ assertBasicAxioms = do
   assertProp "symRelSameObj" $ fol2Z3Ctrt $ symRel sameObj
   assertProp "transRelSameObj" $ fol2Z3Ctrt $ transRel sameObj
 
+  assertProp "curTxnSameTxn" $ fol2Z3Ctrt $ curTxnSameTxn
   return ()
   where
+    curTxnSameTxn :: Fol () = forall2_ $ \x y -> liftProp $ CurTxn x ∧ CurTxn y ⇒ sameTxn x y
     thinAir :: Fol () = forall_ $ \x -> liftProp . Not $ hb x x
     doVis :: Fol () = forall2_ $ \a b -> liftProp $ vis a b ⇒ appRel SameObj a b
     txnFollowsSess :: Fol () = forall2_ $ \a b -> liftProp $ sameTxn a b ⇒  (so a b ∨ so b a ∨ sameEff a b)
@@ -359,9 +365,10 @@ mkZ3CtrtState operSort = do
   soRel <- mkFreshFuncDecl "so" [effSort, effSort] boolSort
   sameobjRel <- mkFreshFuncDecl "sameobj" [effSort, effSort] boolSort
   sameTxnRel <- mkFreshFuncDecl "sameTxn" [effSort, effSort] boolSort
+  curTxnRel <- mkFreshFuncDecl "curTxn" [effSort] boolSort
   operRel <- mkFreshFuncDecl "oper" [effSort] operSort
 
-  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel sameTxnRel operRel M.empty [] M.empty
+  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel sameTxnRel curTxnRel operRel M.empty [] M.empty
 
 res2Bool :: Result -> Bool
 res2Bool Unsat = True
@@ -406,12 +413,18 @@ cv x = forall2_ $ \a b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
 rc :: Fol ()
 rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
 
-mav :: Fol ()
-mav = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧
+mavProto :: Fol ()
+mavProto = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧
                                AppRel (So ∪ SameEff) a b ⇒ vis d b
 
+mav :: Fol ()
+mav = liftProp $ (Raw $ fol2Z3Ctrt mavProto) ∧ (Raw $ fol2Z3Ctrt rc)
+
+psiProto :: Fol ()
+psiProto  = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b
+
 psi :: Fol ()
-psi = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b
+psi = liftProp $ (Raw $ fol2Z3Ctrt psiProto) ∧ (Raw $ fol2Z3Ctrt rc)
 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)

@@ -33,7 +33,7 @@ main = do
   let f :: Fol () = liftProp $ (Raw $ fol2Z3Ctrt psi) ⇒ (Raw $ fol2Z3Ctrt psi)
   isValid "Test1" f >>= \r -> putStrLn $ "Expect True, Result=" ++ show r
   let f :: Fol () = liftProp $ (Raw $ fol2Z3Ctrt psi) ⇒ (Raw $ fol2Z3Ctrt mav)
-  isValid "Test1" f >>= \r -> putStrLn $ "Expect True, Result=" ++ show r
+  isValid "Test1" f >>= \r -> putStrLn $ "Expect True, Result=" ++ show r -}
   let f :: Fol () = liftProp $ (Raw $ fol2Z3Ctrt psi) ⇒ (Raw $ fol2Z3Ctrt rc)
   isValid "Test1" f >>= \r -> putStrLn $ "Expect True, Result=" ++ show r
   let f :: Fol () = liftProp $ (Raw $ fol2Z3Ctrt mav) ⇒ (Raw $ fol2Z3Ctrt psi)

@@ -31,7 +31,9 @@ module Codeec.Contract (
   isValid,
   isSat,
 
-  fol2Z3Ctrt
+  -- Only for DEBUG
+  fol2Z3Ctrt,
+  classifyTxnContract
 ) where
 
 import Codeec.Contract.Language
