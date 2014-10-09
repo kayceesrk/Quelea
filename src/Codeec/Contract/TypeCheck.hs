@@ -413,18 +413,15 @@ cv x = forall2_ $ \a b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
 rc :: Fol ()
 rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
 
-mavProto :: Fol ()
-mavProto = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧
-                               AppRel (So ∪ SameEff) a b ⇒ vis d b
-
 mav :: Fol ()
-mav = liftProp $ (Raw $ fol2Z3Ctrt mavProto) ∧ (Raw $ fol2Z3Ctrt rc)
+mav = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
+        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧ AppRel (So ∪ SameEff) a b ⇒ vis d b) ∧
+        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
 
-psiProto :: Fol ()
-psiProto  = forall4_ $ \a b c d -> liftProp $ trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b
-
-psi :: Fol ()
-psi = liftProp $ (Raw $ fol2Z3Ctrt psiProto) ∧ (Raw $ fol2Z3Ctrt rc)
+rr :: Fol ()
+rr = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
+        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b) ∧
+        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
@@ -488,24 +485,22 @@ underReadCommitted c mkOperSort =
     lift $ res2Bool <$> check
 
 underMonotonicAtomicView :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
-underMonotonicAtomicView c mkOperSort =
-  typecheck mkOperSort $ do
-    assertBasicAxioms
-    let test1 = mkRawImpl2 mav c
-    let test2 = mkRawImpl2 c rc
-    assertProp "MAV_IMPL_CTRT" $ not_ test1
-    assertProp "CTRT_IMPL_RC" $ not_ test2
-    lift $ res2Bool <$> check
+underMonotonicAtomicView c mkOperSort = do
+    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 mav c
+    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 c rc
+    r1 <- isValidProto mkOperSort "MAV_IMPL_CTRT" test1
+    if r1
+    then isValidProto mkOperSort "CTRT_IMPL_RC" test2
+    else return False
 
 underRepeatableRead :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
-underRepeatableRead c mkOperSort =
-  typecheck mkOperSort $ do
-    assertBasicAxioms
-    let test1 = mkRawImpl2 psi c
-    let test2 = mkRawImpl2 c mav
-    assertProp "RR_IMPL_CTRT" $ not_ test1
-    assertProp "CTRT_IMPL_MAV" $ not_ test2
-    lift $ res2Bool <$> check
+underRepeatableRead c mkOperSort = do
+    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr c
+    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 c mav
+    r1 <- isValidProto mkOperSort "RR_IMPL_CTRT" test1
+    if r1
+    then isValidProto mkOperSort "CTRT_IMPL_MAV" test2
+    else return False
 
 classifyTxnContract :: OperationClass a => Fol a -> String -> Q TxnKind
 classifyTxnContract c info = do
@@ -538,11 +533,15 @@ classifyOperContract c info = do
           if res then return Un
           else fail $ info ++ " -- strange contract"
 
-isValid :: OperationClass a => String -> Fol a -> IO Bool
-isValid str c = typecheck dummyZ3Sort $ do
+isValidProto :: OperationClass a => Z3 Sort -> String -> Fol a -> IO Bool
+isValidProto mkOperSort str c = typecheck mkOperSort $ do
   assertBasicAxioms
   assertProp str $ not_ $ fol2Z3Ctrt c
   lift $ res2Bool <$> check
+
+
+isValid :: OperationClass a => String -> Fol a -> IO Bool
+isValid = isValidProto dummyZ3Sort
 
 isSat :: OperationClass a => String -> Fol a -> IO Bool
 isSat str c = typecheck dummyZ3Sort $ do

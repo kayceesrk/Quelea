@@ -2,7 +2,7 @@
 
 module TestCtrtDefs (
   sc, cc, cv,
-  rc, mav, psi,
+  rc, mav, psi, psiFlipped,
   Operation(..)
 ) where
 
@@ -39,3 +39,7 @@ mav = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
 psi :: Fol ()
 psi = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
         (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b) ∧
+        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
+
+psiFlipped :: Fol ()
+psiFlipped = forall4_ $ \a b c d -> liftProp $ (trans[[c,d],[a,b]] ∧ sameObj b d ∧ vis c a ⇒ vis d b)
