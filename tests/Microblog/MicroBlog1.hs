@@ -16,7 +16,7 @@ import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
 
 import MicroBlogDefs
-import MicroBlog1Ctrts
+import MicroBlogTxns
 
 fePort :: Int
 fePort = 5558
@@ -34,27 +34,6 @@ dtLib = mkDtLib [(AddUser, mkGenOp addUser summarize, $(checkOp AddUser addUserC
                  (AddUsername, mkGenOp addUsername summarize, $(checkOp AddUsername addUsernameCtrt)),
                  (GetUserID, mkGenOp getUserID summarize, $(checkOp GetUserID getUserIDCtrt)),
                  (GetUserInfo, mkGenOp getUserInfo summarize, $(checkOp GetUserInfo getUserInfoCtrt))]
-
-type Username = String
-type Password = String
-
-addNewUser :: UserID -> Username -> Password -> CSN Bool
-addNewUser uid uname pwd = atomically ($(checkTxn "addNewUserTxn" addNewUserTxnCtrt)) $ do
-  r::Bool <- invoke (mkKey uname) AddUsername uid
-  if not r
-  then return False {- username has already been taken -}
-  else do {- success -}
-    r::() <- invoke (mkKey uid) AddUser (uname,pwd)
-    return True
-
-getPassword :: Username -> CSN (Maybe Password)
-getPassword uname = atomically ($(checkTxn "getPasswordTxn" getPasswordTxnCtrt)) $ do
-  mbUid::Maybe UserID <- invoke (mkKey uname) GetUserID ()
-  case mbUid of
-    Nothing -> return Nothing
-    Just uid -> do
-      Just (_::String, pwd) <- invoke (mkKey uid) GetUserInfo ()
-      return $ Just pwd
 
 main :: IO ()
 main = do
