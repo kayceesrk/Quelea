@@ -3,7 +3,9 @@
 module MicroBlogTxns (
   addNewUser,
   getPassword,
-  followUser
+  followUser,
+  newTweet,
+  getUserline,
 ) where
 
 import Codeec.ClientMonad
@@ -11,6 +13,11 @@ import Codeec.TH (checkTxn)
 
 import MicroBlogDefs
 import MicroBlogCtrts
+
+import Control.Monad.Trans (liftIO)
+import Data.Time.Clock
+import System.Random (randomIO)
+import Control.Applicative ((<$>))
 
 type Username = String
 type Password = String
@@ -48,3 +55,24 @@ followUser me target = atomically ($(checkTxn "followUserTxn" followUserTxnCtrt)
           _::() <- invoke (mkKey myUid) AddFollowing targetUid
           _::() <- invoke (mkKey targetUid) AddFollower myUid
           return True
+
+type Tweet = String
+
+newTweet :: UserID -> String -> CSN ()
+newTweet uid tweet = do
+  timestamp <- liftIO $ getCurrentTime
+  tweetID <- liftIO $ TweetID <$> randomIO
+  -- Add into Tweet table
+  r::() <- invoke (mkKey tweetID) NewTweet (uid, take 140 tweet, timestamp)
+  -- Add to userline
+
+  followers::[UserID] <- invoke (mkKey uid) GetFollowers ()
+  flip mapM_ followers $ \follower -> do
+    _::() <- invoke (mkKey follower) NewTweetTL (timestamp, tweetID)
+    return ()
+
+getUserline :: UserID -> CSN [(String, UTCTime)]
+getUserline = undefined
+
+getTimeline :: UserID -> CSN [(UserID, String, UTCTime)]
+getTimeline = undefined

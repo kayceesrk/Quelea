@@ -2,6 +2,7 @@
 
 module MicroBlogDefs (
   UserID(..),
+  TweetID(..),
   UserEffect(..),
   Operation(..),
   createTables,
@@ -10,7 +11,19 @@ module MicroBlogDefs (
   addUser, addUserCtrt,
   addUsername, addUsernameCtrt,
   getUserID, getUserIDCtrt,
-  getUserInfo, getUserInfoCtrt
+  getUserInfo, getUserInfoCtrt,
+  addFollower, addFollowerCtrt,
+  addFollowing, addFollowingCtrt,
+  getFollowers, getFollowersCtrt,
+  getFollowing, getFollowingCtrt,
+
+  addTweet, addTweetCtrt,
+  getTweet, getTweetCtrt,
+
+  addToUserline, addToUserlineCtrt,
+  getTweetsInUserline, getTweetsInUserlineCtrt,
+  addToTimeline, addToTimelineCtrt,
+  getTweetsInTimeline, getTweetsInTimelineCtrt
 ) where
 
 
@@ -34,7 +47,9 @@ data UserEffect = AddUser_ String {- username -} String {- password -}
                 | GetUserInfo_
                 | UpdateUser_ String String
                 | AddFollowing_ UserID {- follows -}
+                | GetFollowing_
                 | AddFollower_ UserID {- followedBy -}
+                | GetFollowers_
 
 instance Serialize UserID where
   put (UserID uuid) = put uuid
@@ -80,15 +95,15 @@ addFollower _ uid = ((), Just $ AddFollower_ uid)
 addFollowing :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
 addFollowing _ uid = ((), Just $ AddFollowing_ uid)
 
-getAddFollowers :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
-getAddFollowers effs _ =
+getFollowers :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
+getFollowers effs _ =
   let res = foldl (\acc e -> case e of
                                AddFollower_ uid -> uid:acc
                                otherwise -> acc) [] effs
   in (res, Nothing)
 
-getAddFollowing :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
-getAddFollowing effs _ =
+getFollowing :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
+getFollowing effs _ =
   let res = foldl (\acc e -> case e of
                                AddFollowing_ uid -> uid:acc
                                otherwise -> acc) [] effs
@@ -126,6 +141,7 @@ getUserID (AddUsername_ uid:_) _ = (Just uid, Nothing)
 
 newtype TweetID = TweetID UUID
 data TweetEffect = NewTweet_ UserID String UTCTime
+                 | GetTweets
 
 instance Serialize TweetID where
   put (TweetID tid) = put tid
@@ -148,14 +164,21 @@ instance CasType TweetEffect where
   getCas = get
   casType _ = CBlob
 
-
 instance Effectish TweetEffect where
   summarize l = l
+
+addTweet :: [TweetEffect] -> (UserID, String, UTCTime) -> ((), Maybe TweetEffect)
+addTweet _ (uid, tweet, time) = ((), Just $ NewTweet_ uid tweet time)
+
+getTweet :: [TweetEffect] -> () -> (Maybe (UserID, String, UTCTime), Maybe TweetEffect)
+getTweet [] _ = (Nothing, Nothing)
+getTweet ((NewTweet_ x y z):_) _ = (Just $ (x,y,z), Nothing)
 
 --------------------------------------------------------------------------------
 -- UserLine table : Key = UserID
 
-data UserlineEffect = NewTweetUL_ UTCTime String
+data UserlineEffect = NewTweetUL_ UTCTime TweetID
+                    | GetTweetsInUL_
 
 instance Serialize UserlineEffect where
   put (NewTweetUL_ x y) = put x >> put y
@@ -172,10 +195,22 @@ instance CasType UserlineEffect where
 instance Effectish UserlineEffect where
   summarize l = l
 
+addToUserline :: [UserlineEffect] -> (UTCTime, TweetID) -> ((), Maybe UserlineEffect)
+addToUserline _ (timestamp, tweetID) = ((), Just $ NewTweetUL_ timestamp tweetID)
+
+getTweetsInUserline :: [UserlineEffect] -> () -> ([(UTCTime, TweetID)], Maybe UserlineEffect)
+getTweetsInUserline effs _ =
+  let res = foldl (\acc eff -> case eff of
+                       NewTweetUL_ ts tid -> (ts,tid):acc
+                       otherwise -> acc) [] effs
+  in (res, Nothing)
+
+
 --------------------------------------------------------------------------------
 -- Timeline table : Key = UserID
 
-data TimelineEffect = NewTweetTL_ UTCTime String
+data TimelineEffect = NewTweetTL_ UTCTime TweetID
+                    | GetTweetsInTL_
 
 instance Serialize TimelineEffect where
   put (NewTweetTL_ x y) = put x >> put y
@@ -191,6 +226,18 @@ instance CasType TimelineEffect where
 
 instance Effectish TimelineEffect where
   summarize l = l
+
+addToTimeline :: [TimelineEffect] -> (UTCTime, TweetID) -> ((), Maybe TimelineEffect)
+addToTimeline _ (timestamp, tweetID) = ((), Just $ NewTweetTL_ timestamp tweetID)
+
+getTweetsInTimeline :: [TimelineEffect] -> () -> ([(UTCTime, TweetID)], Maybe TimelineEffect)
+getTweetsInTimeline effs _ =
+  let res = foldl (\acc eff -> case eff of
+                       NewTweetTL_ ts tid -> (ts,tid):acc
+                       otherwise -> acc) [] effs
+  in (res, Nothing)
+
+--------------------------------------------------------------------------------
 
 mkOperations [''UserEffect, ''UsernameEffect, ''TweetEffect, ''UserlineEffect, ''TimelineEffect]
 
@@ -211,6 +258,36 @@ getUserInfoCtrt = trueCtrt
 
 addUsernameCtrt :: Contract Operation
 addUsernameCtrt a = forallQ_ [AddUsername] $ \b -> liftProp $ vis a b ∨ vis b a ∨ sameEff a b
+
+getFollowersCtrt :: Contract Operation
+getFollowersCtrt x = forallQ_ [AddFollower] $ \a -> liftProp $ soo a x ⇒ vis a x
+
+getFollowingCtrt :: Contract Operation
+getFollowingCtrt x = forallQ_ [AddFollowing] $ \a -> liftProp $ soo a x ⇒ vis a x
+
+addFollowerCtrt :: Contract Operation
+addFollowerCtrt = trueCtrt
+
+addFollowingCtrt :: Contract Operation
+addFollowingCtrt = trueCtrt
+
+addTweetCtrt :: Contract Operation
+addTweetCtrt = trueCtrt
+
+addToUserlineCtrt :: Contract Operation
+addToUserlineCtrt = trueCtrt
+
+addToTimelineCtrt :: Contract Operation
+addToTimelineCtrt = trueCtrt
+
+getTweetCtrt :: Contract Operation
+getTweetCtrt = trueCtrt
+
+getTweetsInTimelineCtrt :: Contract Operation
+getTweetsInTimelineCtrt = trueCtrt
+
+getTweetsInUserlineCtrt :: Contract Operation
+getTweetsInUserlineCtrt = trueCtrt
 
 --------------------------------------------------------------------------------
 

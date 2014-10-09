@@ -33,7 +33,17 @@ keyspace = Keyspace $ pack "MicroBlog"
 dtLib = mkDtLib [(AddUser, mkGenOp addUser summarize, $(checkOp AddUser addUserCtrt)),
                  (AddUsername, mkGenOp addUsername summarize, $(checkOp AddUsername addUsernameCtrt)),
                  (GetUserID, mkGenOp getUserID summarize, $(checkOp GetUserID getUserIDCtrt)),
-                 (GetUserInfo, mkGenOp getUserInfo summarize, $(checkOp GetUserInfo getUserInfoCtrt))]
+                 (GetUserInfo, mkGenOp getUserInfo summarize, $(checkOp GetUserInfo getUserInfoCtrt)),
+                 (AddFollower, mkGenOp addFollower summarize, $(checkOp AddFollower addFollowerCtrt)),
+                 (AddFollowing, mkGenOp addFollowing summarize, $(checkOp AddFollowing addFollowingCtrt)),
+                 (GetFollowers, mkGenOp getFollowers summarize, $(checkOp GetFollowers getFollowersCtrt)),
+                 (GetFollowing, mkGenOp getFollowing summarize, $(checkOp GetFollowing getFollowingCtrt)),
+                 (NewTweet, mkGenOp addTweet summarize, $(checkOp NewTweet addTweetCtrt)),
+                 (GetTweet, mkGenOp getTweet summarize, $(checkOp GetTweet getTweetCtrt)),
+                 (NewTweetTL, mkGenOp addToTimeline summarize, $(checkOp NewTweetTL addToTimelineCtrt)),
+                 (GetTweetsInTL, mkGenOp getTweetsInTimeline summarize, $(checkOp GetTweetsInTL getTweetsInTimelineCtrt)),
+                 (NewTweetUL, mkGenOp addToUserline summarize, $(checkOp NewTweetUL addToUserlineCtrt)),
+                 (GetTweetsInUL, mkGenOp getTweetsInUserline summarize, $(checkOp GetTweetsInUL getTweetsInUserlineCtrt))]
 
 main :: IO ()
 main = do
