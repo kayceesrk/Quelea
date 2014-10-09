@@ -2,10 +2,15 @@
 
 module MicroBlogDefs (
   UserEffect(..),
+  Operation(..),
+  createTables,
+  dropTables,
+
+  addUser, addUserCtrt
 ) where
 
 
-import Database.Cassandra.CQL as CQL
+import Database.Cassandra.CQL
 import Data.Serialize as S
 import Data.Time.Clock
 import Data.UUID
@@ -14,21 +19,22 @@ import Control.Applicative ((<$>))
 import Codeec.Types
 import Codeec.Contract
 import Codeec.TH
+import Codeec.DBDriver
 
 --------------------------------------------------------------------------------
 -- User table : key = UserID
 
 newtype UserID = UserID UUID
-data UserEffect = NewUser_ {username :: String, password :: String}
-                | AddFollowing_ {follows :: UserID}
-                | AddFollower_ {followedBy :: UserID}
+data UserEffect = AddUser_ String {- username -} String {- password -}
+                | AddFollowing_ UserID {- follows -}
+                | AddFollower_ UserID {- followedBy -}
 
 instance Serialize UserID where
   put (UserID uuid) = put uuid
   get = UserID <$> get
 
 instance Serialize UserEffect where
-  put (NewUser_ x y) = putWord8 0 >> put x >> put y
+  put (AddUser_ x y) = putWord8 0 >> put x >> put y
   put (AddFollowing_ x) = putWord8 1 >> put x
   put (AddFollower_ x) = putWord8 2 >> put x
   get = do
@@ -37,18 +43,58 @@ instance Serialize UserEffect where
       0 -> do
         x <- get
         y <- get
-        return $ NewUser_ x y
+        return $ AddUser_ x y
       1 -> AddFollowing_ <$> get
       2 -> AddFollower_ <$> get
+
+instance CasType UserEffect where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+
+instance Effectish UserEffect where
+  summarize l = l
+
+addUser :: [UserEffect] -> (String, String) -> ((), Maybe UserEffect)
+addUser _ (userName,password) = ((), Just $ AddUser_ userName password)
+
+addFollower :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
+addFollower _ uid = ((), Just $ AddFollower_ uid)
+
+addFollowing :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
+addFollowing _ uid = ((), Just $ AddFollowing_ uid)
+
+getAddFollowers :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
+getAddFollowers effs _ =
+  let res = foldl (\acc e -> case e of
+                               AddFollower_ uid -> uid:acc
+                               otherwise -> acc) [] effs
+  in (res, Nothing)
+
+getAddFollowing :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
+getAddFollowing effs _ =
+  let res = foldl (\acc e -> case e of
+                               AddFollowing_ uid -> uid:acc
+                               otherwise -> acc) [] effs
+  in (res, Nothing)
 
 --------------------------------------------------------------------------------
 -- Username table : Key = String
 
-data UsernameEffect = NewUsername_ UserID
+data UsernameEffect = AddUsername_ UserID
 
 instance Serialize UsernameEffect where
-  put (NewUsername_ uid) = put uid
-  get = NewUsername_ <$> get
+  put (AddUsername_ uid) = put uid
+  get = AddUsername_ <$> get
+
+instance Effectish UsernameEffect where
+  summarize l = l
+
+instance CasType UsernameEffect where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
 
 --------------------------------------------------------------------------------
 -- Tweet table : Key = TweetID
@@ -72,6 +118,15 @@ instance Serialize TweetEffect where
     z <- get
     return $ NewTweet_ x y z
 
+instance CasType TweetEffect where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+
+instance Effectish TweetEffect where
+  summarize l = l
+
 --------------------------------------------------------------------------------
 -- UserLine table : Key = UserID
 
@@ -84,6 +139,14 @@ instance Serialize UserlineEffect where
     y <- get
     return $ NewTweetUL_ x y
 
+instance CasType UserlineEffect where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+instance Effectish UserlineEffect where
+  summarize l = l
+
 --------------------------------------------------------------------------------
 -- Timeline table : Key = UserID
 
@@ -95,3 +158,39 @@ instance Serialize TimelineEffect where
     x <- get
     y <- get
     return $ NewTweetTL_ x y
+
+instance CasType TimelineEffect where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+instance Effectish TimelineEffect where
+  summarize l = l
+
+mkOperations [''UserEffect, ''UsernameEffect, ''TweetEffect, ''UserlineEffect, ''TimelineEffect]
+
+--------------------------------------------------------------------------------
+-- Contracts
+
+addUserCtrt :: Contract Operation
+addUserCtrt x = liftProp $ true
+
+--------------------------------------------------------------------------------
+
+createTables :: Cas ()
+createTables = do
+  createTxnTable
+  createTable "UserEffect"
+  createTable "UsernameEffect"
+  createTable "TweetEffect"
+  createTable "TimelineEffect"
+  createTable "UserlineEffect"
+
+dropTables :: Cas ()
+dropTables = do
+  dropTxnTable
+  dropTable "UserEffect"
+  dropTable "UsernameEffect"
+  dropTable "TweetEffect"
+  dropTable "TimelineEffect"
+  dropTable "UserlineEffect"
