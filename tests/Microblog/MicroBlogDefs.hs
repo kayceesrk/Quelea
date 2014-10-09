@@ -1,12 +1,15 @@
 {-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
 
 module MicroBlogDefs (
+  UserID(..),
   UserEffect(..),
   Operation(..),
   createTables,
   dropTables,
 
-  addUser, addUserCtrt
+  addUser, addUserCtrt,
+  addUsername, addUsernameCtrt,
+  getUserID, getUserIDCtrt
 ) where
 
 
@@ -24,8 +27,10 @@ import Codeec.DBDriver
 --------------------------------------------------------------------------------
 -- User table : key = UserID
 
-newtype UserID = UserID UUID
+newtype UserID = UserID UUID deriving Eq
+
 data UserEffect = AddUser_ String {- username -} String {- password -}
+                | UpdateUser_ String String
                 | AddFollowing_ UserID {- follows -}
                 | AddFollower_ UserID {- followedBy -}
 
@@ -83,6 +88,8 @@ getAddFollowing effs _ =
 -- Username table : Key = String
 
 data UsernameEffect = AddUsername_ UserID
+                    | GetUserID_
+                        deriving Eq
 
 instance Serialize UsernameEffect where
   put (AddUsername_ uid) = put uid
@@ -95,6 +102,14 @@ instance CasType UsernameEffect where
   putCas = put
   getCas = get
   casType _ = CBlob
+
+addUsername :: [UsernameEffect] -> UserID -> (Bool, Maybe UsernameEffect)
+addUsername [] uid = (True, Just $ AddUsername_ uid)
+addUsername _ _ = (False, Nothing)
+
+getUserID :: [UsernameEffect] -> () -> (Maybe UserID, Maybe UsernameEffect)
+getUserID [] _ = (Nothing, Nothing)
+getUserID (AddUsername_ uid:_) _ = (Just uid, Nothing)
 
 --------------------------------------------------------------------------------
 -- Tweet table : Key = TweetID
@@ -172,8 +187,17 @@ mkOperations [''UserEffect, ''UsernameEffect, ''TweetEffect, ''UserlineEffect, '
 --------------------------------------------------------------------------------
 -- Contracts
 
+trueCtrt :: Contract Operation
+trueCtrt x = liftProp $ true
+
 addUserCtrt :: Contract Operation
-addUserCtrt x = liftProp $ true
+addUserCtrt = trueCtrt
+
+getUserIDCtrt :: Contract Operation
+getUserIDCtrt = trueCtrt
+
+addUsernameCtrt :: Contract Operation
+addUsernameCtrt a = forallQ_ [AddUsername] $ \b -> liftProp $ vis a b ∨ vis b a ∨ sameEff a b
 
 --------------------------------------------------------------------------------
 

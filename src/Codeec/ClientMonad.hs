@@ -4,10 +4,12 @@ module Codeec.ClientMonad (
   Key,
   Session,
   TxnKind(..),
+  CSN,
 
   runSession,
   invoke,
   newKey,
+  mkKey,
   atomically,
   getServerAddr,
 ) where

@@ -16,6 +16,7 @@ import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
 
 import MicroBlogDefs
+import MicroBlog1Ctrts
 
 fePort :: Int
 fePort = 5558
@@ -24,12 +25,23 @@ bePort :: Int
 bePort = 5559
 
 
-data Kind = B | C | S | D deriving (Read, Show)
+data Kind = B | C | S | D | Drop deriving (Read, Show)
 
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "MicroBlog"
 
-dtLib = mkDtLib [(AddUser, mkGenOp addUser summarize, $(checkOp AddUser addUserCtrt))]
+dtLib = mkDtLib [(AddUser, mkGenOp addUser summarize, $(checkOp AddUser addUserCtrt)),
+                 (AddUsername, mkGenOp addUsername summarize, $(checkOp AddUsername addUsernameCtrt)),
+                 (GetUserID, mkGenOp getUserID summarize, $(checkOp GetUserID getUserIDCtrt))]
+
+addNewUser :: UserID -> String {- username -} -> String {- password -} -> CSN Bool
+addNewUser uid uname pwd = atomically ($(checkTxn "addNewUserTxn" addNewUserTxnCtrt)) $ do
+  r::Bool <- invoke (mkKey uname) AddUsername uid
+  if not r
+  then return False {- username has already been taken -}
+  else do {- success -}
+    r::() <- invoke (mkKey uid) AddUser (uname,pwd)
+    return True
 
 main :: IO ()
 main = do
@@ -60,4 +72,8 @@ main = do
       c <- runCommand $ progName ++ " C"
       threadDelay 5000000
       mapM_ terminateProcess [b,s,c]
+      runCas pool $ dropTables
+
+    Drop -> do
+      pool <- newPool [("localhost", "9042")] keyspace Nothing
       runCas pool $ dropTables
