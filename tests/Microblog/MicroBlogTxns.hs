@@ -23,7 +23,7 @@ type Username = String
 type Password = String
 
 addNewUser :: UserID -> Username -> Password -> CSN Bool
-addNewUser uid uname pwd = atomically ($(checkTxn "addNewUserTxn" addNewUserTxnCtrt)) $ do
+addNewUser uid uname pwd = atomically ($(checkTxn "_addNewUserTxn" addNewUserTxnCtrt)) $ do
   r::Bool <- invoke (mkKey uname) AddUsername uid
   if not r
   then return False {- username has already been taken -}
@@ -33,7 +33,7 @@ addNewUser uid uname pwd = atomically ($(checkTxn "addNewUserTxn" addNewUserTxnC
 
 -- Returns (Just pwd) on Success
 getPassword :: Username -> CSN (Maybe Password)
-getPassword uname = atomically ($(checkTxn "getPasswordTxn" getPasswordTxnCtrt)) $ do
+getPassword uname = atomically ($(checkTxn "_getPasswordTxn" getPasswordTxnCtrt)) $ do
   mbUid::Maybe UserID <- invoke (mkKey uname) GetUserID ()
   case mbUid of
     Nothing -> return Nothing
@@ -43,7 +43,7 @@ getPassword uname = atomically ($(checkTxn "getPasswordTxn" getPasswordTxnCtrt))
 
 -- Returns True on Success
 followUser :: Username -> Username -> CSN Bool
-followUser me target = atomically ($(checkTxn "followUserTxn" followUserTxnCtrt)) $ do
+followUser me target = atomically ($(checkTxn "_followUserTxn" followUserTxnCtrt)) $ do
   mbMyUid::Maybe UserID <- invoke (mkKey me) GetUserID ()
   case mbMyUid of
     Nothing -> return False
