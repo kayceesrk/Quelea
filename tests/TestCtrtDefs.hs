@@ -29,17 +29,16 @@ cv :: Fol ()
 cv = forall3_ $ \a b x -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
 
 rc :: Fol ()
-rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
+rc = forall3_ $ \a b c -> liftProp $ trans (SameTxn a b) (Single c) ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
 
 mav :: Fol ()
-mav = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
-        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧ AppRel (So ∪ SameEff) a b ⇒ vis d b) ∧
-        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
+mav = forall4_ $ \a b c d -> liftProp $
+        (trans (SameTxn a b) (DirDep c d) ∧ sameObj b c ∧ vis d a ∧ AppRel (So ∪ SameEff) a b ⇒ vis c b)
 
 psi :: Fol ()
-psi = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
-        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b) ∧
-        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
+psi = forall4_ $ \a b c d -> liftProp $
+        (trans (SameTxn a b) (DirDep c d) ∧ sameObj b d ∧ vis c a ⇒ vis d b)
 
 psiFlipped :: Fol ()
-psiFlipped = forall4_ $ \a b c d -> liftProp $ (trans[[c,d],[a,b]] ∧ sameObj b d ∧ vis c a ⇒ vis d b)
+psiFlipped = forall4_ $ \a b c d -> liftProp $
+               trans (SameTxn c d) (SameTxn a b) ∧ sameObj b d ∧ vis c a ⇒ vis d b

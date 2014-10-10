@@ -1,6 +1,7 @@
 module Codeec.Contract (
   Rel(..),
   Prop(..),
+  EffCol(..),
   Fol,
   Contract,
   Effect,
@@ -34,8 +35,11 @@ module Codeec.Contract (
   isValid,
   isSat,
 
+
   -- Only for DEBUG
-  fol2Z3Ctrt
+  fol2Z3Ctrt,
+  underMonotonicAtomicView,
+  dummyZ3Sort
 ) where
 
 import Codeec.Contract.Language

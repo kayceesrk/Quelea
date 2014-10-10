@@ -5,7 +5,11 @@ module Codeec.Contract.TypeCheck (
   classifyTxnContract,
   isValid,
   isSat,
-  fol2Z3Ctrt
+
+  -- Debug Only
+  fol2Z3Ctrt,
+  dummyZ3Sort,
+  underMonotonicAtomicView
 ) where
 
 
@@ -209,7 +213,7 @@ rel2Z3Ctrt r e1 e2 = Z3Ctrt $ do
     Vis -> mkApp1 visRel e1 e2
     So -> mkApp1 soRel e1 e2
     SameObj -> mkApp1 sameobjRel e1 e2
-    SameTxn -> mkApp1 sameTxnRel e1 e2
+    AtomDep -> mkApp1 atomDepRel e1 e2
     SameEff -> do
       a1 <- lookupEff e1
       a2 <- lookupEff e2
@@ -329,22 +333,24 @@ assertBasicAxioms = do
   assertProp "doVis" $ fol2Z3Ctrt doVis
   assertProp "soTrans" $ fol2Z3Ctrt $ transRel so
 
-  assertProp "reflRelSameTxn" $ fol2Z3Ctrt $ reflRel sameTxn
-  assertProp "symRelSameTxn" $ fol2Z3Ctrt $ symRel sameTxn
-  assertProp "transRelSameTxn" $ fol2Z3Ctrt $ transRel sameTxn
+  assertProp "reflRelAtomDep" $ fol2Z3Ctrt $ reflRel atomDep
+  assertProp "transRelAtomDep" $ fol2Z3Ctrt $ transRel atomDep
   assertProp "txnFollowsSess" $ fol2Z3Ctrt $ txnFollowsSess
 
   assertProp "reflRelSameObj" $ fol2Z3Ctrt $ reflRel sameObj
   assertProp "symRelSameObj" $ fol2Z3Ctrt $ symRel sameObj
   assertProp "transRelSameObj" $ fol2Z3Ctrt $ transRel sameObj
 
-  assertProp "curTxnSameTxn" $ fol2Z3Ctrt $ curTxnSameTxn
+  assertProp "curTxnAtomDep" $ fol2Z3Ctrt $ curTxnAtomDep
+  assertProp "atomicVisibility" $ fol2Z3Ctrt $ readCommitted
+
   return ()
   where
-    curTxnSameTxn :: Fol () = forall2_ $ \x y -> liftProp $ CurTxn x ∧ CurTxn y ⇒ sameTxn x y
+    curTxnAtomDep :: Fol () = forall2_ $ \x y -> liftProp $ CurTxn x ∧ CurTxn y ⇒ atomDep x y
     thinAir :: Fol () = forall_ $ \x -> liftProp . Not $ hb x x
     doVis :: Fol () = forall2_ $ \a b -> liftProp $ vis a b ⇒ appRel SameObj a b
-    txnFollowsSess :: Fol () = forall2_ $ \a b -> liftProp $ sameTxn a b ⇒  (so a b ∨ so b a ∨ sameEff a b)
+    txnFollowsSess :: Fol () = forall2_ $ \a b -> liftProp $
+                                 (atomDep a b ∧ atomDep b a) ⇒  (so a b ∨ so b a ∨ sameEff a b)
 
     reflRel :: (Effect -> Effect -> Prop ()) -> Fol ()
     reflRel rel = forall_ $ \x -> liftProp $ rel x x
@@ -355,6 +361,11 @@ assertBasicAxioms = do
     transRel :: (Effect -> Effect -> Prop ()) -> Fol ()
     transRel rel = forall3_ $ \a b c -> liftProp $ rel a b ∧ rel b c ⇒  rel a c
 
+    readCommitted :: Fol () = forall3_ $ \a b c -> liftProp $
+                                trans (DirDep a b) (Single c) ∧ sameObjList [a,b,c] ∧ vis b c ⇒ vis a c
+
+
+
 
 mkZ3CtrtState :: Sort -> Z3 Z3CtrtState
 mkZ3CtrtState operSort = do
@@ -364,11 +375,11 @@ mkZ3CtrtState operSort = do
   visRel <- mkFreshFuncDecl "vis" [effSort, effSort] boolSort
   soRel <- mkFreshFuncDecl "so" [effSort, effSort] boolSort
   sameobjRel <- mkFreshFuncDecl "sameobj" [effSort, effSort] boolSort
-  sameTxnRel <- mkFreshFuncDecl "sameTxn" [effSort, effSort] boolSort
+  atomDepRel <- mkFreshFuncDecl "atomDep" [effSort, effSort] boolSort
   curTxnRel <- mkFreshFuncDecl "curTxn" [effSort] boolSort
   operRel <- mkFreshFuncDecl "oper" [effSort] operSort
 
-  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel sameTxnRel curTxnRel operRel M.empty [] M.empty
+  return $ Z3CtrtState effSort operSort visRel soRel sameobjRel atomDepRel curTxnRel operRel M.empty [] M.empty
 
 res2Bool :: Result -> Bool
 res2Bool Unsat = True
@@ -410,21 +421,11 @@ cc x = forall_ $ \a -> liftProp $ hbo a x ⇒ vis a x
 cv :: Contract ()
 cv x = forall2_ $ \a b -> liftProp $ (hbo a b ∧ vis b x) ⇒ vis a x
 
-rc :: Fol ()
-rc = forall3_ $ \a b c -> liftProp $ trans[[a,b],[c]] ∧ sameObjList [a,b,c] ∧ vis a c ⇒ vis b c
-
-enrichWithRC :: OperationClass a => Fol a -> Fol ()
-enrichWithRC c = liftProp $ Raw (fol2Z3Ctrt c) ∧ Raw (fol2Z3Ctrt rc)
-
 mav :: Fol ()
-mav = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
-        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ∧ AppRel (So ∪ SameEff) a b ⇒ vis d b) ∧
-        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
+mav = forall4_ $ \a b c d -> liftProp $ (trans (SameTxn a b) (DirDep c d) ∧ sameObj b c ∧ vis d a ∧ AppRel (So ∪ SameEff) a b ⇒ vis c b)
 
 rr :: Fol ()
-rr = forall4_ $ \a b c d -> forall3_ $ \e f g -> liftProp $
-        (trans[[a,b],[c,d]] ∧ sameObj b d ∧ vis c a ⇒ vis d b) ∧
-        (trans[[e,f],[g]] ∧ sameObjList [e,f,g] ∧ vis e g ⇒ vis f g)
+rr = forall4_ $ \a b c d -> liftProp $ (trans (SameTxn a b) (DirDep c d) ∧ sameObj b c ∧ vis d a ⇒ vis c b)
 
 mkRawImpl :: Z3Ctrt -> Z3Ctrt -> Prop ()
 mkRawImpl a b = (Raw a) ⇒ (Raw b)
@@ -483,26 +484,17 @@ isHighlyAvailable c mkOperSort =
 
 underReadCommitted :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
 underReadCommitted c mkOperSort =
-  typecheck mkOperSort $ do
-    assertBasicAxioms
-    assertProp "RC_IMPL_CTRT" $ not_ (mkRawImpl2 rc c)
-    lift $ res2Bool <$> check
+  isValidProto mkOperSort "CTRT" c
 
 underMonotonicAtomicView :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
 underMonotonicAtomicView c mkOperSort = do
-    let cWithRC = enrichWithRC c
-    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 mav cWithRC
-    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 cWithRC rc
-    r1 <- isValidProto mkOperSort "MAV_IMPL_CTRT" test1
-    if r1
-    then isValidProto mkOperSort "CTRT_IMPL_RC" test2
-    else return False
+    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 mav c
+    isValidProto mkOperSort "MAV_IMPL_CTRT" test1
 
 underRepeatableRead :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
 underRepeatableRead c mkOperSort = do
-    let cWithRC = enrichWithRC c
-    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr cWithRC
-    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 cWithRC mav
+    let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr c
+    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 c mav
     r1 <- isValidProto mkOperSort "RR_IMPL_CTRT" test1
     if r1
     then isValidProto mkOperSort "CTRT_IMPL_MAV" test2

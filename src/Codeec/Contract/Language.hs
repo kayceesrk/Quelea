@@ -6,6 +6,7 @@ module Codeec.Contract.Language (
   Fol(..),
   Contract,
   Effect(..),
+  EffCol(..),
   Z3CtrtState(..),
   Z3Ctrt(..),
 
@@ -15,7 +16,7 @@ module Codeec.Contract.Language (
   soo,
   hb,
   sameEff,
-  sameTxn,
+  atomDep,
   sameObj,
   sameObjList,
   (∩),
@@ -55,7 +56,7 @@ data Z3CtrtState = Z3CtrtState {
   _visRel     :: FuncDecl, -- Effect -> Effect -> Bool
   _soRel      :: FuncDecl, -- Effect -> Effect -> Bool
   _sameobjRel :: FuncDecl, -- Effect -> Effect -> Bool
-  _sameTxnRel :: FuncDecl, -- Effect -> Effect -> Bool
+  _atomDepRel  :: FuncDecl, -- Effect -> Effect -> Bool
   _curTxnRel  :: FuncDecl, -- Effect -> Bool
   _operRel    :: FuncDecl, -- Effect -> Oper
   -- Map
@@ -70,7 +71,7 @@ data Z3Ctrt = Z3Ctrt { unZ3Ctrt :: StateT Z3CtrtState Z3 AST }
 
 newtype Effect = Effect { unEffect :: Int } deriving (Eq, Ord)
 
-data Rel = Vis | So | SameObj | TC Rel | SameEff | SameTxn
+data Rel = Vis | So | SameObj | TC Rel | SameEff | AtomDep
          | Union Rel Rel | Intersect Rel Rel deriving Ord
 
 instance Eq Rel where
@@ -79,7 +80,7 @@ instance Eq Rel where
       (Vis, Vis) -> True
       (So, So) -> True
       (SameObj, SameObj) -> True
-      (SameTxn, SameTxn) -> True
+      (AtomDep, AtomDep) -> True
       (TC r1, TC r2) -> r1 == r2
       (SameEff, SameEff) -> True
       (Union r1 r2, Union r3 r4) ->
@@ -114,8 +115,8 @@ soo a b = AppRel (So ∩ SameObj) a b
 hb :: Effect -> Effect -> Prop a
 hb a b = AppRel (TC $ Union Vis So) a b
 
-sameTxn :: Effect -> Effect -> Prop a
-sameTxn = AppRel SameTxn
+atomDep :: Effect -> Effect -> Prop a
+atomDep = AppRel AtomDep
 
 sameObj :: Effect -> Effect -> Prop a
 sameObj a b = AppRel SameObj a b
@@ -179,19 +180,25 @@ forallQ4_ l1 l2 l3 l4 f = forallQ_ l1 $ \a -> forallQ_ l2 $ \b -> forallQ_ l3 $ 
 sameEff :: Effect -> Effect -> Prop a
 sameEff a b = AppRel SameEff a b
 
--- Given trans [a,b][c,d], translate it to (a ~ b) ∧ (c ~ d) ∧ (not $ a ~ c).
--- The rest follows.
-trans :: OperationClass a => [[Effect]] -> Prop a
-trans lol =
-  let stRel = foldl (\acc el -> acc ∧ (mkRelTxn (AppRel SameTxn) el)) true lol
-      pick1List = foldl (\acc el -> case el of {x:xs -> x:acc; [] -> acc}) [] lol
-      dtRel = mkRelTxn (\x y -> Not $ AppRel SameTxn x y) pick1List
-  in (mkCurTxn lol) ∧ stRel ∧ dtRel
+data EffCol = DirDep Effect Effect | SameTxn Effect Effect | Single Effect
+
+trans :: OperationClass a => EffCol -> EffCol -> Prop a
+trans col1 col2 =
+  mkCurTxn col1 ∧ mkDepRel col1 ∧ mkDepRel col2 ∧ mkNotDepRel col1 col2
   where
-    mkCurTxn (xl:xsl) =
-      let e:_ = xl
-      in CurTxn e
-    mkRelTxn rel [] = PTrue
-    mkRelTxn rel (x:xs) =
-      let stList = map (\y -> rel x y) xs
-      in foldl (\acc r -> acc ∧ r) true stList
+    mkCurTxn (DirDep e1 e2) = CurTxn e1 ∧ CurTxn e2
+    mkCurTxn (SameTxn e1 e2) = CurTxn e1 ∧ CurTxn e2
+    mkCurTxn (Single e) = CurTxn e
+
+    mkDepRel (DirDep e1 e2) = atomDep e1 e2
+    mkDepRel (SameTxn e1 e2) = atomDep e1 e2 ∧ atomDep e2 e1
+    mkDepRel (Single _) = true
+
+    getLastEff (DirDep e1 e2) = e2
+    getLastEff (SameTxn e1 e2) = e2
+    getLastEff (Single e) = e
+
+    mkNotDepRel col1 col2 =
+      let e1 = getLastEff col1
+          e2 = getLastEff col2
+      in (Not $ atomDep e1 e2 ∨ atomDep e2 e1)
