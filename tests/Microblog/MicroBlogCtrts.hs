@@ -3,7 +3,9 @@
 module MicroBlogCtrts (
   addNewUserTxnCtrt,
   getPasswordTxnCtrt,
-  followUserTxnCtrt
+  followUserTxnCtrt,
+  addToUserlineTxnCtrt,
+  addToTimelineTxnCtrt
 ) where
 
 import MicroBlogDefs
@@ -18,3 +20,9 @@ getPasswordTxnCtrt = forallQ4_ [GetUserID] [GetUserInfo] [AddUsername] [AddUser]
 
 followUserTxnCtrt :: Fol Operation
 followUserTxnCtrt = liftProp $ true
+
+addToUserlineTxnCtrt :: Fol Operation
+addToUserlineTxnCtrt = liftProp $ true
+
+addToTimelineTxnCtrt :: Fol Operation
+addToTimelineTxnCtrt = liftProp $ true

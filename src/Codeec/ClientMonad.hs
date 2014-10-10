@@ -66,8 +66,8 @@ atomically tk m = do
   get >>= liftIO . (endTxn S.empty) >>= put
   return r
 
-atomicallyWith :: TxnKind -> S.Set TxnDep -> CSN a -> CSN a
-atomicallyWith tk extraDeps m = do
+atomicallyWith :: S.Set TxnDep -> TxnKind -> CSN a -> CSN a
+atomicallyWith extraDeps tk m = do
   get >>= liftIO . (flip beginTxn tk) >>= put
   r <- m
   get >>= liftIO . (endTxn extraDeps) >>= put

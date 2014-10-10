@@ -18,6 +18,8 @@ import Control.Monad.Trans (liftIO)
 import Data.Time.Clock
 import System.Random (randomIO)
 import Control.Applicative ((<$>))
+import Data.Maybe (fromJust)
+import qualified Data.Set as S
 
 type Username = String
 type Password = String
@@ -64,12 +66,17 @@ newTweet uid tweet = do
   tweetID <- liftIO $ TweetID <$> randomIO
   -- Add into Tweet table
   r::() <- invoke (mkKey tweetID) NewTweet (uid, take 140 tweet, timestamp)
+  newTweetEffect <- S.singleton . fromJust <$> getLastEffect
   -- Add to userline
-
+  atomicallyWith newTweetEffect ($(checkTxn "_addToUserlineTxn" addToUserlineTxnCtrt)) $ do
+    _::() <- invoke (mkKey uid) NewTweetUL (timestamp, tweetID)
+    return ()
+  -- Add to timeline
   followers::[UserID] <- invoke (mkKey uid) GetFollowers ()
   flip mapM_ followers $ \follower -> do
-    _::() <- invoke (mkKey follower) NewTweetTL (timestamp, tweetID)
-    return ()
+    atomicallyWith newTweetEffect ($(checkTxn "_addToTimelineTxn" addToTimelineTxnCtrt)) $ do
+      _::() <- invoke (mkKey follower) NewTweetTL (timestamp, tweetID)
+      return ()
 
 getUserline :: UserID -> CSN [(String, UTCTime)]
 getUserline = undefined
