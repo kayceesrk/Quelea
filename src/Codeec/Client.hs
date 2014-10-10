@@ -8,11 +8,13 @@ module Codeec.Client (
   beginSession,
   endSession,
   invoke,
+  invokeAndGetDeps,
   newKey,
   mkKey,
   getServerAddr,
   beginTxn,
-  endTxn
+  endTxn,
+  getLastEffect
 ) where
 
 import Data.UUID
@@ -52,7 +54,8 @@ data Session = Session {
   _sessid     :: SessID,
   _seqMap     :: M.Map (ObjType, Key) SeqNo,
   _readObjs   :: S.Set (ObjType, Key),
-  _curTxn     :: Maybe TxnState
+  _curTxn     :: Maybe TxnState,
+  _lastEffect :: Maybe TxnDep
 }
 
 makeLenses ''Session
@@ -69,7 +72,7 @@ beginSession fe = do
   -- Create a session id
   sessid <- SessID <$> randomIO
   -- Initialize session
-  return $ Session fe sock serverAddr sessid M.empty S.empty Nothing
+  return $ Session fe sock serverAddr sessid M.empty S.empty Nothing Nothing
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
@@ -89,11 +92,11 @@ beginTxn s tk = do
     else return Nothing
   return $ s {_curTxn = Just $ TxnState txnID tk S.empty M.empty S.empty}
 
-endTxn :: Session -> IO Session
-endTxn s = do
+endTxn :: S.Set TxnDep {- Extra dependencies -} -> Session -> IO Session
+endTxn extraDeps s = do
   when (s^.curTxn == Nothing) $ error "endTxn: No transaction in progress!"
   let txnState = fromJust $ s^.curTxn
-  let txnCommit :: Request () = ReqTxnCommit (txnState^.txnidTS) (txnState^.txnEffsTS)
+  let txnCommit :: Request () = ReqTxnCommit (txnState^.txnidTS) (S.union extraDeps $ txnState^.txnEffsTS)
   send (s^.server) [] $ encode txnCommit
   receive (s^.server)
   return $ s {_curTxn = Nothing}
@@ -103,17 +106,28 @@ getServerAddr s = s^.serverAddr
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)
-invoke s key operName arg = do
+invoke s k on arg = do
+  (r, deps, s) <- invokeInternal False s k on arg
+  return (r,s)
+
+invokeAndGetDeps :: (OperationClass on, Serialize arg, Serialize res)
+       => Session -> Key -> on -> arg -> IO (res, S.Set TxnDep, Session)
+invokeAndGetDeps = invokeInternal True
+
+invokeInternal :: (OperationClass on, Serialize arg, Serialize res)
+       => Bool -> Session -> Key -> on -> arg -> IO (res, S.Set TxnDep, Session)
+invokeInternal getDeps s key operName arg = do
   let ot = getObjType operName
   let seqNo = case M.lookup (ot, key) $ s^.seqMap of
                 Nothing -> 0
                 Just s -> s
   let txnReq = mkTxnReq ot key $ s^.curTxn
   let req = ReqOper $ OperationPayload ot key operName (encode arg)
-                        (s ^. sessid) seqNo txnReq
+                        (s ^. sessid) seqNo txnReq getDeps
   send (s^.server) [] $ encode req
   responseBlob <- receive (s^.server)
-  let (ResOper newSeqNo resBlob mbNewEff mbTxns) = decodeResponse responseBlob
+  let (ResOper newSeqNo resBlob mbNewEff mbTxns visAddrSet) = decodeResponse responseBlob
+  let visSet = S.map (\(Addr sid sqn) -> TxnDep ot key sid sqn) visAddrSet
   case decode resBlob of
     Left s -> error $ "invoke : decode failure " ++ s
     Right res -> do
@@ -121,11 +135,16 @@ invoke s key operName arg = do
       let newReadObjs = S.insert (ot,key) $ s^.readObjs
       let partialSessRV = Session (s^.broker) (s^.server) (s^.serverAddr)
                                   (s^.sessid) newSeqMap newReadObjs
+      let newLastEff = Just $ TxnDep ot key (s^.sessid) newSeqNo
       case s^.curTxn of
-        Nothing -> return (res, partialSessRV Nothing)
+        Nothing ->
+          if newSeqNo == seqNo {- This operation was read only -}
+          then return (res, visSet, partialSessRV Nothing Nothing)
+          else return (res, visSet, partialSessRV Nothing newLastEff)
         Just orig@(TxnState txid txnKind deps cache seenTxns) -> do
           case mbNewEff of
-            Nothing -> return (res, partialSessRV (Just orig))
+            Nothing -> {- This operation was read only -}
+              return (res, visSet, partialSessRV (Just orig) Nothing)
             Just newEff -> do
               let newDeps = S.insert (TxnDep ot key (s^.sessid) newSeqNo) deps
               let (_, txnPayload) = fromJust txnReq
@@ -136,7 +155,8 @@ invoke s key operName arg = do
                     case getEffectSet txnPayload of
                       Nothing -> cache
                       Just es -> M.insert (ot, key) (S.insert (Addr (s^.sessid) newSeqNo, newEff) es) cache
-              return (res, partialSessRV (Just (TxnState txid txnKind newDeps newCache newSeenTxns)))
+              let newTxnState = (Just (TxnState txid txnKind newDeps newCache newSeenTxns))
+              return (res, visSet, partialSessRV newTxnState newLastEff)
   where
     getEffectSet (RC es) = Just es
     getEffectSet (MAV es _) = Just es
@@ -163,3 +183,6 @@ newKey = Key . encodeUUID <$> randomIO
 
 mkKey :: Serialize a => a -> Key
 mkKey kv = Key $ encode kv
+
+getLastEffect :: Session -> Maybe TxnDep
+getLastEffect s = s^.lastEffect

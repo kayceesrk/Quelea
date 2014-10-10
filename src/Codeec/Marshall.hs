@@ -21,7 +21,7 @@ import Data.Maybe (fromJust)
 import Data.Word
 
 instance OperationClass a => Serialize (OperationPayload a) where
-  put (OperationPayload ot k on v sessid seqno mbtxnid) = do
+  put (OperationPayload ot k on v sessid seqno mbtxnid getDeps) = do
     put ot
     put k
     put $ show on
@@ -29,6 +29,7 @@ instance OperationClass a => Serialize (OperationPayload a) where
     put sessid
     put seqno
     put mbtxnid
+    put getDeps
   get = do
     ot <- get
     k <- get
@@ -37,7 +38,8 @@ instance OperationClass a => Serialize (OperationPayload a) where
     sessid <- get
     seqno <- get
     mbtxnid <- get
-    return $ OperationPayload ot k (read on) v sessid seqno mbtxnid
+    getDeps <- get
+    return $ OperationPayload ot k (read on) v sessid seqno mbtxnid getDeps
 
 instance Serialize Key where
   put (Key k) = put k
@@ -87,12 +89,13 @@ instance Serialize UUID where
   get = fromJust . fromByteString <$> getLazyByteString 16
 
 instance Serialize Response where
-  put (ResOper seqno res eff txns) = do
+  put (ResOper seqno res eff txns deps) = do
     put (0::Word8)
     put seqno
     put res
     put eff
     put txns
+    put deps
   put (ResSnapshot v) = do
     put (1::Word8)
     put v
@@ -105,7 +108,8 @@ instance Serialize Response where
         res <- get
         eff <- get
         txns <- get
-        return $ ResOper seqno res eff txns
+        deps <- get
+        return $ ResOper seqno res eff txns deps
       1 -> do
         v <- get
         return $ ResSnapshot v

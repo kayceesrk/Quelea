@@ -8,20 +8,24 @@ module Codeec.ClientMonad (
 
   runSession,
   invoke,
+  invokeAndGetDeps,
   newKey,
   mkKey,
   atomically,
+  atomicallyWith,
   getServerAddr,
+  getLastEffect
 ) where
 
 import Codeec.Types
-import Codeec.Client hiding (invoke, getServerAddr)
+import Codeec.Client hiding (invoke, getServerAddr, invokeAndGetDeps, getLastEffect)
 import qualified Codeec.Client as CCLow
 import Control.Monad.Trans.State
 import Control.Monad.Trans (liftIO)
 import Control.Lens
 import Codeec.NameService.SimpleBroker
 import Data.Serialize hiding (get, put)
+import qualified Data.Set as S
 
 makeLenses ''Session
 
@@ -42,6 +46,14 @@ invoke key operName arg = do
   put newSession
   return res
 
+invokeAndGetDeps :: (OperationClass on, Serialize arg, Serialize res)
+       => Key -> on -> arg -> CSN (res, S.Set TxnDep)
+invokeAndGetDeps key operName arg = do
+  session <- get
+  (res, deps, newSession) <- liftIO $ CCLow.invokeAndGetDeps session key operName arg
+  put newSession
+  return (res, deps)
+
 getServerAddr :: CSN String
 getServerAddr = do
   s <- use serverAddr
@@ -51,5 +63,17 @@ atomically :: TxnKind -> CSN a -> CSN a
 atomically tk m = do
   get >>= liftIO . (flip beginTxn tk) >>= put
   r <- m
-  get >>= liftIO . endTxn >>= put
+  get >>= liftIO . (endTxn S.empty) >>= put
   return r
+
+atomicallyWith :: TxnKind -> S.Set TxnDep -> CSN a -> CSN a
+atomicallyWith tk extraDeps m = do
+  get >>= liftIO . (flip beginTxn tk) >>= put
+  r <- m
+  get >>= liftIO . (endTxn extraDeps) >>= put
+  return r
+
+getLastEffect :: CSN (Maybe TxnDep)
+getLastEffect = do
+  s <- get
+  return $ s^.lastEffect

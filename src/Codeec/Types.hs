@@ -118,7 +118,8 @@ data OperationPayload a = OperationPayload {
   _valReq     :: ByteString,
   _sidReq     :: SessID,
   _sqnReq     :: SeqNo,
-  _txnReq     :: Maybe (TxnID, TxnPayload)
+  _txnReq     :: Maybe (TxnID, TxnPayload),
+  _getDepsReq :: Bool
 }
 
 data Request a =
@@ -127,10 +128,14 @@ data Request a =
   | ReqSnapshot (S.Set (ObjType,Key))
 
 data Response = ResOper {
-                  seqno :: SeqNo,
+                  seqno  :: SeqNo, {- if an effect was produce (effect = Just _),
+                                      then seqno is the sequence number of this
+                                      effect. Otherwise, it is the seq no passed
+                                      in the corresponding Request (See OperationPayload) -}
                   result :: ByteString,
-                  effect :: Maybe EffectVal,  {- Only relevant for RC, MAV and RR transactions -}
-                  coveredTxns :: Maybe (S.Set TxnID)} {- Only relevant for MAV transactions -}
+                  effect :: Maybe EffectVal, {- Only relevant for RC, MAV and RR transactions -}
+                  coveredTxns :: Maybe (S.Set TxnID), {- Only relevant for MAV transactions -}
+                  visibilitySet :: S.Set Addr }
               | ResSnapshot (M.Map (ObjType, Key) (S.Set (Addr, EffectVal)))
               | ResCommit
 

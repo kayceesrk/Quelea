@@ -158,24 +158,25 @@ worker dtLib pool cache = do
 
 doOp :: OperationClass a => GenOpFun -> CacheManager -> OperationPayload a -> Consistency -> IO (Response, Int)
 doOp op cache request const = do
-  let (OperationPayload objType key operName arg sessid seqno mbtxid) = request
+  let (OperationPayload objType key operName arg sessid seqno mbtxid getDeps) = request
   -- Build the context
   (ctxt, deps) <- buildContext objType key mbtxid
   -- Perform the operation on this context
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
+  let resDeps = if getDeps then deps else S.empty
   result <- case effM of
-    Nothing -> return $ ResOper seqno res Nothing Nothing
+    Nothing -> return $ ResOper seqno res Nothing Nothing resDeps
     Just eff -> do
       -- Write effect writes to DB, and potentially to cache
       writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const $ sel1 <$> mbtxid
       case mbtxid of
-        Nothing -> return $ ResOper (seqno + 1) res Nothing Nothing
+        Nothing -> return $ ResOper (seqno + 1) res Nothing Nothing resDeps
         Just (_,MAV _ _) -> do
           txns <- getInclTxnsAt cache objType key
-          return $ ResOper (seqno + 1) res (Just eff) (Just txns)
-        otherwise -> return $ ResOper (seqno + 1) res (Just eff) Nothing
+          return $ ResOper (seqno + 1) res (Just eff) (Just txns) resDeps
+        otherwise -> return $ ResOper (seqno + 1) res (Just eff) Nothing resDeps
   -- return response
   return (result, Prelude.length ctxt)
   where
