@@ -6,6 +6,9 @@ module MicroBlogTxns (
   followUser,
   newTweet,
   getUserline,
+  getTimeline,
+  getFollowersUN,
+  getFollowingUN,
 ) where
 
 import Codeec.ClientMonad
@@ -20,6 +23,7 @@ import System.Random (randomIO)
 import Control.Applicative ((<$>))
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
+import Control.Monad (foldM)
 
 type Username = String
 type Password = String
@@ -57,6 +61,32 @@ followUser me target = atomically ($(checkTxn "_followUserTxn" followUserTxnCtrt
           _::() <- invoke (mkKey myUid) AddFollowing targetUid
           _::() <- invoke (mkKey targetUid) AddFollower myUid
           return True
+
+getFollowersUN :: Username -> CSN [Username]
+getFollowersUN uname = do
+  mbMyUid::Maybe UserID <- invoke (mkKey uname) GetUserID ()
+  case mbMyUid of
+    Nothing -> return []
+    Just myUid -> do
+      uidList::[UserID] <- invoke (mkKey myUid) GetFollowers ()
+      foldM (\acc uid -> do
+        userInfo::Maybe(String,String) <- invoke (mkKey uid) GetUserInfo ()
+        case userInfo of
+          Nothing -> return acc
+          Just (followerName,_) -> return $ followerName:acc) [] uidList
+
+getFollowingUN :: Username -> CSN [Username]
+getFollowingUN uname = do
+  mbMyUid::Maybe UserID <- invoke (mkKey uname) GetUserID ()
+  case mbMyUid of
+    Nothing -> return []
+    Just myUid -> do
+      uidList::[UserID] <- invoke (mkKey myUid) GetFollowing ()
+      foldM (\acc uid -> do
+        userInfo::Maybe(String,String) <- invoke (mkKey uid) GetUserInfo ()
+        case userInfo of
+          Nothing -> return acc
+          Just (followerName,_) -> return $ followerName:acc) [] uidList
 
 type Tweet = String
 
