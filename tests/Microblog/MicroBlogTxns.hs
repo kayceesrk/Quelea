@@ -78,8 +78,18 @@ newTweet uid tweet = do
       _::() <- invoke (mkKey follower) NewTweetTL (timestamp, tweetID)
       return ()
 
-getUserline :: UserID -> CSN [(String, UTCTime)]
-getUserline = undefined
+getUserline :: UserID -> UTCTime -> UTCTime -> CSN [(String, UTCTime)]
+getUserline uid beginTime endTime = atomically ($(checkTxn "_getUserlineTxn" getUserlineTxnCtrt)) $ do
+  tweetInfoList::[(UTCTime, TweetID)] <- invoke (mkKey uid) GetTweetsInUL ()
+  let filteredInfo = filter (\(t,_) -> t >= beginTime && t <= endTime) tweetInfoList
+  flip mapM filteredInfo $ \(t,tid) -> do
+    Just (uid::UserID, tweet::String, _::UTCTime) <- invoke (mkKey tid) GetTweet ()
+    return (tweet, t)
 
-getTimeline :: UserID -> CSN [(UserID, String, UTCTime)]
-getTimeline = undefined
+getTimeline :: UserID -> UTCTime -> UTCTime -> CSN [(TweetID, UserID, String, UTCTime)]
+getTimeline uid beginTime endTime = atomically ($(checkTxn "_getTimelineTxn" getTimelineTxnCtrt)) $ do
+  tweetInfoList::[(UTCTime, TweetID)] <- invoke (mkKey uid) GetTweetsInTL ()
+  let filteredInfo = filter (\(t,_) -> t >= beginTime && t <= endTime) tweetInfoList
+  flip mapM filteredInfo $ \(t,tid) -> do
+    Just (uid::UserID, tweet::String, _::UTCTime) <- invoke (mkKey tid) GetTweet ()
+    return (tid, uid, tweet, t)

@@ -141,7 +141,7 @@ getUserID (AddUsername_ uid:_) _ = (Just uid, Nothing)
 
 newtype TweetID = TweetID UUID
 data TweetEffect = NewTweet_ UserID String UTCTime
-                 | GetTweets
+                 | GetTweet_
 
 instance Serialize TweetID where
   put (TweetID tid) = put tid

@@ -5,7 +5,9 @@ module MicroBlogCtrts (
   getPasswordTxnCtrt,
   followUserTxnCtrt,
   addToUserlineTxnCtrt,
-  addToTimelineTxnCtrt
+  addToTimelineTxnCtrt,
+  getUserlineTxnCtrt,
+  getTimelineTxnCtrt
 ) where
 
 import MicroBlogDefs
@@ -26,3 +28,11 @@ addToUserlineTxnCtrt = liftProp $ true
 
 addToTimelineTxnCtrt :: Fol Operation
 addToTimelineTxnCtrt = liftProp $ true
+
+getUserlineTxnCtrt :: Fol Operation
+getUserlineTxnCtrt = forallQ4_ [GetTweetsInUL] [GetTweet] [NewTweet] [NewTweetUL] $ \a b c d -> liftProp $
+                       trans (SameTxn a b) (DirDep c d) ∧ so a b ∧ vis d a ∧ sameObj b c ⇒ vis c b
+
+getTimelineTxnCtrt :: Fol Operation
+getTimelineTxnCtrt = forallQ4_ [GetTweetsInTL] [GetTweet] [NewTweet] [NewTweetTL] $ \a b c d -> liftProp $
+                       trans (SameTxn a b) (DirDep c d) ∧ so a b ∧ vis d a ∧ sameObj b c ⇒ vis c b

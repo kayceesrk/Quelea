@@ -137,7 +137,7 @@ invokeInternal getDeps s key operName arg = do
                                   (s^.sessid) newSeqMap newReadObjs
       let newLastEff = Just $ TxnDep ot key (s^.sessid) newSeqNo
       case s^.curTxn of
-        Nothing ->
+        Nothing -> {- This operation was not in a transaction -}
           if newSeqNo == seqNo {- This operation was read only -}
           then return (res, visSet, partialSessRV Nothing Nothing)
           else return (res, visSet, partialSessRV Nothing newLastEff)
