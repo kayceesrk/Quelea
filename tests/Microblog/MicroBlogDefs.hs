@@ -28,7 +28,10 @@ module MicroBlogDefs (
   addToUserline, addToUserlineCtrt,
   getTweetsInUserline, getTweetsInUserlineCtrt,
   addToTimeline, addToTimelineCtrt,
-  getTweetsInTimeline, getTweetsInTimelineCtrt
+  getTweetsInTimeline, getTweetsInTimelineCtrt,
+
+  addBlocks, addBlocksCtrt,
+  addIsBlockedBy, addIsBlockedByCtrt
 ) where
 
 
@@ -51,13 +54,13 @@ import Codeec.DBDriver
 newtype UserID = UserID UUID deriving (Eq, Ord)
 
 data UserEffect = AddUser_ String {- username -} String {- password -}
-                | GetUserInfo_
                 | AddFollowing_ UserID {- follows -} UTCTime
                 | RemFollowing_ UserID UTCTime
                 | AddFollower_ UserID {- followedBy -} UTCTime
                 | RemFollower_ UserID UTCTime
                 | Blocks_ UserID
                 | IsBlockedBy_ UserID
+                | GetUserInfo_
                 | GetFollowers_
                 | GetFollowing_ deriving Eq
 
@@ -71,6 +74,9 @@ instance Serialize UserEffect where
   put (AddFollower_ x y) = putWord8 2 >> put x >> put y
   put (RemFollowing_ x y) = putWord8 3 >> put x >> put y
   put (RemFollower_ x y) = putWord8 4 >> put x >> put y
+  put (Blocks_ x) = putWord8 5 >> put x
+  put (IsBlockedBy_ x) = putWord8 6 >> put x
+  put _ = error "Serialize UserEffect: unexpected effect"
   get = do
     i <- getWord8
     case i of
@@ -94,6 +100,10 @@ instance Serialize UserEffect where
         x <- get
         y <- get
         return $ RemFollower_ x y
+      5 -> Blocks_ <$> get
+      6 -> IsBlockedBy_ <$> get
+      _ -> error "Deserialize UserEffect: unexpected effect"
+
 
 instance CasType UserEffect where
   putCas = put
@@ -112,7 +122,7 @@ getUserInfo effs _ =
   let res = foldl (\acc eff ->
               case eff of
                 AddUser_ userName password -> Just (userName, password)
-                otherwise -> acc) Nothing effs
+                _ -> acc) Nothing effs
   in (res, Nothing)
 
 isFollowing :: [UserEffect] -> UserID -> Bool
@@ -120,8 +130,8 @@ isFollowing effList targetUid =
   let foldedRes =
         foldl (\acc eff ->
           case (acc, eff) of
-            (Nothing, x@(AddFollowing_ uid ts)) | uid == targetUid -> Just x
-            (Nothing, x@(RemFollowing_ uid ts)) | uid == targetUid -> Just x
+            (Nothing, x@(AddFollowing_ uid _)) | uid == targetUid -> Just x
+            (Nothing, x@(RemFollowing_ uid _)) | uid == targetUid -> Just x
             (Just (AddFollowing_ uid1 ts1), x@(AddFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
             (Just (AddFollowing_ uid1 ts1), x@(RemFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
             (Just (RemFollowing_ uid1 ts1), x@(AddFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
@@ -414,6 +424,12 @@ getTweetsInTimelineCtrt = trueCtrt
 
 getTweetsInUserlineCtrt :: Contract Operation
 getTweetsInUserlineCtrt = trueCtrt
+
+addBlocksCtrt :: Contract Operation
+addBlocksCtrt = trueCtrt
+
+addIsBlockedByCtrt :: Contract Operation
+addIsBlockedByCtrt = trueCtrt
 
 --------------------------------------------------------------------------------
 

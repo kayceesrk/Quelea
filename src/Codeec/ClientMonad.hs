@@ -4,6 +4,7 @@ module Codeec.ClientMonad (
   Key,
   Session,
   TxnKind(..),
+  TxnDep,
   CSN,
 
   runSession,

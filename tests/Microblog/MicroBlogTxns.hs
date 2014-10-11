@@ -4,7 +4,10 @@ module MicroBlogTxns (
   addNewUser,
   getPassword,
   followUser,
+  unfollowUser,
+  blockUser,
   newTweet,
+  replyToTweet,
   getUserline,
   getTimeline,
   getFollowersUN,
@@ -34,7 +37,7 @@ addNewUser uid uname pwd = atomically ($(checkTxn "_addNewUserTxn" addNewUserTxn
   if not r
   then return False {- username has already been taken -}
   else do {- success -}
-    r::() <- invoke (mkKey uid) AddUser (uname,pwd)
+    _::() <- invoke (mkKey uid) AddUser (uname,pwd)
     return True
 
 -- Returns (Just pwd) on Success
@@ -127,12 +130,18 @@ getFollowingUN uname = do
 
 type Tweet = String
 
-newTweet :: UserID -> String -> CSN ()
-newTweet uid tweet = do
+newTweetWithDeps :: Maybe TweetHandle -> UserID -> String -> CSN ()
+newTweetWithDeps prevTweetHandle uid tweet = do
   timestamp <- liftIO $ getCurrentTime
   tweetID <- liftIO $ TweetID <$> randomIO
   -- Add into Tweet table
-  r::() <- invoke (mkKey tweetID) NewTweet (uid, take 140 tweet, timestamp)
+  case prevTweetHandle of
+    Nothing -> do
+      _::() <- invoke (mkKey tweetID) NewTweet (uid, take 140 tweet, timestamp)
+      return ()
+    Just (TweetHandle _ prevTweetEffect) ->
+      atomicallyWith prevTweetEffect ($(checkTxn "_newTweetTxn" newTweetTxnCtrt)) $
+        invoke (mkKey tweetID) NewTweet (uid, take 140 tweet, timestamp)
   newTweetEffect <- S.singleton . fromJust <$> getLastEffect
   -- Add to userline
   atomicallyWith newTweetEffect ($(checkTxn "_addToUserlineTxn" addToUserlineTxnCtrt)) $ do
@@ -145,18 +154,28 @@ newTweet uid tweet = do
       _::() <- invoke (mkKey follower) NewTweetTL (timestamp, tweetID)
       return ()
 
-getUserline :: UserID -> UTCTime -> UTCTime -> CSN [(String, UTCTime)]
+newTweet :: UserID -> Tweet -> CSN ()
+newTweet = newTweetWithDeps Nothing
+
+replyToTweet :: TweetHandle -> UserID -> Tweet -> CSN ()
+replyToTweet = \th -> newTweetWithDeps $ Just th
+
+getUserline :: UserID -> UTCTime -> UTCTime -> CSN [(Tweet, UTCTime)]
 getUserline uid beginTime endTime = atomically ($(checkTxn "_getUserlineTxn" getUserlineTxnCtrt)) $ do
   tweetInfoList::[(UTCTime, TweetID)] <- invoke (mkKey uid) GetTweetsInUL ()
   let filteredInfo = filter (\(t,_) -> t >= beginTime && t <= endTime) tweetInfoList
   flip mapM filteredInfo $ \(t,tid) -> do
-    Just (uid::UserID, tweet::String, _::UTCTime) <- invoke (mkKey tid) GetTweet ()
+    Just (_::UserID, tweet::String, _::UTCTime) <- invoke (mkKey tid) GetTweet ()
     return (tweet, t)
 
-getTimeline :: UserID -> UTCTime -> UTCTime -> CSN [(TweetID, UserID, String, UTCTime)]
+data TweetHandle = TweetHandle TweetID (S.Set TxnDep)
+
+getTimeline :: UserID -> UTCTime -> UTCTime -> CSN [(TweetHandle, UserID, Tweet, UTCTime)]
 getTimeline uid beginTime endTime = atomically ($(checkTxn "_getTimelineTxn" getTimelineTxnCtrt)) $ do
   tweetInfoList::[(UTCTime, TweetID)] <- invoke (mkKey uid) GetTweetsInTL ()
   let filteredInfo = filter (\(t,_) -> t >= beginTime && t <= endTime) tweetInfoList
   flip mapM filteredInfo $ \(t,tid) -> do
-    Just (uid::UserID, tweet::String, _::UTCTime) <- invoke (mkKey tid) GetTweet ()
-    return (tid, uid, tweet, t)
+    (Just (uid::UserID, tweet::String, _::UTCTime), deps) <- invokeAndGetDeps (mkKey tid) GetTweet ()
+    return (TweetHandle tid deps, uid, tweet, t)
+
+

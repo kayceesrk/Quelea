@@ -22,8 +22,9 @@
 * GetTweet should monotonically read NewTweets from the same session in order
   to see the tweets in order. This handles the case where long conversation is
   posted as a series of tweets.
+* Reply directly follows from explicit causality. Consider 2 users: u1 and u2,
+	where u1 follows u2 and u2 follows u1. u1 posts "MSG1". u2 replies "MSG2".
 
 TODO
 ----
-* How to implement reply?
 * Fix classification of Opers,Txns.
