@@ -23,7 +23,7 @@ import System.Random (randomIO)
 import Control.Applicative ((<$>))
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 
 type Username = String
 type Password = String
@@ -51,6 +51,7 @@ getPassword uname = atomically ($(checkTxn "_getPasswordTxn" getPasswordTxnCtrt)
 followUser :: Username -> Username -> CSN Bool
 followUser me target = atomically ($(checkTxn "_followUserTxn" followUserTxnCtrt)) $ do
   mbMyUid::Maybe UserID <- invoke (mkKey me) GetUserID ()
+  ts <- liftIO $ getCurrentTime
   case mbMyUid of
     Nothing -> return False
     Just myUid -> do
@@ -58,8 +59,44 @@ followUser me target = atomically ($(checkTxn "_followUserTxn" followUserTxnCtrt
       case mbTargetUid of
         Nothing -> return False
         Just targetUid -> do
-          _::() <- invoke (mkKey myUid) AddFollowing targetUid
-          _::() <- invoke (mkKey targetUid) AddFollower myUid
+          res1::Bool <- invoke (mkKey myUid) AddFollowing (targetUid, ts)
+          res2::Bool <- invoke (mkKey targetUid) AddFollower (myUid, ts)
+          when (not $ res1 && res2) $ error "followUser: inconsistent state!"
+          return True
+
+-- Returns True on Success
+unfollowUserCore :: UserID -> UserID -> CSN ()
+unfollowUserCore myUid targetUid = do
+  ts <- liftIO $ getCurrentTime
+  _::() <- invoke (mkKey myUid) RemFollowing (targetUid, ts)
+  _::() <- invoke (mkKey targetUid) RemFollower (myUid, ts)
+  return ()
+
+unfollowUser :: Username -> Username -> CSN Bool
+unfollowUser me target = atomically ($(checkTxn "_unfollowUserTxn" unfollowUserTxnCtrt)) $ do
+  mbMyUid::Maybe UserID <- invoke (mkKey me) GetUserID ()
+  case mbMyUid of
+    Nothing -> return False
+    Just myUid -> do
+      mbTargetUid::Maybe UserID <- invoke (mkKey target) GetUserID ()
+      case mbTargetUid of
+        Nothing -> return False
+        Just targetUid -> unfollowUserCore myUid targetUid >> return True
+
+blockUser :: Username -> Username -> CSN Bool
+blockUser me target = atomically ($(checkTxn "_blockUserTxn" blockUserTxnCtrt)) $ do
+  mbMyUid::Maybe UserID <- invoke (mkKey me) GetUserID ()
+  case mbMyUid of
+    Nothing -> return False
+    Just myUid -> do
+      mbTargetUid::Maybe UserID <- invoke (mkKey target) GetUserID ()
+      case mbTargetUid of
+        Nothing -> return False
+        Just targetUid -> do
+          _::() <- invoke (mkKey myUid) Blocks targetUid
+          _::() <- invoke (mkKey targetUid) IsBlockedBy myUid
+          -- Make the target unfollow me
+          unfollowUserCore targetUid myUid
           return True
 
 getFollowersUN :: Username -> CSN [Username]

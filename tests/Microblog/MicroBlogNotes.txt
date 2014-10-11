@@ -1,0 +1,25 @@
+* Username is Unique
+* Foreign key relationship between Usertable and Username table. Hence,
+	getPassword is MAV and newUser is RC.
+* Foreign key relationship between TweetID, Userline and Timeline. Hence,
+	newTweet is RC, and getTimeline and getUserline is MAV.
+* followUser, blockUser should be seen by getFollowers.
+* followUser, unfollowUser should be seen by getFollowing.
+* AddFollower is a bi-directional relationship composed of two independent
+  actions. Hence, needs to be atomic.
+* followUser needs to be RR in the presence of blockUser.
+
+		def followUser (A {- me -}, B {- someone -}):
+			(1) A.addFollowing (B); -> SUCCESS
+			(2) B.addFollower (A); -> FAIL
+
+		def blockUser (B {- me -}, A {- someone -}):
+			(3) B.blocks(A);
+			(4) A.isBlockedBy(B);
+
+		Sequence of operations: 1,3,4,2. Some other transaction can see 1,2 but not
+		3,4. Integrity constraint is violated!
+* GetTweet should monotonically read NewTweets from the same session in order
+  to see the tweets in order. This handles the case where long conversation is
+  posted as a series of tweets.
+* How to implement reply?

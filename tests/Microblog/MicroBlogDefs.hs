@@ -12,8 +12,13 @@ module MicroBlogDefs (
   addUsername, addUsernameCtrt,
   getUserID, getUserIDCtrt,
   getUserInfo, getUserInfoCtrt,
+
   addFollower, addFollowerCtrt,
   addFollowing, addFollowingCtrt,
+  remFollower, remFollowerCtrt,
+  remFollowing, remFollowingCtrt,
+  blocks, blocksCtrt,
+  isBlockedBy, isBlockedByCtrt,
   getFollowers, getFollowersCtrt,
   getFollowing, getFollowingCtrt,
 
@@ -29,9 +34,11 @@ module MicroBlogDefs (
 
 import Database.Cassandra.CQL
 import Data.Serialize as S
+import qualified Data.Map as M
 import Data.Time.Clock
 import Data.UUID
 import Control.Applicative ((<$>))
+import Data.Tuple.Select (sel1)
 
 import Codeec.Types
 import Codeec.Contract
@@ -41,15 +48,18 @@ import Codeec.DBDriver
 --------------------------------------------------------------------------------
 -- User table : key = UserID
 
-newtype UserID = UserID UUID deriving Eq
+newtype UserID = UserID UUID deriving (Eq, Ord)
 
 data UserEffect = AddUser_ String {- username -} String {- password -}
                 | GetUserInfo_
-                | UpdateUser_ String String
-                | AddFollowing_ UserID {- follows -}
-                | GetFollowing_
-                | AddFollower_ UserID {- followedBy -}
+                | AddFollowing_ UserID {- follows -} UTCTime
+                | RemFollowing_ UserID UTCTime
+                | AddFollower_ UserID {- followedBy -} UTCTime
+                | RemFollower_ UserID UTCTime
+                | Blocks_ UserID
+                | IsBlockedBy_ UserID
                 | GetFollowers_
+                | GetFollowing_ deriving Eq
 
 instance Serialize UserID where
   put (UserID uuid) = put uuid
@@ -57,8 +67,10 @@ instance Serialize UserID where
 
 instance Serialize UserEffect where
   put (AddUser_ x y) = putWord8 0 >> put x >> put y
-  put (AddFollowing_ x) = putWord8 1 >> put x
-  put (AddFollower_ x) = putWord8 2 >> put x
+  put (AddFollowing_ x y) = putWord8 1 >> put x >> put y
+  put (AddFollower_ x y) = putWord8 2 >> put x >> put y
+  put (RemFollowing_ x y) = putWord8 3 >> put x >> put y
+  put (RemFollower_ x y) = putWord8 4 >> put x >> put y
   get = do
     i <- getWord8
     case i of
@@ -66,8 +78,22 @@ instance Serialize UserEffect where
         x <- get
         y <- get
         return $ AddUser_ x y
-      1 -> AddFollowing_ <$> get
-      2 -> AddFollower_ <$> get
+      1 -> do
+        x <- get
+        y <- get
+        return $ AddFollowing_ x y
+      2 -> do
+        x <- get
+        y <- get
+        return $ AddFollower_ x y
+      3 -> do
+        x <- get
+        y <- get
+        return $ RemFollowing_ x y
+      4 -> do
+        x <- get
+        y <- get
+        return $ RemFollower_ x y
 
 instance CasType UserEffect where
   putCas = put
@@ -89,26 +115,114 @@ getUserInfo effs _ =
                 otherwise -> acc) Nothing effs
   in (res, Nothing)
 
-addFollower :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
-addFollower _ uid = ((), Just $ AddFollower_ uid)
+isFollowing :: [UserEffect] -> UserID -> Bool
+isFollowing effList targetUid =
+  let foldedRes =
+        foldl (\acc eff ->
+          case (acc, eff) of
+            (Nothing, x@(AddFollowing_ uid ts)) | uid == targetUid -> Just x
+            (Nothing, x@(RemFollowing_ uid ts)) | uid == targetUid -> Just x
+            (Just (AddFollowing_ uid1 ts1), x@(AddFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
+            (Just (AddFollowing_ uid1 ts1), x@(RemFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
+            (Just (RemFollowing_ uid1 ts1), x@(AddFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
+            (Just (RemFollowing_ uid1 ts1), x@(RemFollowing_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
+            otherwise -> acc) Nothing effList
+  in case foldedRes of
+       Nothing -> False
+       Just (AddFollowing_ _ _) -> True
+       Just (RemFollowing_ _ _) -> False
+       otherwise -> error "isFollowing: unexpected value"
 
-addFollowing :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
-addFollowing _ uid = ((), Just $ AddFollowing_ uid)
+isFollowedBy :: [UserEffect] -> UserID -> Bool
+isFollowedBy effList targetUid =
+  let foldedRes =
+        foldl (\acc eff ->
+          case (acc, eff) of
+            (Nothing, x@(AddFollower_ uid ts)) | uid == targetUid -> Just x
+            (Nothing, x@(RemFollower_ uid ts)) | uid == targetUid -> Just x
+            (Just (AddFollower_ uid1 ts1), x@(RemFollower_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
+            (Just (RemFollower_ uid1 ts1), x@(AddFollower_ uid2 ts2)) | uid1 == uid2 && ts2 > ts1 -> Just x
+            otherwise -> acc) Nothing effList
+  in case foldedRes of
+       Nothing -> False
+       Just (AddFollower_ _ _) -> True
+       Just (RemFollower_ _ _) -> False
+       otherwise -> error "isFollowedBy: unexpected value"
+
+addBlocks :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
+addBlocks _ uid = ((), Just $ Blocks_ uid)
+
+addIsBlockedBy :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
+addIsBlockedBy _ uid = ((), Just $ IsBlockedBy_ uid)
+
+blocks :: [UserEffect] -> UserID -> (Bool, Maybe UserEffect)
+blocks effList targetUid = ((Blocks_ targetUid) `elem` effList, Nothing)
+
+isBlockedBy :: [UserEffect] -> UserID -> (Bool, Maybe UserEffect)
+isBlockedBy effList targetUid = ((IsBlockedBy_ targetUid) `elem` effList, Nothing)
+
+addFollower :: [UserEffect] -> (UserID, UTCTime) -> (Bool, Maybe UserEffect)
+addFollower effList (uid, timestamp) =
+  if isFollowedBy effList uid
+  then (True, Nothing)
+  else if sel1 $ blocks effList uid
+  then (False, Nothing)
+  else (True, Just $ AddFollower_ uid timestamp)
+
+remFollower :: [UserEffect] -> (UserID, UTCTime) -> ((), Maybe UserEffect)
+remFollower _ (uid, timestamp) = ((), Just $ RemFollower_ uid timestamp)
+
+remFollowing :: [UserEffect] -> (UserID, UTCTime) -> ((), Maybe UserEffect)
+remFollowing _ (uid, timestamp) = ((), Just $ RemFollowing_ uid timestamp)
+
+
+addFollowing :: [UserEffect] -> (UserID, UTCTime) -> (Bool, Maybe UserEffect)
+addFollowing effList (uid, timestamp) =
+  if isFollowing effList uid
+  then (True, Nothing)
+  else if sel1 $ isBlockedBy effList uid
+  then (False, Nothing)
+  else (True, Just $ AddFollowing_ uid timestamp)
+
+data AddOrRem = Add | Rem
+data ResolveState = Block | Other UTCTime AddOrRem
 
 getFollowers :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
 getFollowers effs _ =
-  let res = foldl (\acc e -> case e of
-                               AddFollower_ uid -> uid:acc
-                               otherwise -> acc) [] effs
-  in (res, Nothing)
+  let resM = foldl (\m e ->
+               case e of
+                 AddFollower_ uid ts -> M.insertWith resolve uid (Other ts Add) m
+                 RemFollower_ uid ts -> M.insertWith resolve uid (Other ts Rem) m
+                 Blocks_ uid -> M.insert uid Block m) M.empty effs
+      userList = M.foldlWithKey (\acc uid st ->
+                    case st of
+                      Other _ Add -> uid:acc
+                      otherwise -> acc) [] resM
+  in (userList, Nothing)
+  where
+    resolve x y =
+      case (x,y) of
+        (Other ts1 _, Other ts2 _) -> if ts2 > ts1 then y else x
+        otherwise -> Block
+
 
 getFollowing :: [UserEffect] -> () -> ([UserID], Maybe UserEffect)
 getFollowing effs _ =
-  let res = foldl (\acc e -> case e of
-                               AddFollowing_ uid -> uid:acc
-                               otherwise -> acc) [] effs
-  in (res, Nothing)
-
+  let resM = foldl (\m e ->
+               case e of
+                 AddFollowing_ uid ts -> M.insertWith resolve uid (Other ts Add) m
+                 RemFollowing_ uid ts -> M.insertWith resolve uid (Other ts Rem) m
+                 IsBlockedBy_ uid -> M.insert uid Block m) M.empty effs
+      userList = M.foldlWithKey (\acc uid st ->
+                    case st of
+                      Other _ Add -> uid:acc
+                      otherwise -> acc) [] resM
+  in (userList, Nothing)
+  where
+    resolve x y =
+      case (x,y) of
+        (Other ts1 _, Other ts2 _) -> if ts2 > ts1 then y else x
+        otherwise -> Block
 --------------------------------------------------------------------------------
 -- Username table : Key = String
 
@@ -250,14 +364,14 @@ trueCtrt x = liftProp $ true
 addUserCtrt :: Contract Operation
 addUserCtrt = trueCtrt
 
-getUserIDCtrt :: Contract Operation
-getUserIDCtrt = trueCtrt
-
 getUserInfoCtrt :: Contract Operation
-getUserInfoCtrt = trueCtrt
+getUserInfoCtrt x = forallQ_ [AddUser] $ \a -> liftProp $ soo a x ⇒ vis a x
 
 addUsernameCtrt :: Contract Operation
 addUsernameCtrt a = forallQ_ [AddUsername] $ \b -> liftProp $ vis a b ∨ vis b a ∨ sameEff a b
+
+getUserIDCtrt :: Contract Operation
+getUserIDCtrt x = forallQ_ [AddUsername] $ \a -> liftProp $ soo a x ⇒ vis a x
 
 getFollowersCtrt :: Contract Operation
 getFollowersCtrt x = forallQ_ [AddFollower] $ \a -> liftProp $ soo a x ⇒ vis a x
@@ -271,6 +385,18 @@ addFollowerCtrt = trueCtrt
 addFollowingCtrt :: Contract Operation
 addFollowingCtrt = trueCtrt
 
+remFollowingCtrt :: Contract Operation
+remFollowingCtrt = trueCtrt
+
+remFollowerCtrt :: Contract Operation
+remFollowerCtrt = trueCtrt
+
+blocksCtrt :: Contract Operation
+blocksCtrt = trueCtrt
+
+isBlockedByCtrt :: Contract Operation
+isBlockedByCtrt = trueCtrt
+
 addTweetCtrt :: Contract Operation
 addTweetCtrt = trueCtrt
 
@@ -281,7 +407,7 @@ addToTimelineCtrt :: Contract Operation
 addToTimelineCtrt = trueCtrt
 
 getTweetCtrt :: Contract Operation
-getTweetCtrt = trueCtrt
+getTweetCtrt x = forallQ2_ [NewTweet] [NewTweet] $ \a b -> liftProp $ soo a b ∧ vis b x ⇒ vis a x
 
 getTweetsInTimelineCtrt :: Contract Operation
 getTweetsInTimelineCtrt = trueCtrt

@@ -4,10 +4,12 @@ module MicroBlogCtrts (
   addNewUserTxnCtrt,
   getPasswordTxnCtrt,
   followUserTxnCtrt,
+  unfollowUserTxnCtrt,
   addToUserlineTxnCtrt,
   addToTimelineTxnCtrt,
   getUserlineTxnCtrt,
-  getTimelineTxnCtrt
+  getTimelineTxnCtrt,
+  blockUserTxnCtrt
 ) where
 
 import MicroBlogDefs
@@ -21,7 +23,14 @@ getPasswordTxnCtrt = forallQ4_ [GetUserID] [GetUserInfo] [AddUsername] [AddUser]
                        trans (SameTxn a b) (SameTxn c d) ∧ so a b ∧ vis c a ∧ sameObj b d ⇒ vis d b
 
 followUserTxnCtrt :: Fol Operation
-followUserTxnCtrt = liftProp $ true
+followUserTxnCtrt = forallQ4_ [AddFollower] [AddFollowing] [Blocks] [IsBlockedBy] $ \a b c d -> liftProp $
+                      trans (SameTxn a b) (SameTxn c d) ∧ vis d b ∧ sameObj a c ⇒ vis c a
+
+unfollowUserTxnCtrt :: Fol Operation
+unfollowUserTxnCtrt = liftProp $ true
+
+blockUserTxnCtrt :: Fol Operation
+blockUserTxnCtrt = liftProp $ true
 
 addToUserlineTxnCtrt :: Fol Operation
 addToUserlineTxnCtrt = liftProp $ true

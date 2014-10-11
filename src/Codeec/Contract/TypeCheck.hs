@@ -494,11 +494,7 @@ underMonotonicAtomicView c mkOperSort = do
 underRepeatableRead :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
 underRepeatableRead c mkOperSort = do
     let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr c
-    let test2 :: Fol () = liftProp . Raw $ mkRawImpl2 c mav
-    r1 <- isValidProto mkOperSort "RR_IMPL_CTRT" test1
-    if r1
-    then isValidProto mkOperSort "CTRT_IMPL_MAV" test2
-    else return False
+    isValidProto mkOperSort "RR_IMPL_CTRT" test1
 
 classifyTxnContract :: OperationClass a => Fol a -> String -> Q TxnKind
 classifyTxnContract c info = do
