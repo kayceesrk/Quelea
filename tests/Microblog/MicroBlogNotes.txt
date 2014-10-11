@@ -22,4 +22,8 @@
 * GetTweet should monotonically read NewTweets from the same session in order
   to see the tweets in order. This handles the case where long conversation is
   posted as a series of tweets.
+
+TODO
+----
 * How to implement reply?
+* Fix classification of Opers,Txns.
