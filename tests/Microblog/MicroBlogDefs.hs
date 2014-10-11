@@ -43,6 +43,7 @@ import Data.Time.Clock
 import Data.UUID
 import Control.Applicative ((<$>))
 import Data.Tuple.Select (sel1)
+import Data.DeriveTH
 
 import Codeec.Types
 import Codeec.Contract
@@ -67,52 +68,14 @@ data UserEffect = AddUser_ String {- username -} String {- password -}
                 | GetFollowers_
                 | GetFollowing_ deriving Eq
 
-instance Serialize UserID where
-  put (UserID uuid) = put uuid
-  get = UserID <$> get
+$(derive makeSerialize ''UserID)
 
-instance Serialize UserEffect where
-  put (AddUser_ x y) = putWord8 0 >> put x >> put y
-  put (AddFollowing_ x y) = putWord8 1 >> put x >> put y
-  put (AddFollower_ x y) = putWord8 2 >> put x >> put y
-  put (RemFollowing_ x y) = putWord8 3 >> put x >> put y
-  put (RemFollower_ x y) = putWord8 4 >> put x >> put y
-  put (Blocks_ x) = putWord8 5 >> put x
-  put (IsBlockedBy_ x) = putWord8 6 >> put x
-  put _ = error "Serialize UserEffect: unexpected effect"
-  get = do
-    i <- getWord8
-    case i of
-      0 -> do
-        x <- get
-        y <- get
-        return $ AddUser_ x y
-      1 -> do
-        x <- get
-        y <- get
-        return $ AddFollowing_ x y
-      2 -> do
-        x <- get
-        y <- get
-        return $ AddFollower_ x y
-      3 -> do
-        x <- get
-        y <- get
-        return $ RemFollowing_ x y
-      4 -> do
-        x <- get
-        y <- get
-        return $ RemFollower_ x y
-      5 -> Blocks_ <$> get
-      6 -> IsBlockedBy_ <$> get
-      _ -> error "Deserialize UserEffect: unexpected effect"
-
+$(derive makeSerialize ''UserEffect)
 
 instance CasType UserEffect where
   putCas = put
   getCas = get
   casType _ = CBlob
-
 
 instance Effectish UserEffect where
   summarize l = l
@@ -243,9 +206,7 @@ data UsernameEffect = AddUsername_ UserID
                     | GetUserID_
                         deriving Eq
 
-instance Serialize UsernameEffect where
-  put (AddUsername_ uid) = put uid
-  get = AddUsername_ <$> get
+$(derive makeSerialize ''UsernameEffect)
 
 instance Effectish UsernameEffect where
   summarize l = l
@@ -270,21 +231,13 @@ newtype TweetID = TweetID UUID
 data TweetEffect = NewTweet_ UserID String UTCTime
                  | GetTweet_
 
-instance Serialize TweetID where
-  put (TweetID tid) = put tid
-  get = TweetID <$> get
+$(derive makeSerialize ''TweetID)
 
 instance Serialize UTCTime where
   put t = put $ show t
   get = read <$> get
 
-instance Serialize TweetEffect where
-  put (NewTweet_ x y z) = put x >> put y >> put z
-  get = do
-    x <- get
-    y <- get
-    z <- get
-    return $ NewTweet_ x y z
+$(derive makeSerialize ''TweetEffect)
 
 instance CasType TweetEffect where
   putCas = put
@@ -307,12 +260,7 @@ getTweet ((NewTweet_ x y z):_) _ = (Just $ (x,y,z), Nothing)
 data UserlineEffect = NewTweetUL_ UTCTime TweetID
                     | GetTweetsInUL_
 
-instance Serialize UserlineEffect where
-  put (NewTweetUL_ x y) = put x >> put y
-  get = do
-    x <- get
-    y <- get
-    return $ NewTweetUL_ x y
+$(derive makeSerialize ''UserlineEffect)
 
 instance CasType UserlineEffect where
   putCas = put
@@ -339,12 +287,7 @@ getTweetsInUserline effs _ =
 data TimelineEffect = NewTweetTL_ UTCTime TweetID
                     | GetTweetsInTL_
 
-instance Serialize TimelineEffect where
-  put (NewTweetTL_ x y) = put x >> put y
-  get = do
-    x <- get
-    y <- get
-    return $ NewTweetTL_ x y
+$(derive makeSerialize ''TimelineEffect)
 
 instance CasType TimelineEffect where
   putCas = put

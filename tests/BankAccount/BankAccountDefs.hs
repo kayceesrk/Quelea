@@ -19,27 +19,15 @@ import Codeec.Types
 import Codeec.Contract
 import Codeec.TH
 import Debug.Trace
+import Data.DeriveTH
 
 data BankAccount = Deposit_ Int | Withdraw_ Int | GetBalance_ deriving Show
 
-instance Serialize BankAccount where
-  put (Deposit_ v) = putTwoOf S.put S.put (0::Word8, v)
-  put (Withdraw_ v) = putTwoOf S.put S.put (1::Word8, v)
-  put (GetBalance_) = error "serializing GetBalance"
-  get = do
-    (i::Word8,v::Int) <- getTwoOf S.get S.get
-    case i of
-      0 -> return $ Deposit_ v
-      1 -> return $ Withdraw_ v
-      otherwise -> error "deserializing GetBalance"
+$(derive makeSerialize ''BankAccount)
 
 instance CasType BankAccount where
-  getCas = do
-    r <- decode . unBlob <$> getCas
-    case r of
-      Left _ -> error "Parse fail"
-      Right v -> return $ v
-  putCas = putCas . Blob . encode
+  getCas = get
+  putCas = put
   casType _ = CBlob
 
 type Res a = (a, Maybe BankAccount)
