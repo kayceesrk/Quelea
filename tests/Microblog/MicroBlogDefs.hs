@@ -17,8 +17,6 @@ module MicroBlogDefs (
   addFollowing, addFollowingCtrt,
   remFollower, remFollowerCtrt,
   remFollowing, remFollowingCtrt,
-  blocks, blocksCtrt,
-  isBlockedBy, isBlockedByCtrt,
   getFollowers, getFollowersCtrt,
   getFollowing, getFollowingCtrt,
 
@@ -31,7 +29,10 @@ module MicroBlogDefs (
   getTweetsInTimeline, getTweetsInTimelineCtrt,
 
   addBlocks, addBlocksCtrt,
-  addIsBlockedBy, addIsBlockedByCtrt
+  addIsBlockedBy, addIsBlockedByCtrt,
+
+  getBlocks, getBlocksCtrt,
+  getIsBlockedBy, getIsBlockedByCtrt
 ) where
 
 
@@ -59,7 +60,9 @@ data UserEffect = AddUser_ String {- username -} String {- password -}
                 | AddFollower_ UserID {- followedBy -} UTCTime
                 | RemFollower_ UserID UTCTime
                 | Blocks_ UserID
+                | GetBlocks_
                 | IsBlockedBy_ UserID
+                | GetIsBlockedBy_
                 | GetUserInfo_
                 | GetFollowers_
                 | GetFollowing_ deriving Eq
@@ -165,17 +168,17 @@ addBlocks _ uid = ((), Just $ Blocks_ uid)
 addIsBlockedBy :: [UserEffect] -> UserID -> ((), Maybe UserEffect)
 addIsBlockedBy _ uid = ((), Just $ IsBlockedBy_ uid)
 
-blocks :: [UserEffect] -> UserID -> (Bool, Maybe UserEffect)
-blocks effList targetUid = ((Blocks_ targetUid) `elem` effList, Nothing)
+getBlocks :: [UserEffect] -> UserID -> (Bool, Maybe UserEffect)
+getBlocks effList targetUid = ((Blocks_ targetUid) `elem` effList, Nothing)
 
-isBlockedBy :: [UserEffect] -> UserID -> (Bool, Maybe UserEffect)
-isBlockedBy effList targetUid = ((IsBlockedBy_ targetUid) `elem` effList, Nothing)
+getIsBlockedBy :: [UserEffect] -> UserID -> (Bool, Maybe UserEffect)
+getIsBlockedBy effList targetUid = ((IsBlockedBy_ targetUid) `elem` effList, Nothing)
 
 addFollower :: [UserEffect] -> (UserID, UTCTime) -> (Bool, Maybe UserEffect)
 addFollower effList (uid, timestamp) =
   if isFollowedBy effList uid
   then (True, Nothing)
-  else if sel1 $ blocks effList uid
+  else if sel1 $ getBlocks effList uid
   then (False, Nothing)
   else (True, Just $ AddFollower_ uid timestamp)
 
@@ -190,7 +193,7 @@ addFollowing :: [UserEffect] -> (UserID, UTCTime) -> (Bool, Maybe UserEffect)
 addFollowing effList (uid, timestamp) =
   if isFollowing effList uid
   then (True, Nothing)
-  else if sel1 $ isBlockedBy effList uid
+  else if sel1 $ getIsBlockedBy effList uid
   then (False, Nothing)
   else (True, Just $ AddFollowing_ uid timestamp)
 
@@ -401,11 +404,11 @@ remFollowingCtrt = trueCtrt
 remFollowerCtrt :: Contract Operation
 remFollowerCtrt = trueCtrt
 
-blocksCtrt :: Contract Operation
-blocksCtrt = trueCtrt
+getBlocksCtrt :: Contract Operation
+getBlocksCtrt x = forallQ_ [Blocks] $ \a -> liftProp $ soo a x ⇒ vis a x
 
-isBlockedByCtrt :: Contract Operation
-isBlockedByCtrt = trueCtrt
+getIsBlockedByCtrt :: Contract Operation
+getIsBlockedByCtrt x = forallQ_ [IsBlockedBy] $ \a -> liftProp $ soo a x ⇒ vis a x
 
 addTweetCtrt :: Contract Operation
 addTweetCtrt = trueCtrt

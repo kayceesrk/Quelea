@@ -9,10 +9,24 @@ module Codeec.NameService.SimpleBroker (
   startBroker,
 ) where
 
+
+
 import System.ZMQ4.Monadic
 import Control.Concurrent
 import Control.Monad
 import Data.ByteString.Char8 (unpack, pack)
+import Control.Monad.Trans (liftIO)
+
+-- #define DEBUG
+
+debugPrint :: String -> IO ()
+#ifdef DEBUG
+debugPrint s = do
+  tid <- myThreadId
+  putStrLn $ "[" ++ (show tid) ++ "] " ++ s
+#else
+debugPrint _ = return ()
+#endif
 
 newtype Frontend = Frontend { unFE :: String}
 newtype Backend  = Backend  { unBE :: String}
@@ -28,15 +42,23 @@ startBroker f b  = runZMQ $ do
 clientJoin :: Frontend -> IO String
 clientJoin f = runZMQ $ do
   requester <- socket Req
+  liftIO $ debugPrint "clientJoin(1)"
   connect requester $ unFE f
+  liftIO $ debugPrint "clientJoin(2)"
   send requester [] "Howdy Server! send your socket info"
+  liftIO $ debugPrint "clientJoin(3)"
   msg <- receive requester
+  liftIO $ debugPrint "clientJoin(4)"
   return $ unpack msg
 
 serverJoin :: Backend -> String -> IO ()
 serverJoin b s = void $ forkIO $ runZMQ $ do
   responder <- socket Rep
+  liftIO $ debugPrint "serverJoin(1)"
   connect responder $ unBE b
+  liftIO $ debugPrint "serverJoin(2)"
   forever $ do
     message <- receive responder
+    liftIO $ debugPrint "serverJoin(3)"
     send responder [] $ pack s
+    liftIO $ debugPrint "serverJoin(4)"
