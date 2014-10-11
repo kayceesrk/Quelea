@@ -22,6 +22,7 @@ import Codeec.DBDriver
 import Data.Int (Int64)
 import Control.Applicative ((<$>))
 import Data.Tuple.Select (sel1)
+import Data.DeriveTH
 
 newtype Round = Round {unRound :: Int64} deriving (Eq, Show)
 newtype Value = Value {unValue :: Int64} deriving (Eq, Show)
@@ -33,40 +34,9 @@ data Register = Put_ Round Value
               | Inc_ Round Value
               | Dec_ Round Value deriving Eq
 
-instance Serialize Round where
-  put (Round r) = put r
-  get = Round <$> get
-
-instance Serialize Value where
-  put (Value r) = put r
-  get = Value <$> get
-
-instance Serialize Register where
-  put (Put_ x y) = putWord8 0 >> put x >> put y
-  put (CondPut_ x y) = putWord8 1 >> put x >> put y
-  put (Inc_ x y) = putWord8 2 >> put x >> put y
-  put (Dec_ x y) = putWord8 3 >> put x >> put y
-  put _ = error "Serialize Register: unexpected value"
-  get = do
-    i <- getWord8
-    case i of
-      0 -> do
-        x <- get
-        y <- get
-        return $ Put_ x y
-      1 -> do
-        x <- get
-        y <- get
-        return $ CondPut_ x y
-      2 -> do
-        x <- get
-        y <- get
-        return $ Inc_ x y
-      3 -> do
-        x <- get
-        y <- get
-        return $ Dec_ x y
-      _ -> error "Deserialize Register: unexpected value"
+$(derive makeSerialize ''Round)
+$(derive makeSerialize ''Value)
+$(derive makeSerialize ''Register)
 
 instance CasType Register where
   putCas = put
@@ -88,7 +58,6 @@ getRound (CondPut_ r _) = unRound r
 getRound (Inc_ r _) = unRound r
 getRound (Dec_ r _) = unRound r
 getRound v | v == Get_ || v == StrongGet_ = -1
-
 
 getMaxRound :: [Register] -> Int64
 getMaxRound effList = foldl (\r e -> max r $ getRound e) (-1) effList
