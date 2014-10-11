@@ -71,7 +71,7 @@ instance Lift Availability where
   lift Un = [| Un |]
 
 type ObjType = String
-class (Show a, Read a, Eq a, Ord a) => OperationClass a where
+class (Show a, Read a, Eq a, Ord a, Serialize a) => OperationClass a where
   getObjType :: a -> String
 
 instance OperationClass () where

@@ -310,6 +310,7 @@ getTweetsInTimeline effs _ =
 --------------------------------------------------------------------------------
 
 mkOperations [''UserEffect, ''UsernameEffect, ''TweetEffect, ''UserlineEffect, ''TimelineEffect]
+$(derive makeSerialize ''Operation)
 
 --------------------------------------------------------------------------------
 -- Contracts

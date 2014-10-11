@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TypeSynonymInstances #-}
+{-# LANGUAGE ScopedTypeVariables, TypeSynonymInstances, TemplateHaskell #-}
 
 module Codeec.Marshall (
   mkGenOp,
@@ -19,39 +19,15 @@ import Data.ByteString.Char8 (pack, unpack)
 import Data.UUID
 import Data.Maybe (fromJust)
 import Data.Word
+import Data.DeriveTH
 
-instance OperationClass a => Serialize (OperationPayload a) where
-  put (OperationPayload ot k on v sessid seqno mbtxnid getDeps) = do
-    put ot
-    put k
-    put $ show on
-    put v
-    put sessid
-    put seqno
-    put mbtxnid
-    put getDeps
-  get = do
-    ot <- get
-    k <- get
-    on <- get
-    v <- get
-    sessid <- get
-    seqno <- get
-    mbtxnid <- get
-    getDeps <- get
-    return $ OperationPayload ot k (read on) v sessid seqno mbtxnid getDeps
+$(derive makeSerialize ''OperationPayload)
 
-instance Serialize Key where
-  put (Key k) = put k
-  get = Key <$> get
+$(derive makeSerialize ''Key)
 
-instance Serialize SessID where
-  put (SessID k) = put k
-  get = SessID <$> get
+$(derive makeSerialize ''SessID)
 
-instance Serialize TxnID where
-  put (TxnID t) = put t
-  get = TxnID <$> get
+$(derive makeSerialize ''TxnID)
 
 instance CasType TxnID where
   putCas = put
@@ -88,32 +64,7 @@ instance Serialize UUID where
   put = putLazyByteString . toByteString
   get = fromJust . fromByteString <$> getLazyByteString 16
 
-instance Serialize Response where
-  put (ResOper seqno res eff txns deps) = do
-    put (0::Word8)
-    put seqno
-    put res
-    put eff
-    put txns
-    put deps
-  put (ResSnapshot v) = do
-    put (1::Word8)
-    put v
-  put ResCommit = put (2::Word8)
-  get = do
-    i::Word8 <- get
-    case i of
-      0 -> do
-        seqno <- get
-        res <- get
-        eff <- get
-        txns <- get
-        deps <- get
-        return $ ResOper seqno res eff txns deps
-      1 -> do
-        v <- get
-        return $ ResSnapshot v
-      2 -> return ResCommit
+$(derive makeSerialize ''Response)
 
 decodeResponse :: ByteString -> Response
 decodeResponse b = case decode b of
@@ -136,54 +87,20 @@ instance CasType Cell where
       1 -> return $ GCMarker
   casType _ = CBlob
 
-instance Serialize Addr where
-  put (Addr x y) = put x >> put y
-  get = do
-    x <- get
-    y <- get
-    return $ Addr x y
+$(derive makeSerialize ''Addr)
 
 instance CasType Addr where
   putCas = put
   getCas = get
   casType _ = CBlob
 
-instance Serialize TxnPayload where
-  put (RC wb) = do
-    put (0::Word8)
-    put wb
-  put (MAV wb deps) = do
-    put (1::Word8)
-    put wb
-    put deps
-  put (RR snapshot) = do
-    put (2::Word8)
-    put snapshot
-  get = do
-    i::Word8 <- get
-    case i of
-      0 -> RC <$> get
-      1 -> do
-        x <- get
-        y <- get
-        return $ MAV x y
-      2 -> RR <$> get
+$(derive makeSerialize ''TxnPayload)
+
+$(derive makeSerialize ''TxnDep)
 
 instance CasType TxnDep where
-  putCas (TxnDep ot (Key k) sid sqn) = do
-    let otbs = pack ot
-    putWord32be $ fromIntegral . Data.ByteString.length $ otbs
-    putByteString otbs
-    put k
-    put sid
-    putWord64be . fromIntegral $ sqn
-  getCas = do
-    length <- fromIntegral <$> getWord32be
-    otbs <- getByteString length
-    k <- get
-    sid <- get
-    sqn <- fromIntegral <$> getWord64be
-    return $ TxnDep (unpack otbs) (Key k) sid sqn
+  putCas = put
+  getCas = get
   casType _ = CBlob
 
 instance CasType Key where
@@ -191,29 +108,4 @@ instance CasType Key where
   getCas = get
   casType _ = CBlob
 
-instance Serialize TxnDep where
-  put = putCas
-  get = getCas
-
-instance OperationClass a => Serialize (Request a) where
-  put (ReqOper op) = do
-    putWord8 0
-    put op
-  put (ReqTxnCommit txid dep) = do
-    putWord8 1
-    put txid
-    put dep
-  put (ReqSnapshot s) = do
-    putWord8 2
-    put s
-  get = do
-    i <- getWord8
-    case i of
-      0 -> ReqOper <$> get
-      1 -> do
-        txid <- get
-        dep <- get
-        return $ ReqTxnCommit txid dep
-      2 -> do
-        s <- get
-        return $ ReqSnapshot s
+$(derive makeSerialize ''Request)

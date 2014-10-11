@@ -93,6 +93,7 @@ decValue effList delta =
   in (curValue, Just $ Dec_ (Round $ getMaxRound effList) (Value delta))
 
 mkOperations [''Register]
+$(derive makeSerialize ''Operation)
 
 getValueCtrt :: Contract Operation
 getValueCtrt x = forall_ $ \a -> liftProp $ appRel ((^+) ((So ∩ SameObj) ∪ Vis)) a x ⇒ vis a x

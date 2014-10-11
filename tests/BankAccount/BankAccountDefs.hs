@@ -58,6 +58,7 @@ instance Effectish BankAccount where
     in [Deposit_ v]
 
 mkOperations [''BankAccount]
+$(derive makeSerialize ''Operation)
 
 depositCtrt :: Contract Operation
 depositCtrt x = liftProp $ true
