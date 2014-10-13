@@ -81,6 +81,10 @@ main = do
         newItem key "Eggs" 12
         renameItem key "Eggs" "Large Eggs"
         deleteItem key "Milk"
+        newItem key "Bread" 1
+        increaseQuantity key "Bread" 2
+        decreaseQuantity key "Bread" 4
+        increaseQuantity key "Bread" 5
         res <- viewList key
         liftIO . putStrLn $ "result " ++ show res
         return ()

@@ -177,5 +177,3 @@ getTimeline uid beginTime endTime = atomically ($(checkTxn "_getTimelineTxn" get
   flip mapM filteredInfo $ \(t,tid) -> do
     (Just (uid::UserID, tweet::String, _::UTCTime), deps) <- invokeAndGetDeps (mkKey tid) GetTweet ()
     return (TweetHandle tid deps, uid, tweet, t)
-
-
