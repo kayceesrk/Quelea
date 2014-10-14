@@ -43,7 +43,7 @@ newItem k n q = do
   ts <- liftIO $ getCurrentTime
   invoke k ChangeQuantity (n,q,ts)
 
-renameItem :: Key -> ItemName -> ItemName -> CSN ()
+renameItem :: Key -> ItemName -> ItemName -> CSN Bool
 renameItem k oldName newName = do
   ts <- liftIO $ getCurrentTime
   invoke k RenameItem (oldName, newName, ts)
