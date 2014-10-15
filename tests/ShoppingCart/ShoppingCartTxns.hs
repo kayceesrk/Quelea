@@ -64,13 +64,13 @@ removeFromCart cartID itemID qty =
 reviewCart :: CartID -> CSN ()
 reviewCart cartID = do
     iqplist <- summarizeCart cartID
-    return $ liftIO $ putStrLn "User Reviewing the Cart ..."
+    liftIO $ putStrLn "User Reviewing the Cart ..."
 
 processPayment :: CartID -> CSN ()
 processPayment cartID = do
     iqplist <- summarizeCart cartID
     let bill = foldr (\(_,_,p) sum -> p+sum) 0 iqplist 
-    return $ liftIO $ putStrLn "Processing payment for $"++(show bill)++" ..."
+    liftIO $ putStrLn $ "Processing payment for $"++(show bill)++" ..."
 
 checkOut :: CartID -> CSN ()
 checkOut cartID = 

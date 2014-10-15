@@ -20,6 +20,6 @@ removeFromCartTxnCtrt :: Fol Operation
 removeFromCartTxnCtrt = liftProp $ true
 
 checkOutTxnCtrt :: Fol Operation
-checkOutTxnCtrt = forallQ3_ [AlterPrice,StockItem] [ShowItem] [ShowItem] $ 
-                    \a b c -> liftProp $  
-                        trans (Single a) (SameTxn b c) ∧ sameObj a b ∧ sameObj b c ∧ vis a b ⇒ vis a c
+checkOutTxnCtrt = forallQ3_ [ShowItem] [ShowItem] [AlterPrice,StockItem] $ 
+                    \b c a -> liftProp $  
+                        trans (SameTxn b c) (Single a) ∧ sameObj a b ∧ sameObj b c ∧ vis a b ⇒ vis a c
