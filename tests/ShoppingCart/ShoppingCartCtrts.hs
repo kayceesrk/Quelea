@@ -4,7 +4,7 @@ module ShoppingCartCtrts (
   openSiteTxnCtrt,
   addToCartTxnCtrt,
   removeFromCartTxnCtrt,
-  reviewCartTxnCtrt 
+  checkOutTxnCtrt
 ) where
 
 import ShoppingCartDefs
@@ -19,5 +19,7 @@ addToCartTxnCtrt = liftProp $ true
 removeFromCartTxnCtrt :: Fol Operation
 removeFromCartTxnCtrt = liftProp $ true
 
-reviewCartTxnCtrt :: Fol Operation
-reviewCartTxnCtrt = liftProp $ true
+checkOutTxnCtrt :: Fol Operation
+checkOutTxnCtrt = forallQ3_ [AlterPrice,StockItem] [ShowItem] [ShowItem] $ 
+                    \a b c -> liftProp $  
+                        trans (Single a) (SameTxn b c) ∧ sameObj a b ∧ sameObj b c ∧ vis a b ⇒ vis a c

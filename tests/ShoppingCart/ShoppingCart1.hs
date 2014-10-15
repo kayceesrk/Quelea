@@ -16,6 +16,8 @@ import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
 
 import ShoppingCartDefs
+import ShoppingCartCtrts
+import ShoppingCartTxns
 
 fePort :: Int
 fePort = 5558
@@ -30,13 +32,15 @@ keyspace :: Keyspace
 keyspace = Keyspace $ pack "ShoppingCart"
 
 dtLib = mkDtLib [(StockItem, mkGenOp stockItem summarize, $(checkOp StockItem stockItemCtrt)),
-                 (UnStockItem, mkGenOp unStockItem summarize, $(checkOp UnStockItem unStockItemCtrt)),
+                 (AddToStock, mkGenOp addToStock summarize, $(checkOp AddToStock addToStockCtrt)),
+                 (RemoveFromStock, mkGenOp removeFromStock summarize, $(checkOp RemoveFromStock removeFromStockCtrt)),
+                 (AlterPrice, mkGenOp alterPrice summarize, $(checkOp AlterPrice alterPriceCtrt)),
                  (ShowItem, mkGenOp showItem summarize, $(checkOp ShowItem showItemCtrt)),
                  (AddCart, mkGenOp addCart summarize, $(checkOp AddCart addCartCtrt)),
                  (RemoveCart, mkGenOp removeCart summarize, $(checkOp RemoveCart removeCartCtrt)),
                  (AddItemsToCart, mkGenOp addItemsToCart summarize, $(checkOp AddItemsToCart addItemsToCartCtrt)),
                  (RemoveItemsFromCart, mkGenOp removeItemsFromCart summarize, $(checkOp RemoveItemsFromCart removeItemsFromCartCtrt)),
-                 (GetItemsInCart, mkGenOp getItemsInCart summarize, $(checkOp GetItemsInCart getItemsInCartCtrt))]
+                 (GetCartSummary, mkGenOp getCartSummary summarize, $(checkOp GetCartSummary getCartSummaryCtrt))]
 
 main :: IO ()
 main = do
@@ -52,7 +56,7 @@ main = do
 
     C -> runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
       key <- liftIO $ newKey
-      r::() <- invoke key StockItem (20::Int)
+      r::() <- invoke key StockItem ("Organic Milk",2::Int, 20::Int)
       return ()
 
     D -> do

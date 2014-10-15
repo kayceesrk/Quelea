@@ -9,7 +9,9 @@ module ShoppingCartDefs (
   dropTables,
 
   stockItem, stockItemCtrt,
-  unStockItem, unStockItemCtrt,
+  addToStock, addToStockCtrt,
+  removeFromStock, removeFromStockCtrt,
+  alterPrice, alterPriceCtrt,
   showItem, showItemCtrt,
 
   addCart, addCartCtrt,
@@ -17,7 +19,7 @@ module ShoppingCartDefs (
 
   addItemsToCart, addItemsToCartCtrt,
   removeItemsFromCart, removeItemsFromCartCtrt,
-  getItemsInCart, getItemsInCartCtrt
+  getCartSummary, getCartSummaryCtrt
 ) where
 
 
@@ -36,14 +38,23 @@ import Codeec.TH
 import Codeec.DBDriver
 import Data.List (groupBy)
 
+
+--------------------------------------------------------------------------------
+-- ItemTag table : key = 
+
+-- data ItemTagEffect = SearchItemsByTag_
+--                   | addItemToTag_ ItemID
+
 --------------------------------------------------------------------------------
 -- Item table : key = ItemID
 
 newtype ItemID = ItemID UUID deriving (Eq, Ord)
 
 data ItemEffect = ShowItem_ 
-                | StockItem_ Int{- Qty -}
-                | UnStockItem_ Int{- Qty -} deriving Eq
+                | StockItem_ String{- Desc-} Int{- Price -} Int{- AvlblQty -} 
+                | AddToStock_ Int{- Qty -}
+                | RemoveFromStock_ Int{- Qty -} 
+                | AlterPrice_ Int{- diff amount -} deriving Eq
 
 $(derive makeSerialize ''ItemID)
 
@@ -54,25 +65,36 @@ instance CasType ItemEffect where
   getCas = get
   casType _ = CBlob
 
-stockItem :: [ItemEffect] -> Int -> ((),Maybe ItemEffect)
-stockItem _ qty = ((),Just $ StockItem_ qty)
+stockItem :: [ItemEffect] -> (String,Int,Int) -> ((),Maybe ItemEffect)
+stockItem _ (desc,sp,qty) = ((),Just $ StockItem_ desc sp qty)
 
-unStockItem :: [ItemEffect] -> Int -> ((), Maybe ItemEffect)
-unStockItem _ qty = ((),Just $ UnStockItem_ qty)
+addToStock :: [ItemEffect] -> Int -> ((), Maybe ItemEffect)
+addToStock _ qty = ((), Just $ AddToStock_ qty)
 
-showItem :: [ItemEffect] -> () -> (Int, Maybe ItemEffect)
+removeFromStock :: [ItemEffect] -> Int -> ((), Maybe ItemEffect)
+removeFromStock _ qty = ((),Just $ RemoveFromStock_ qty)
+
+alterPrice :: [ItemEffect] -> Int -> ((), Maybe ItemEffect)
+alterPrice _ diff = ((), Just $ AlterPrice_ diff)
+
+showItem :: [ItemEffect] -> () -> ((String,Int,Int), Maybe ItemEffect)
 showItem ctxt _ = 
-  let qty = foldl acc 0 ctxt
-  in (qty, Just ShowItem_)
+  let (descOp, price, qty) = foldl acc (Nothing,0,0) ctxt in
+  let desc = case descOp of 
+               Nothing -> "- No description available for this item -" 
+               Just d -> d
+  in ((desc,price,qty), Just ShowItem_)
   where
-    acc s (StockItem_ i) = s + i
-    acc s (UnStockItem_ i) = s - i
+    acc (_, p, q) (StockItem_ desc sp qty) = (Just desc, p, q+qty)
+    acc (d, p, q) (AddToStock_ qty) = (d, p, q+qty)
+    acc (d, p, q) (RemoveFromStock_ qty) = (d, p, q-qty)
+    acc (d, p, q) (AlterPrice_ diff) = (d, p+diff, q)
     acc s ShowItem_ = s
 
 instance Effectish ItemEffect where
   summarize ctxt = 
-    let (v, _) = showItem ctxt ()
-    in [StockItem_ v]
+    let ((d,p,q), _) = showItem ctxt ()
+    in [StockItem_ d p q]
 
 --------------------------------------------------------------------------------
 -- Carts table : Key = CartId
@@ -107,7 +129,7 @@ removeCart _ () = ((), Just AddCart_)
 -- CartItems table : Key = CartID
 
 data CartItemEffect = AddItemsToCart_ ItemID Int{- Qty -}
-                    | GetItemsInCart_ 
+                    | GetCartSummary_ 
                     | RemoveItemsFromCart_ ItemID Int{- Qty -}
 
 $(derive makeSerialize ''CartItemEffect)
@@ -122,7 +144,7 @@ addItemsToCart _ (itemID,qty) = ((),Just $ AddItemsToCart_ itemID qty)
 
 removeItemsFromCart :: [CartItemEffect] -> (ItemID,Int) -> (Bool,Maybe CartItemEffect)
 removeItemsFromCart ctxt (itemID,qty) = 
-  let (items, _) = getItemsInCart ctxt () in 
+  let (items, _) = getCartSummary ctxt () in 
   let cartQtyOp = lookup itemID items in
     case cartQtyOp of
       Nothing -> (False,Nothing)
@@ -130,17 +152,17 @@ removeItemsFromCart ctxt (itemID,qty) =
                       then (True,Just $ RemoveItemsFromCart_ itemID qty)
                       else (False,Nothing)
 
-getItemsInCart:: [CartItemEffect] -> () -> ([(ItemID,Int)], Maybe CartItemEffect)
-getItemsInCart ctxt _ = 
+getCartSummary :: [CartItemEffect] -> () -> ([(ItemID,Int)], Maybe CartItemEffect)
+getCartSummary ctxt _ = 
   let (log :: [(ItemID,Int)]) = foldr acc [] ctxt in
   let (itemGroups :: [[(ItemID,Int)]]) = (\(id,_) (id',_) ->  id == id') `groupBy` log in
-  let items = map grpSummarize itemGroups in
-    (items, Just GetItemsInCart_)
+  let itemQtys = map grpSummarize itemGroups in
+    (itemQtys, Just GetCartSummary_)
   where
     acc :: CartItemEffect -> [(ItemID,Int)] -> [(ItemID,Int)]
     acc (AddItemsToCart_ id qty) s = (id,qty):s
     acc (RemoveItemsFromCart_ id qty) s = (id,0-qty):s
-    acc GetItemsInCart_ s = s
+    acc GetCartSummary_ s = s
     grpSummarize :: [(ItemID,Int)] -> (ItemID,Int)
     grpSummarize l = (fst $ hd l, foldl (\x y -> x+y) 0 (map snd l))
     hd :: [(ItemID,Int)] -> (ItemID,Int)
@@ -149,7 +171,7 @@ getItemsInCart ctxt _ =
 
 instance Effectish CartItemEffect where
   summarize ctxt = 
-    let (items,_)  = getItemsInCart ctxt () in
+    let (items,_)  = getCartSummary ctxt () in
       map (\(id,i) -> AddItemsToCart_ id i) items
 
 --------------------------------------------------------------------------------
@@ -166,8 +188,14 @@ trueCtrt x = liftProp $ true
 stockItemCtrt :: Contract Operation
 stockItemCtrt = trueCtrt
 
-unStockItemCtrt :: Contract Operation
-unStockItemCtrt = trueCtrt
+addToStockCtrt:: Contract Operation
+addToStockCtrt = trueCtrt
+
+removeFromStockCtrt:: Contract Operation
+removeFromStockCtrt = trueCtrt
+
+alterPriceCtrt :: Contract Operation
+alterPriceCtrt = trueCtrt
 
 showItemCtrt :: Contract Operation
 showItemCtrt = trueCtrt
@@ -184,8 +212,8 @@ addItemsToCartCtrt = trueCtrt
 removeItemsFromCartCtrt :: Contract Operation
 removeItemsFromCartCtrt = trueCtrt 
 
-getItemsInCartCtrt :: Contract Operation
-getItemsInCartCtrt x = forallQ_ [AddItemsToCart, RemoveItemsFromCart] $
+getCartSummaryCtrt :: Contract Operation
+getCartSummaryCtrt x = forallQ_ [AddItemsToCart, RemoveItemsFromCart] $
                           \a -> liftProp $ soo a x ⇒ vis a x
 
 
