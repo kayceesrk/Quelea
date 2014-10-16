@@ -88,9 +88,9 @@ cancelMyBid bidID =
     let (wID,itemID,_) = case resOp of
               Just x -> x
               Nothing -> error "Cannot Cancel Bid. Please try again."
-    r::() <- invoke (mkKey bidID) CancelBid ()
     r::Bool <- invoke (mkKey wID) WithdrawFromWallet (0::Int) 
     let _ = assert r ()
+    r::() <- invoke (mkKey bidID) CancelBid ()
     r::() <- invoke (mkKey itemID) RemoveItemBid (itemID)
     r::() <- invoke (mkKey wID) RemoveWalletBid (wID)
     return ()
