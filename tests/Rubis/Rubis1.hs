@@ -16,8 +16,8 @@ import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
 
 import RubisDefs
---import RubisCtrts
---import RubisTxns
+import RubisCtrts
+import RubisTxns
 
 fePort :: Int
 fePort = 5558

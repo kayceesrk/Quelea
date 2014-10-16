@@ -9,6 +9,7 @@ module RubisDefs (
   BidEffect(..),
   ItemBidEffect(..),
   WalletBidEffect(..),
+  WalletItemEffect(..),
   Operation(..),
   createTables,
   dropTables,
@@ -32,7 +33,10 @@ module RubisDefs (
 
   addWalletBid, addWalletBidCtrt,
   removeWalletBid, removeWalletBidCtrt,
-  getBidsByWallet, getBidsByWalletCtrt
+  getBidsByWallet, getBidsByWalletCtrt,
+
+  addWalletItem, addWalletItemCtrt,
+  getItemsByWallet, getItemsByWalletCtrt
 ) where
 
 
@@ -44,12 +48,13 @@ import Data.UUID
 import Control.Applicative ((<$>))
 import Data.Tuple.Select (sel1)
 import Data.DeriveTH
+import Data.Maybe (fromJust)
 
 import Codeec.Types
 import Codeec.Contract
 import Codeec.TH
 import Codeec.DBDriver
-import Data.List (groupBy)
+import Data.List (groupBy, find)
 
 
 --------------------------------------------------------------------------------
@@ -135,8 +140,12 @@ addWallet _ () = ((),Just AddWallet_)
 depositToWallet :: [WalletEffect] -> Int -> ((),Maybe WalletEffect)
 depositToWallet _ amt = ((),Just $ DepositToWallet_ amt)
 
-withdrawFromWallet :: [WalletEffect] -> Int -> ((),Maybe WalletEffect)
-withdrawFromWallet _ amt = ((),Just $ WithdrawFromWallet_ amt)
+withdrawFromWallet :: [WalletEffect] -> Int -> (Bool,Maybe WalletEffect)
+withdrawFromWallet ctxt amt =
+  let (bal, _) = getBalance ctxt ()
+  in if bal > amt
+     then (True, Just $ WithdrawFromWallet_ amt)
+     else (False, Nothing)
 
 getBalance :: [WalletEffect] -> () -> (Int, Maybe WalletEffect)
 getBalance ops () =
@@ -166,6 +175,7 @@ instance CasType WalletEffect where
 newtype BidID = BidID UUID deriving (Eq, Ord)
 
 data BidEffect = AddBid_ {- by -}WalletID {- on -}ItemID{- for amt-}Int
+               | GetBid_
                | CancelBid_ deriving Eq
 
 $(derive makeSerialize ''BidID)
@@ -178,9 +188,20 @@ addBid _ (wID,itemID,amt) = ((), Just $ AddBid_ wID itemID amt)
 cancelBid :: [BidEffect] -> () -> ((), Maybe BidEffect)
 cancelBid _ _ = ((), Just CancelBid_)
 
-instance Effectish BidEffect where
-  summarize l = l
+getBid :: [BidEffect] -> () -> (Maybe (WalletID, ItemID, Int), Maybe BidEffect)
+getBid ctxt _ = 
+  case (find f ctxt, elem CancelBid_ ctxt) of 
+    (Nothing, False) -> (Nothing, Just GetBid_)
+    (Just (AddBid_ x y z), False) -> (Just (x,y,z), Just GetBid_) 
+    (_,True) -> (Nothing, Just GetBid_)
+  where
+    f (AddBid_ x y z) = True
+    f _ = False
 
+instance Effectish BidEffect where
+  summarize l = case getBid l () of 
+                  (Just (x,y,z), _) -> [AddBid_ x y z]
+                  (Nothing,_) -> []
 
 instance CasType BidEffect where
   putCas = put
@@ -274,8 +295,38 @@ instance CasType WalletBidEffect where
   casType _ = CBlob
 
 --------------------------------------------------------------------------------
+-- WalletItems table : Key = WalletID
 
-mkOperations [''ItemEffect, ''WalletEffect, ''WalletBidEffect]
+data WalletItemEffect = AddWalletItem_ ItemID
+                      | GetItemsByWallet_ deriving Eq
+
+$(derive makeSerialize ''WalletItemEffect)
+
+addWalletItem :: [WalletItemEffect] -> ItemID -> ((),Maybe WalletItemEffect)
+addWalletItem _ itemID = ((),Just $ AddWalletItem_ itemID)
+
+getItemsByWallet :: [WalletItemEffect] -> () -> ([ItemID], Maybe WalletItemEffect)
+getItemsByWallet ctxt _ = (foldr acc [] ctxt, Just GetItemsByWallet_)
+  where
+    acc :: WalletItemEffect -> [ItemID] -> [ItemID]
+    acc (AddWalletItem_ id) s = id:s
+    acc GetItemsByWallet_ s = s
+
+instance Effectish WalletItemEffect where
+  summarize ctxt = 
+    let (items,_)  = getItemsByWallet ctxt () in
+      map (\itemID -> AddWalletItem_ itemID) items
+
+instance CasType WalletItemEffect where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+mkOperations [''ItemEffect, ''WalletEffect, ''BidEffect, ''WalletBidEffect, 
+  ''ItemBidEffect, ''WalletItemEffect]
 $(derive makeSerialize ''Operation)
 
 --------------------------------------------------------------------------------
@@ -327,8 +378,14 @@ getBidsByWalletCtrt :: Contract Operation
 {- Session Consistency -}
 getBidsByWalletCtrt x = forallQ_ [AddWalletBid, RemoveWalletBid] $
                           \a -> liftProp $ soo a x ⇒ vis a x
+addWalletItemCtrt :: Contract Operation
+addWalletItemCtrt = trueCtrt
 
-
+getItemsByWalletCtrt :: Contract Operation
+{- Seller wants to see all items he is selling -}
+{- Session Consistency -}
+getItemsByWalletCtrt x = forallQ_ [AddWalletItem] $
+                          \a -> liftProp $ soo a x ⇒ vis a x
 
 --------------------------------------------------------------------------------
 
@@ -340,6 +397,7 @@ createTables = do
   createTable "BidEffect"
   createTable "ItemBidEffect"
   createTable "WalletBidEffect"
+  createTable "WalletItemEffect"
 
 dropTables :: Cas ()
 dropTables = do
@@ -349,3 +407,4 @@ dropTables = do
   dropTable "BidEffect"
   dropTable "ItemBidEffect"
   dropTable "WalletBidEffect"
+  dropTable "WalletItemEffect"
