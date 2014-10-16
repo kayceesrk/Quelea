@@ -18,10 +18,11 @@ bidForItemTxnCtrt = liftProp $ true
 showMyBidsTxnCtrt :: Fol Operation
 showMyBidsTxnCtrt = liftProp $ true
 
--- If a CancelBid operation in this session succeeds (i.e., sees
--- corresponding AddBid), then Removals from materialized views in this
--- transaction must see additions to same materialized views in that
--- transaction.
+-- If a CancelBid operation in this transaction succeeds (i.e., sees
+-- corresponding AddBid in a different transaction T'), then references
+-- to this bid from other tables should also be removed (i.e,
+-- RemoveWalletBid and RemoveItemBid must see AddWalletBid and
+-- AddItemBid from transaction T')
 cancelBidTxnCtrt :: Fol Operation
 cancelBidTxnCtrt = forallQ4_ [CancelBid] [RemoveItemBid, RemoveWalletBid]
                              [AddBid] [AddItemBid, AddWalletBid] 
@@ -34,10 +35,10 @@ openAuctionTxnCtrt = liftProp $ true
 showMyAuctionsTxnCtrt :: Fol Operation
 showMyAuctionsTxnCtrt = liftProp $ true
 
--- If withdraw in this trans sees withdraw in a different trans, and
--- if there is a CancelBid in that trans, then it must be visible to
--- GetBid in this trans. 
--- Since withdraw always sees another withdraw, AddBid in this
+-- If withdraw in this transaction sees withdraw in a different
+-- transaction, and if there is a CancelBid in that trans, then it
+-- must be visible to GetBid in this trans.  Since withdraw always
+-- sees another withdraw, AddBid in this
 -- transaction always sees all CancelBids
 concludeAuctionTxnCtrt :: Fol Operation
 concludeAuctionTxnCtrt = forallQ4_ [WithdrawFromWallet] [GetBid] 
