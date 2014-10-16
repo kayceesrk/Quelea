@@ -349,8 +349,13 @@ showItemCtrt = trueCtrt
 
 addWalletCtrt = (trueCtrt :: Contract Operation)
 getBalanceCtrt = (trueCtrt :: Contract Operation)
+
+depositToWalletCtrt :: Contract Operation
 depositToWalletCtrt = (trueCtrt :: Contract Operation)
-withdrawFromWalletCtrt = (trueCtrt :: Contract Operation)
+
+withdrawFromWalletCtrt :: Contract Operation
+withdrawFromWalletCtrt x = forallQ_ [WithdrawFromWallet] $ \a ->
+                              liftProp $ vis a x ∨ vis x a
 
 addBidCtrt :: Contract Operation
 addBidCtrt = trueCtrt
@@ -374,7 +379,8 @@ removeWalletBidCtrt :: Contract Operation
 removeWalletBidCtrt = trueCtrt 
 
 getBidsByWalletCtrt :: Contract Operation
-{- User wants to see all bids he has placed -}
+{- It is good to show user all bids he has placed atleast in the
+ - current session -}
 {- Session Consistency -}
 getBidsByWalletCtrt x = forallQ_ [AddWalletBid, RemoveWalletBid] $
                           \a -> liftProp $ soo a x ⇒ vis a x
