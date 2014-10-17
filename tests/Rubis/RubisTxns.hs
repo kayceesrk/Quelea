@@ -88,8 +88,7 @@ cancelMyBid bidID =
     let (wID,itemID,_) = case resOp of
               Just x -> x
               Nothing -> error "Cannot Cancel Bid. Please try again."
-    r::Bool <- invoke (mkKey wID) WithdrawFromWallet (0::Int) 
-    let _ = assert r ()
+    r::()<- invoke (mkKey wID) WithdrawFromWallet (0::Int) 
     r::() <- invoke (mkKey bidID) CancelBid ()
     r::() <- invoke (mkKey itemID) RemoveItemBid (itemID)
     r::() <- invoke (mkKey wID) RemoveWalletBid (wID)
@@ -133,53 +132,45 @@ getMaxBid bidIDs = foldM f Nothing bidIDs
         (Just (wid,_,amt), Nothing) -> return $ Just (bidID,wid,amt)
         (Just (wid,_,amt::Int), Just (_,_,amt')) -> 
           return $ if amt>amt' then Just (bidID,wid,amt) else accOp
--- A bidId among bidIDs wins the bid, if it remains winner for
--- two iterations of billMaxBidder. A winner is billed (amount
--- withdrawn from his wallet) in first iteration itself. Since a
--- cancelMyBid transaction involves a trivial withdraw, and withdraw is
--- total order, if winner has cancelled his bid, it becomes visible
--- in next iteration (due to MAV on current transaction). If winner
--- has indeed cancelled his transaction, we deposit his money back,
--- and search for next winner. 
--- The function terminates because the list of bidIDs in recursive
--- calls monotonically decreases.
-billMaxBidder :: [BidID] -> Maybe (BidID,WalletID,Int) -> CSN Int
-billMaxBidder bidIDs preWinnerOp = do
+-- Bills best bidder, and returns billed amount. The function
+-- terminates because the list of bidIDs in recursive calls
+-- monotonically decreases.
+billBestBidder :: [BidID] -> CSN Int
+billBestBidder bidIDs = do
   resOp <- getMaxBid bidIDs
-  case (resOp,preWinnerOp) of 
-    (Nothing,_) -> return 0
-    (Just (bid,wid,maxbid), Just (bid',wid',maxbid')) -> 
-      if bid==bid'
-      then return maxbid -- we already billed wid
-      else do
-        r::() <- invoke (mkKey wid') DepositToWallet (maxbid')
-        r::Bool <- invoke (mkKey wid) WithdrawFromWallet (maxbid::Int)
-        if r then let f b = b/=bid'
-                  in billMaxBidder (f `filter` bidIDs) (Just (bid,wid,maxbid))
-             else let f b =  b/=bid && b/=bid'
-                  in billMaxBidder (f `filter` bidIDs) Nothing
-    (Just (bid,wid,maxbid), Nothing) -> do
-      r::Bool <- invoke (mkKey wid) WithdrawFromWallet (maxbid)
-      if r then billMaxBidder bidIDs (Just (bid,wid,maxbid))
-           else let f b =  b/=bid
-                in billMaxBidder (f `filter` bidIDs) Nothing
-
--- This transaction needs to be MAV as it removes from multiple
--- tables and materialized views. 
+  case resOp of 
+    Nothing -> return 0
+    Just (bidID,wid,maxbid) -> 
+      let f b = b/=bidID in
+      let billNextBest :: () -> CSN Int
+          billNextBest () = billBestBidder $ f `filter` bidIDs in
+        do
+          r::Bool <- invoke (mkKey wid) WithdrawFromWallet (maxbid::Int)
+          if r 
+          then do -- Best bidder is succesfully billed
+            (resOp :: Maybe (WalletID,Int,Int))<- invoke (mkKey bidID) GetBid ()
+            case resOp of
+              Just _ -> return maxbid -- Best bid is not cancelled
+              Nothing -> do -- If best bid is cancelled, deposit money back
+                r::() <- invoke (mkKey wid) DepositToWallet (maxbid)
+                billNextBest () -- Find next best
+          else do
+            billNextBest ()
+          
+-- This transaction needs to be MAV to ensure that this is in total
+-- order with all cancelBid transactions.
 concludeAuction :: WalletID{-seller-} -> ItemID -> CSN Int {-max bid -}
 concludeAuction wID itemID = do
   let ikey = mkKey itemID 
-  -- Remove the item from stock, so that no more than a few concurrent
-  -- bids may be placed while we are busy deciding the winner of
-  -- auction.
+  -- Remove the item from stock to prevent future bids from
+  -- being placed on this item.
   r::() <- invoke ikey RemoveFromStock ();
   atomically ($(checkTxn "_concludeAuctionTxn" concludeAuctionTxnCtrt)) $ do
     let (wkey,ikey) =  (mkKey wID, mkKey itemID)
     -- Get all bids on the item
     bidIDs <- invoke ikey GetBidsByItem ()
-    -- Among bidIDs, find bidder who hasn't cancelled his bid, 
-    -- and return max bid
-    amt::Int <- billMaxBidder bidIDs Nothing
+    -- Among bidIDs, find best bid and bill best bidder.
+    amt::Int <- billBestBidder bidIDs
     r::() <- if amt>0 then invoke wkey DepositToWallet (amt) else return ()
     return amt
 
