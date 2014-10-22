@@ -407,9 +407,6 @@ isWellTyped c mkOperSort = typecheck mkOperSort $ do
   assertProp "SC_IMPL_CTRT" $ not_ test1
   lift $ res2Bool <$> check
 
-hbo :: OperationClass a => Effect -> Effect -> Prop a
-hbo = AppRel $ TC $ ((So ∩ SameObj) ∪ Vis)
-
 sc :: Contract ()
 sc x = forall_ $ \a ->  liftProp $ (hbo a x ∨ hbo x a ∨ AppRel SameEff a x) ∧
                                    (hbo a x ⇒ vis a x) ∧

@@ -15,6 +15,7 @@ module Codeec.Contract.Language (
   so,
   soo,
   hb,
+  hbo,
   sameEff,
   atomDep,
   sameObj,
@@ -114,6 +115,9 @@ soo a b = AppRel (So ∩ SameObj) a b
 
 hb :: Effect -> Effect -> Prop a
 hb a b = AppRel (TC $ Union Vis So) a b
+
+hbo :: Effect -> Effect -> Prop a
+hbo a b = AppRel (TC $ Union Vis (So ∩ SameObj)) a b
 
 atomDep :: Effect -> Effect -> Prop a
 atomDep = AppRel AtomDep

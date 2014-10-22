@@ -16,6 +16,7 @@ module Codeec.Contract (
   sameObjList,
   trans,
   hb,
+  hbo,
   (∩),
   (∪),
   (∧),
