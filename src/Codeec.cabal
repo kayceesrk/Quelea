@@ -47,4 +47,4 @@ Library
     Codeec.ShimLayer.UpdateFetcher
     Codeec.ShimLayer.GC
   Extensions: CPP
-  ghc-options: -Wall
+  ghc-options: -Wall -O2 -threaded

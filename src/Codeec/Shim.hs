@@ -42,7 +42,7 @@ makeLenses ''DatatypeLibrary
 makeLenses ''OperationPayload
 
 -- This is the maximum number of outstanding StickyAvailable requrests.
-#define NUM_WORKERS 5
+#define NUM_WORKERS 64
 
 -- #define DEBUG
 
