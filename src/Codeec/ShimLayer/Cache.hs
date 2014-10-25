@@ -31,7 +31,6 @@ import Control.Monad.State
 import System.IO
 import Control.Applicative ((<$>))
 import Data.Tuple.Select
-import GHC.DataSize
 
 import Codeec.Types
 import Codeec.ShimLayer.Types

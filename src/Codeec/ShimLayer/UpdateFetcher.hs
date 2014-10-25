@@ -149,12 +149,18 @@ fetchUpdates cm const todoList = do
       let cacheGCId = case M.lookup (ot,k) lgca of
                         Nothing -> SessID knownUUID
                         Just id -> id
+      -- If a new GC has occurred, flush the cache and get the new effects
+      -- inserted by the GC.
       when (newGCHasOccurred cacheGCId gcMarker) $ do
         let (newGCSessID, _, _) = fromJust $ gcMarker
         lgca <- use lastGCAddrCUS
         lastGCAddrCUS .= M.insert (ot,k) newGCSessID lgca
+        -- empty cache
         cache <- use cacheCUS
         cacheCUS .= M.insert (ot,k) S.empty cache
+        -- reset cursor
+        cursor <- use cursorCUS
+        cursorCUS .= M.insert (ot,k) M.empty cursor
       -- Update cache
       cache <- use cacheCUS
       let newEffs :: CacheMap = M.singleton (ot,k) (S.map (\(a,e,_) -> (a,e)) filteredSet)
