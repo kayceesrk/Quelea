@@ -37,6 +37,7 @@ import Debug.Trace
 import Control.Concurrent (forkIO, myThreadId, threadDelay)
 import Data.Tuple.Select
 
+
 makeLenses ''Addr
 makeLenses ''DatatypeLibrary
 makeLenses ''OperationPayload
@@ -110,6 +111,7 @@ worker dtLib pool cache = do
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
         maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+        return ()
       ReqTxnCommit txid deps -> do
         debugPrint $ "Committing transaction " ++ show txid
         when (S.size deps > 0) $ runCas pool $ insertTxn txid deps
@@ -205,3 +207,5 @@ mkDtLib l =
     core (m1, m2) (op, (fun1, fun2), av) =
       (M.insert (getObjType op, op) (fun1, av) m1,
        M.insert (getObjType op) fun2 m2)
+
+

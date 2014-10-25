@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse  #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns  #-}
 
 module Codeec.ShimLayer.GC (
   maybeGCCache
@@ -21,7 +21,7 @@ import Control.Applicative ((<$>))
 makeLenses ''CacheManager
 
 -- Minimum high water mark size for GC
-#define LWM 64
+#define LWM 128
 
 data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
                   | NotVisited (S.Set Addr)
@@ -112,15 +112,12 @@ maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
   let ctxt = case M.lookup (ot, k) cache of
                Nothing -> []
                Just s -> map (\(a,e) -> e) $ S.toList s
-  let newCtxt = gc ctxt
+  let !newCtxt = gc ctxt
   newUUID <- SessID <$> randomIO
   let (newCache,_) = foldl (\(s,i) e -> (S.insert (Addr newUUID i, e) s, i+1)) (S.empty, 1) newCtxt
   hwm <- takeMVar $ cm^.hwmMVar
   putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
   putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
-  putStrLn $ "maybeGCCache : finalSize=" ++ (show $ length newCtxt)
-
-
 
 filterUnresolved :: CursorAtKey             -- Key Cursor
                  -> M.Map Addr VisitedState -- Input visited state

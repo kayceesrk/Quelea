@@ -76,8 +76,8 @@ makeLenses ''CacheUpdateState
 fetchUpdates :: CacheManager -> Consistency -> [(ObjType, Key)] -> IO ()
 fetchUpdates cm const todoList = do
   -- Recursively read the DB and collect all the rows
-  cursor <- readMVar $ cm^.cursorMVar
-  inclTxns <- readMVar $ cm^.includedTxnsMVar
+  !cursor <- readMVar $ cm^.cursorMVar
+  !inclTxns <- readMVar $ cm^.includedTxnsMVar
 
   let todoObjsCRS = S.fromList todoList
   let crs = CollectRowsState (sel1 inclTxns) todoObjsCRS M.empty M.empty
@@ -105,7 +105,7 @@ fetchUpdates cm const todoList = do
          in (M.insert (ot,k) er erm,
              M.insert (ot,k) gcm gcmm)) (M.empty, M.empty) rowsMapCRS
   -- Build new cursor with GC markers
-  let newCursor = M.foldlWithKey (\c (ot,k) gcMarker ->
+  let !newCursor = M.foldlWithKey (\c (ot,k) gcMarker ->
                     case gcMarker of
                       Nothing -> c
                       Just marker ->
@@ -118,11 +118,11 @@ fetchUpdates cm const todoList = do
   let !filteredMap = filterUnresolved newCursor effRowsMap
 
   -- Update state. First obtain locks...
-  cache      <- takeMVar $ cm^.cacheMVar
-  cursor     <- takeMVar $ cm^.cursorMVar
-  deps       <- takeMVar $ cm^.depsMVar
-  lastGCAddr <- takeMVar $ cm^.lastGCAddrMVar
-  inclTxns   <- takeMVar $ cm^.includedTxnsMVar
+  !cache      <- takeMVar $ cm^.cacheMVar
+  !cursor     <- takeMVar $ cm^.cursorMVar
+  !deps       <- takeMVar $ cm^.depsMVar
+  !lastGCAddr <- takeMVar $ cm^.lastGCAddrMVar
+  !inclTxns   <- takeMVar $ cm^.includedTxnsMVar
 
   let core =
         mapM_ (\((ot,k), filteredSet) ->
@@ -130,7 +130,7 @@ fetchUpdates cm const todoList = do
             (case M.lookup (ot,k) newCursor of {Nothing -> M.empty; Just m -> m})
             (fromJust $ M.lookup (ot,k) gcMarkerMap)) $ M.toList filteredMap
 
-  let CacheUpdateState newCache newCursor newDeps newLastGCAddr newInclTxns =
+  let CacheUpdateState !newCache !newCursor !newDeps !newLastGCAddr !newInclTxns =
         execState core (CacheUpdateState cache cursor deps lastGCAddr inclTxns)
   putMVar (cm^.cacheMVar) newCache
   putMVar (cm^.cursorMVar) newCursor

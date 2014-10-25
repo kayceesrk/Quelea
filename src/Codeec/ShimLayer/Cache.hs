@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell, DataKinds, OverloadedStrings, DoAndIfThenElse  #-}
+{-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell, DataKinds, OverloadedStrings, DoAndIfThenElse, BangPatterns  #-}
 
 module Codeec.ShimLayer.Cache (
   CacheManager,
@@ -14,7 +14,7 @@ module Codeec.ShimLayer.Cache (
   doesCacheIncludeTxns,
   fetchTxns,
   snapshotCache,
-  getInclTxnsAt
+  getInclTxnsAt,
 ) where
 
 import Control.Concurrent
@@ -31,6 +31,7 @@ import Control.Monad.State
 import System.IO
 import Control.Applicative ((<$>))
 import Data.Tuple.Select
+import GHC.DataSize
 
 import Codeec.Types
 import Codeec.ShimLayer.Types
@@ -92,14 +93,14 @@ cacheMgrCore cm = forever $ do
 -- for this location.
 getContext :: CacheManager -> ObjType -> Key -> IO ([Effect], S.Set Addr)
 getContext cm ot k = do
-  cache <- takeMVar $ cm^.cacheMVar
-  deps <- takeMVar $ cm^.depsMVar
+  !cache <- takeMVar $ cm^.cacheMVar
+  !deps <- takeMVar $ cm^.depsMVar
   putMVar (cm^.cacheMVar) cache
   putMVar (cm^.depsMVar) deps
-  let v1 = case M.lookup (ot,k) cache of
+  let !v1 = case M.lookup (ot,k) cache of
              Nothing -> []
              Just s -> Prelude.map (\(a,e) -> e) (S.toList s)
-  let v2 = case M.lookup (ot,k) deps of {Nothing -> S.empty; Just s -> s}
+  let !v2 = case M.lookup (ot,k) deps of {Nothing -> S.empty; Just s -> s}
   return (v1, v2)
 
 writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr
@@ -113,21 +114,30 @@ writeEffect cm ot k addr eff deps const mbtxnid = do
   -- maintains the cache to be a causally consistent cut of the updates. But do
   -- not update cache if the effect is in a transaction. This prevents
   -- uncommitted effects from being made visible.
-  when ((not isTxn) && (sqn == 1 || isPrevEffectAvailable)) $ do
-    cache <- takeMVar $ cm^.cacheMVar
-    cursor <- takeMVar $ cm^.cursorMVar
+  if ((not isTxn) && (sqn == 1 || isPrevEffectAvailable))
+  then do
+    !cache <- takeMVar $ cm^.cacheMVar
+    !cursor <- takeMVar $ cm^.cursorMVar
     -- curDeps may be different from the deps seen before the operation was performed.
-    curDeps <- takeMVar $ cm^.depsMVar
+    !curDeps <- takeMVar $ cm^.depsMVar
     -- Update cache
-    putMVar (cm^.cacheMVar) $ M.insertWith S.union (ot,k) (S.singleton (addr, eff)) cache
+    let !newCache = M.insertWith S.union (ot,k) (S.singleton (addr, eff)) cache
+    putMVar (cm^.cacheMVar) newCache
     -- Update cursor
-    let cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
-    let newCursorAtKey = M.insert sid sqn cursorAtKey
+    let !cursorAtKey = case M.lookup (ot,k) cursor of {Nothing -> M.empty; Just m -> m}
+    let !newCursorAtKey = M.insert sid sqn cursorAtKey
     putMVar (cm^.cursorMVar) $ M.insert (ot,k) newCursorAtKey cursor
     -- Update dependence
-    putMVar (cm^.depsMVar) $ M.insertWith S.union (ot,k) (S.singleton addr) curDeps
-  -- Write to database
-  runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
+    -- the deps seen by the effect is a subset of the curDeps. We over
+    -- approximate the dependence set; only means that effects might take longer
+    -- to converge, but importantly does not affect correctness.
+    let newDeps = case M.lookup (ot,k) curDeps of {Nothing -> S.empty; Just s -> s}
+    putMVar (cm^.depsMVar) $ M.insert (ot,k) (S.singleton addr) curDeps
+    -- Write to database
+    runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, newDeps, EffectVal eff, mbtxnid)
+  else
+    -- Write to database
+    runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do
