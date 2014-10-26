@@ -51,7 +51,7 @@ main = do
       iter <- newIORef (0::Int, [])
       key <- newKey
       mv::(MVar Int)<- newEmptyMVar
-      replicateM_ 128 $ forkIO $ runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
+      replicateM_ 8 $ forkIO $ runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
         forever $ do
           t1 <- liftIO $ getCurrentTime
           r::() <- invoke key Deposit (1::Int)

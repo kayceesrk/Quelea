@@ -88,6 +88,27 @@ cacheMgrCore cm = forever $ do
   putMVar (cm^.blockedMVar) []
   mapM_ (\mv -> putMVar mv ()) blockedList
 
+-- Print stats
+printStats :: CacheManager -> ObjType -> Key -> IO ()
+printStats cm ot k = do
+  cacheMap <- readMVar $ cm^.cacheMVar
+  cursorMap <- readMVar $ cm^.cursorMVar
+  depsMap <- readMVar $ cm^.depsMVar
+  lgca <- readMVar $ cm^.lastGCAddrMVar
+  (inclTxns,_) <- readMVar $ cm^.includedTxnsMVar
+  hwm <- readMVar $ cm^.hwmMVar
+  hotLocs <- readMVar $ cm^.hotLocsMVar
+  tq <- readMVar $ cm^.blockedMVar
+
+  let cache = case M.lookup (ot,k) cacheMap of {Nothing -> S.empty; Just s -> s}
+  let cursor = case M.lookup (ot,k) cursorMap of {Nothing -> M.empty; Just s -> s}
+  let deps = case M.lookup (ot,k) depsMap of {Nothing -> S.empty; Just s -> s}
+
+  putStrLn $ "Stats : cache=" ++ show (S.size cache) ++ " cursor=" ++ show (M.size cursor) ++
+             " deps=" ++ show (S.size deps) ++ " lgca=" ++ show (M.size lgca) ++
+             " incTxns=" ++ show (S.size inclTxns) ++ " hwm=" ++ show (M.size hwm) ++
+             " hotLocs=" ++ show (S.size hotLocs) ++ " tq=" ++ show (length tq)
+
 -- Returns the set of effects at the location and a set of nearest dependencies
 -- for this location.
 getContext :: CacheManager -> ObjType -> Key -> IO ([Effect], S.Set Addr)
@@ -100,6 +121,7 @@ getContext cm ot k = do
              Nothing -> []
              Just s -> Prelude.map (\(a,e) -> e) (S.toList s)
   let !v2 = case M.lookup (ot,k) deps of {Nothing -> S.empty; Just s -> s}
+  -- printStats cm ot k
   return (v1, v2)
 
 writeEffect :: CacheManager -> ObjType -> Key -> Addr -> Effect -> S.Set Addr

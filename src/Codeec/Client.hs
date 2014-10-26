@@ -27,7 +27,8 @@ import Data.Serialize
 import Codeec.Marshall
 import System.Random (randomIO)
 import Control.Applicative
-import Data.ByteString (cons, ByteString)
+import Data.ByteString (ByteString, length)
+import qualified Data.ByteString as B
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Maybe (fromJust)
@@ -122,10 +123,12 @@ invokeInternal getDeps s key operName arg = do
                 Nothing -> 0
                 Just s -> s
   let txnReq = mkTxnReq ot key $ s^.curTxn
-  let req = ReqOper $ OperationPayload ot key operName (encode arg)
+  let req = encode $ ReqOper $ OperationPayload ot key operName (encode arg)
                         (s ^. sessid) seqNo txnReq getDeps
-  send (s^.server) [] $ encode req
+  -- putStrLn $ "invokeInternal: req length=" ++ show (B.length req)
+  send (s^.server) [] req
   responseBlob <- receive (s^.server)
+  -- putStrLn $ "invokedInternal: res length=" ++ show (B.length responseBlob)
   let (ResOper newSeqNo resBlob mbNewEff mbTxns visAddrSet) = decodeResponse responseBlob
   let visSet = S.map (\(Addr sid sqn) -> TxnDep ot key sid sqn) visAddrSet
   case decode resBlob of
