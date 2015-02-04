@@ -73,6 +73,7 @@ serverJoin b port = do
     forever $ do
       message <- receive responder
       liftIO $ debugPrint "serverJoin(3)"
+      {- localhost should be a public ip -}
       send responder [] $ pack $ "tcp://localhost:" ++ show port
       liftIO $ debugPrint "serverJoin(4)"
 
