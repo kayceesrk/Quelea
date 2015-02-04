@@ -15,8 +15,6 @@ import Codeec.ShimLayer.Cache
 import Codeec.ShimLayer.GC
 import Codeec.Contract.Language
 
-import System.Directory
-import System.Posix.Process
 import Data.Serialize
 import Control.Applicative ((<$>))
 import Control.Monad (forever, replicateM, when)
@@ -28,6 +26,7 @@ import System.ZMQ4.Monadic
 import qualified System.ZMQ4 as ZMQ
 import Data.Maybe (fromJust)
 import Control.Lens
+import System.Posix.Process
 import Database.Cassandra.CQL
 import Data.UUID
 import Data.Int (Int64)
@@ -68,25 +67,7 @@ runShimNode dtLib serverList keyspace backend port = do
   cache <- initCacheManager pool
   {- Spawn a pool of workers -}
   replicateM NUM_WORKERS (forkIO $ worker dtLib pool cache)
-  runZMQ $ do
-    {- Fork a daemon thread that joins with the backend. The daemon shares the
-    - servers address for every client request. The client then joins with the
-    - server.
-    -}
-    liftIO $ serverJoin backend $ "tcp://localhost:" ++ show port
-
-    {- Create a router and a dealer -}
-    routerSock <- socket Router
-    let myaddr = "tcp://*:" ++ show port
-    bind routerSock myaddr
-
-    dealerSock <- socket Dealer
-    liftIO $ createDirectoryIfMissing False "/tmp/quelea"
-    pid <- liftIO $ getProcessID
-    bind dealerSock $ "ipc:///tmp/quelea/" ++ show pid
-
-    {- Start proxy to distribute requests to workers -}
-    proxy routerSock dealerSock Nothing
+  serverJoin backend port
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
 worker dtLib pool cache = do

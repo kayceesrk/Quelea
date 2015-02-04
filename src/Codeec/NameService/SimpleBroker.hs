@@ -14,6 +14,8 @@ import System.ZMQ4.Monadic
 import Control.Concurrent
 import Control.Monad
 import Data.ByteString.Char8 (unpack, pack)
+import System.Directory
+import System.Posix.Process
 import Control.Monad.Trans (liftIO)
 
 #define DEBUG
@@ -57,14 +59,33 @@ clientJoin f = do
   return (serverAddr, sock)
 
 
-serverJoin :: Backend -> String -> IO ()
-serverJoin b s = void $ forkIO $ runZMQ $ do
-  responder <- socket Rep
-  liftIO $ debugPrint "serverJoin(1)"
-  connect responder $ unBE b
-  liftIO $ debugPrint "serverJoin(2)"
-  forever $ do
-    message <- receive responder
-    liftIO $ debugPrint "serverJoin(3)"
-    send responder [] $ pack s
-    liftIO $ debugPrint "serverJoin(4)"
+serverJoin :: Backend -> Int {- Port# -} -> IO ()
+serverJoin b port = do
+  {- Fork a daemon thread that joins with the backend. The daemon shares the
+   - servers address for every client request. The client then joins with the
+   - server.
+   -}
+  void $ forkIO $ runZMQ $ do
+    responder <- socket Rep
+    liftIO $ debugPrint "serverJoin(1)"
+    connect responder $ unBE b
+    liftIO $ debugPrint "serverJoin(2)"
+    forever $ do
+      message <- receive responder
+      liftIO $ debugPrint "serverJoin(3)"
+      send responder [] $ pack $ "tcp://localhost:" ++ show port
+      liftIO $ debugPrint "serverJoin(4)"
+
+  runZMQ $ do
+    {- Create a router and a dealer -}
+    routerSock <- socket Router
+    let myaddr = "tcp://*:" ++ show port
+    bind routerSock myaddr
+
+    dealerSock <- socket Dealer
+    liftIO $ createDirectoryIfMissing False "/tmp/quelea"
+    pid <- liftIO $ getProcessID
+    bind dealerSock $ "ipc:///tmp/quelea/" ++ show pid
+
+    {- Start proxy to distribute requests to workers -}
+    proxy routerSock dealerSock Nothing
