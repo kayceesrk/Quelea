@@ -42,8 +42,9 @@ main = do
                      (Backend $ "tcp://*:" ++ show bePort)
     S -> do
       runShimNode dtLib [("localhost","9042")] keyspace
-        (Backend $ "tcp://localhost:" ++ show bePort) 5560
+        (Backend $ "tcp://localhost:" ++ show bePort) "localhost" 5560
     C -> runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
+      -- liftIO $ threadDelay 100000
       key <- liftIO $ newKey
       liftIO $ putStrLn "Client : performing deposit"
       r::() <- invoke key Deposit (64::Int)

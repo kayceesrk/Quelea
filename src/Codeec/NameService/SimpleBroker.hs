@@ -18,7 +18,7 @@ import System.Directory
 import System.Posix.Process
 import Control.Monad.Trans (liftIO)
 
-#define DEBUG
+-- #define DEBUG
 
 debugPrint :: String -> IO ()
 #ifdef DEBUG
@@ -59,25 +59,11 @@ clientJoin f = do
   return (serverAddr, sock)
 
 
-serverJoin :: Backend -> Int {- Port# -} -> IO ()
-serverJoin b port = do
-  {- Fork a daemon thread that joins with the backend. The daemon shares the
-   - servers address for every client request. The client then joins with the
-   - server.
-   -}
-  void $ forkIO $ runZMQ $ do
-    responder <- socket Rep
-    liftIO $ debugPrint "serverJoin(1)"
-    connect responder $ unBE b
-    liftIO $ debugPrint "serverJoin(2)"
-    forever $ do
-      message <- receive responder
-      liftIO $ debugPrint "serverJoin(3)"
-      {- localhost should be a public ip -}
-      send responder [] $ pack $ "tcp://localhost:" ++ show port
-      liftIO $ debugPrint "serverJoin(4)"
+serverJoin :: Backend -> String {- ip -} -> Int {- Port# -} -> IO ()
+serverJoin b ip port = do
 
-  runZMQ $ do
+  void $ forkIO $ runZMQ $ do
+    liftIO $ debugPrint "serverJoin(5)"
     {- Create a router and a dealer -}
     routerSock <- socket Router
     let myaddr = "tcp://*:" ++ show port
@@ -88,5 +74,21 @@ serverJoin b port = do
     pid <- liftIO $ getProcessID
     bind dealerSock $ "ipc:///tmp/quelea/" ++ show pid
 
+    liftIO $ debugPrint "serverJoin(6): starting proxy"
     {- Start proxy to distribute requests to workers -}
     proxy routerSock dealerSock Nothing
+
+  {- Fork a daemon thread that joins with the backend. The daemon shares the
+   - servers address for every client request. The client then joins with the
+   - server.
+   -}
+  runZMQ $ do
+    responder <- socket Rep
+    liftIO $ debugPrint "serverJoin(1)"
+    connect responder $ unBE b
+    liftIO $ debugPrint "serverJoin(2)"
+    forever $ do
+      message <- receive responder
+      liftIO $ debugPrint $ "serverJoin(3) " ++ ip
+      send responder [] $ pack $ "tcp://" ++ ip ++ ":" ++ show port
+      liftIO $ debugPrint "serverJoin(4)"

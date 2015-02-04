@@ -58,23 +58,26 @@ debugPrint _ = return ()
 runShimNode :: OperationClass a
             => DatatypeLibrary a
             -> [Server] -> Keyspace -- Cassandra connection info
-            -> Backend -> Int       -- Shim layer broker connection info
+            -> Backend              -- Shim layer broker connection info
+            -> String -> Int        -- IP + port for server connection
             -> IO ()
-runShimNode dtLib serverList keyspace backend port = do
+runShimNode dtLib serverList keyspace backend ip port = do
   {- Connection to the Cassandra deployment -}
   pool <- newPool serverList keyspace Nothing
   {- Spawn cache manager -}
   cache <- initCacheManager pool
   {- Spawn a pool of workers -}
   replicateM NUM_WORKERS (forkIO $ worker dtLib pool cache)
-  serverJoin backend port
+  serverJoin backend ip port
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
 worker dtLib pool cache = do
   ctxt <- ZMQ.context
   sock <- ZMQ.socket ctxt ZMQ.Rep
   pid <- getProcessID
+  debugPrint "worker: connecting..."
   ZMQ.connect sock $ "ipc:///tmp/quelea/" ++ show pid
+  debugPrint "worker: connected"
   {- loop forver servicing clients -}
   forever $ do
     binReq <- ZMQ.receive sock
