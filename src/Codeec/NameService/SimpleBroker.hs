@@ -9,15 +9,14 @@ module Codeec.NameService.SimpleBroker (
   startBroker,
 ) where
 
-
-
+import qualified System.ZMQ4 as ZMQ4
 import System.ZMQ4.Monadic
 import Control.Concurrent
 import Control.Monad
 import Data.ByteString.Char8 (unpack, pack)
 import Control.Monad.Trans (liftIO)
 
--- #define DEBUG
+#define DEBUG
 
 debugPrint :: String -> IO ()
 #ifdef DEBUG
@@ -39,17 +38,24 @@ startBroker f b  = runZMQ $ do
   bind bes $ unBE b
   proxy fes bes Nothing
 
-clientJoin :: Frontend -> IO String
-clientJoin f = runZMQ $ do
-  requester <- socket Req
-  liftIO $ debugPrint "clientJoin(1)"
-  connect requester $ unFE f
-  liftIO $ debugPrint "clientJoin(2)"
-  send requester [] "Howdy Server! send your socket info"
-  liftIO $ debugPrint "clientJoin(3)"
-  msg <- receive requester
-  liftIO $ debugPrint "clientJoin(4)"
-  return $ unpack msg
+clientJoin :: Frontend -> IO (String, ZMQ4.Socket ZMQ4.Req)
+clientJoin f = do
+  serverAddr <- runZMQ $ do
+    requester <- socket Req
+    liftIO $ debugPrint "clientJoin(1)"
+    connect requester $ unFE f
+    liftIO $ debugPrint "clientJoin(2)"
+    send requester [] "Howdy Server! send your socket info"
+    liftIO $ debugPrint "clientJoin(3)"
+    msg <- receive requester
+    liftIO $ debugPrint "clientJoin(4)"
+    return $ unpack msg
+  -- Connect to the shim layer node.
+  ctxt <- ZMQ4.context
+  sock <- ZMQ4.socket ctxt ZMQ4.Req
+  ZMQ4.connect sock serverAddr
+  return (serverAddr, sock)
+
 
 serverJoin :: Backend -> String -> IO ()
 serverJoin b s = void $ forkIO $ runZMQ $ do

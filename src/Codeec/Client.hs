@@ -63,13 +63,7 @@ makeLenses ''Session
 
 beginSession :: Frontend -> IO Session
 beginSession fe = do
-  {- connect to the frontend of shim layer broker, which returns one of the
-   - shim layer node addresses. -}
-  serverAddr <- clientJoin fe
-  -- Connect to the shim layer node.
-  ctxt <- context
-  sock <- socket ctxt Req
-  connect sock serverAddr
+  (serverAddr, sock) <- clientJoin fe
   -- Create a session id
   sessid <- SessID <$> randomIO
   -- Initialize session

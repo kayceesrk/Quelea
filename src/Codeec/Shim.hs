@@ -61,30 +61,32 @@ runShimNode :: OperationClass a
             -> [Server] -> Keyspace -- Cassandra connection info
             -> Backend -> Int       -- Shim layer broker connection info
             -> IO ()
-runShimNode dtLib serverList keyspace backend port = runZMQ $ do
-
-  {- Join with broker, and send the node's address as a message. Whenever a new
-   - client joins, the broker will share one of the shim layer's address. The
-   - client subsequently connects to this shim layer node. -}
-  liftIO $ serverJoin backend $ "tcp://localhost:" ++ show port
-
-  {- Create a router and a dealer -}
-  routerSock <- socket Router
-  let myaddr = "tcp://*:" ++ show port
-  bind routerSock myaddr
-  dealerSock <- socket Dealer
-  liftIO $ createDirectoryIfMissing False "/tmp/quelea"
-  pid <- liftIO $ getProcessID
-  bind dealerSock $ "ipc:///tmp/quelea/" ++ show pid
-
+runShimNode dtLib serverList keyspace backend port = do
   {- Connection to the Cassandra deployment -}
-  pool <- liftIO $ newPool serverList keyspace Nothing
+  pool <- newPool serverList keyspace Nothing
   {- Spawn cache manager -}
-  cache <- liftIO $ initCacheManager pool
+  cache <- initCacheManager pool
   {- Spawn a pool of workers -}
-  replicateM NUM_WORKERS (liftIO $ forkIO $ worker dtLib pool cache)
-  {- Start proxy to distribute requests to workers -}
-  proxy routerSock dealerSock Nothing
+  replicateM NUM_WORKERS (forkIO $ worker dtLib pool cache)
+  runZMQ $ do
+    {- Fork a daemon thread that joins with the backend. The daemon shares the
+    - servers address for every client request. The client then joins with the
+    - server.
+    -}
+    liftIO $ serverJoin backend $ "tcp://localhost:" ++ show port
+
+    {- Create a router and a dealer -}
+    routerSock <- socket Router
+    let myaddr = "tcp://*:" ++ show port
+    bind routerSock myaddr
+
+    dealerSock <- socket Dealer
+    liftIO $ createDirectoryIfMissing False "/tmp/quelea"
+    pid <- liftIO $ getProcessID
+    bind dealerSock $ "ipc:///tmp/quelea/" ++ show pid
+
+    {- Start proxy to distribute requests to workers -}
+    proxy routerSock dealerSock Nothing
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
 worker dtLib pool cache = do
