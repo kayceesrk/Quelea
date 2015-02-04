@@ -44,6 +44,7 @@ Library
   Other-modules:
     Codeec.Contract.Language
     Codeec.Contract.TypeCheck
+    Codeec.Consts
     Codeec.ShimLayer.Types
     Codeec.ShimLayer.Cache
     Codeec.ShimLayer.UpdateFetcher

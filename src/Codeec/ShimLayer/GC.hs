@@ -5,6 +5,7 @@ module Codeec.ShimLayer.GC (
   gcWorker
 ) where
 
+import Codeec.Consts
 import Codeec.Types
 import Codeec.ShimLayer.Types
 import Codeec.DBDriver
@@ -14,7 +15,7 @@ import Control.Monad.State
 import Control.Lens
 import qualified Data.Set as S
 import qualified Data.Map as M
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, myThreadId)
 import Control.Concurrent.MVar
 import System.Random (randomIO)
 import Database.Cassandra.CQL
@@ -24,9 +25,17 @@ import Data.Maybe (fromJust)
 makeLenses ''CacheManager
 makeLenses ''DatatypeLibrary
 
--- Minimum high water mark size for GC
-#define CACHE_LWM 128
-#define DISK_LWM 256
+#define DEBUG
+
+debugPrint :: String -> IO ()
+#ifdef DEBUG
+debugPrint s = do
+  tid <- myThreadId
+  putStrLn $ "[" ++ (show tid) ++ "] " ++ s
+#else
+debugPrint _ = return ()
+#endif
+
 
 data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
                   | NotVisited (S.Set Addr)
@@ -54,6 +63,7 @@ makeLenses ''ResolutionState
 
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
 gcDB cm ot k gc = do
+  debugPrint $ "gcDB: start"
   -- Allocate new session id
   gcSid <- SessID <$> randomIO
   getLock ot k gcSid $ cm^.pool
@@ -90,7 +100,6 @@ gcDB cm ot k gc = do
         foldl (\(acc, idx) eff ->
                   ((gcSid, idx, S.singleton gcAddr, EffectVal eff, Nothing):acc, idx+1))
               ([],2) gcedEffList
-  putStrLn $ "gcDB: count=" ++ show (count-2)
   runCas (cm^.pool) $ do
     -- Insert new effects
     mapM_ (\r -> cqlInsert ot ALL k r) outRows
@@ -112,13 +121,14 @@ gcDB cm ot k gc = do
   {- Remove the current object from diskRowCount map -}
   drc <- takeMVar $ cm^.diskRowCntMVar
   putMVar (cm^.diskRowCntMVar) $ M.delete (ot,k) drc
+  debugPrint $ "gcDB: end"
 
 maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
-maybeGCCache cm ot k curSize gc | curSize < CACHE_LWM = return ()
+maybeGCCache cm ot k curSize gc | curSize < cCACHE_LWM = return ()
                                 | otherwise = do
   hwmMap <- readMVar $ cm^.hwmMVar
   let hwm = case M.lookup (ot,k) hwmMap of
-              Nothing -> CACHE_LWM
+              Nothing -> cCACHE_LWM
               Just x -> x
   when (curSize > hwm) $ do
     cache <- takeMVar $ cm^.cacheMVar
@@ -179,15 +189,13 @@ isResolved addr = do
 
 gcWorker :: OperationClass a => DatatypeLibrary a -> CacheManager -> IO ()
 gcWorker dtLib cm = forever $ do
-  threadDelay 1000000
+  threadDelay cGC_WORKER_THREAD_DELAY
   drc <- readMVar $ cm^.diskRowCntMVar
   let todoObjs = M.foldlWithKey (\todoObjs (ot,k) rowCount ->
-                                    if rowCount > DISK_LWM
+                                    if rowCount > cDISK_LWM
                                     then (ot,k):todoObjs
                                     else todoObjs) [] drc
-  print todoObjs
+  when (length todoObjs > 0) $ print todoObjs
   mapM_ (\(ot,k) ->
     let gcFun = fromJust $ dtLib ^. sumMap ^.at ot
     in gcDB cm ot k gcFun) todoObjs
-
-

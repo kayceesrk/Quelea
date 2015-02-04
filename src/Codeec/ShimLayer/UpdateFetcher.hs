@@ -82,43 +82,55 @@ fetchUpdates cm const todoList = do
   let todoObjsCRS = S.fromList todoList
   let crs = CollectRowsState (sel1 inclTxns) todoObjsCRS M.empty M.empty
   CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) const) crs
+
   -- Update disk row count for later use by gcDB
   drc <- takeMVar $ cm^.diskRowCntMVar
   let newDrc = M.foldlWithKey (\iDrc (ot,k) rows -> M.insert (ot,k) (length rows) iDrc) drc rowsMapCRS
   putMVar (cm^.diskRowCntMVar) newDrc
-  -- Construct uncovered effects and cursor (constructed from cursor in cache
-  -- as well as any gc cursor, if present)
-  let (effRowsMap, gcMarkerMap) = M.foldlWithKey (\(erm, gcmm) (ot,k) rowList ->
-         let (er,gcm) = foldl (\(er, gcm) (sid,sqn,deps,val,mbTxid) ->
+
+  -- First collect the GC markers
+  let gcMarkerMap = M.foldlWithKey (\gcmm (ot,k) rowList ->
+         let gcm = foldl (\gcm (sid,sqn,deps,val,mbTxid) ->
                 case val of
-                  EffectVal bs ->
-                    if isCovered cursor ot k sid sqn
-                    then (er, gcm)
-                    else
-                      let mkRetVal txid txdeps =
-                            (M.insert (Addr sid sqn) (NotVisited bs deps txid txdeps) er, gcm)
-                      in case mbTxid of
-                           Nothing -> mkRetVal Nothing S.empty
-                           Just txid -> case M.lookup txid newTransMap of
-                                          Nothing -> mkRetVal (Just txid) S.empty {- Eventual consistency (or) txn in progress! -}
-                                          Just txnDeps -> mkRetVal (Just txid) txnDeps
+                  EffectVal bs -> gcm
                   GCMarker ->
                     case gcm of
-                      Nothing -> (er, Just (sid, sqn, deps))
-                      Just _ -> error "Multiple GC Markers") (M.empty, Nothing) rowList
-         in (M.insert (ot,k) er erm,
-             M.insert (ot,k) gcm gcmm)) (M.empty, M.empty) rowsMapCRS
-  -- Build new cursor with GC markers
+                      Nothing -> Just (sid, sqn, deps)
+                      Just _ -> error "Multiple GC Markers") Nothing rowList
+         in M.insert (ot,k) gcm gcmm) M.empty rowsMapCRS
+
+  -- Build new cursor with GC markers. The idea here is that if we did find a
+  -- GC marker, then keep hold of all the rows except the ones explicitly
+  -- covered by the GC. The reason is that subsequently, we will clear our
+  -- cache and rebuild it. Here, it is not correct to ignore those rows, which
+  -- might have already been seen, but was not GCed.
   let !newCursor = M.foldlWithKey (\c (ot,k) gcMarker ->
                     case gcMarker of
                       Nothing -> c
                       Just marker ->
                         let gcCursor = buildCursorFromGCMarker marker
-                        in case M.lookup (ot,k) c of
-                             Nothing -> M.insert (ot,k) gcCursor c
-                             Just oldCursor -> M.insert (ot,k) (mergeCursorsAtKey oldCursor gcCursor) c)
+                        in M.insert (ot,k) gcCursor c)
                      cursor gcMarkerMap
 
+  -- Once we have built the cursor, filter those rows which are covered.
+  let effRowsMap = M.foldlWithKey (\erm (ot,k) rowList ->
+         let er = foldl (\er (sid,sqn,deps,val,mbTxid) ->
+                case val of
+                  EffectVal bs ->
+                    if isCovered newCursor ot k sid sqn
+                    then er
+                    else
+                      let mkRetVal txid txdeps = M.insert (Addr sid sqn) (NotVisited bs deps txid txdeps) er
+                      in case mbTxid of
+                           Nothing -> mkRetVal Nothing S.empty
+                           Just txid -> case M.lookup txid newTransMap of
+                                          Nothing -> mkRetVal (Just txid) S.empty {- Eventual consistency (or) txn in progress! -}
+                                          Just txnDeps -> mkRetVal (Just txid) txnDeps
+                  GCMarker -> er) M.empty rowList
+         in M.insert (ot,k) er erm) M.empty rowsMapCRS
+
+  -- Now filter those rows which are unresolved i.e) those rows whose
+  -- dependencies are not visible.
   let !filteredMap = filterUnresolved newCursor effRowsMap
 
   -- Update state. First obtain locks...

@@ -8,6 +8,7 @@ module Codeec.Shim (
 ) where
 
 import Codeec.Types
+import Codeec.Consts
 import Codeec.NameService.Types
 import Codeec.Marshall
 import Codeec.DBDriver
@@ -41,10 +42,7 @@ makeLenses ''Addr
 makeLenses ''DatatypeLibrary
 makeLenses ''OperationPayload
 
--- This is the maximum number of outstanding StickyAvailable requrests.
-#define NUM_WORKERS 8
-
--- #define DEBUG
+#define DEBUG
 
 debugPrint :: String -> IO ()
 #ifdef DEBUG
@@ -66,7 +64,7 @@ runShimNode dtLib serverList keyspace ns = do
   {- Spawn cache manager -}
   cache <- initCacheManager pool
   {- Spawn a pool of workers -}
-  replicateM NUM_WORKERS (forkIO $ worker dtLib pool cache)
+  replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache)
   {- Spawn gcWorker -}
   forkIO $ gcWorker dtLib cache
   {- Join the broker to serve clients -}
@@ -78,9 +76,9 @@ worker dtLib pool cache = do
   ctxt <- ZMQ.context
   sock <- ZMQ.socket ctxt ZMQ.Rep
   pid <- getProcessID
-  debugPrint "worker: connecting..."
+  -- debugPrint "worker: connecting..."
   ZMQ.connect sock $ "ipc:///tmp/quelea/" ++ show pid
-  debugPrint "worker: connected"
+  -- debugPrint "worker: connected"
   {- loop forver servicing clients -}
   forever $ do
     binReq <- ZMQ.receive sock
@@ -90,19 +88,20 @@ worker dtLib pool cache = do
         {- Fetch the operation from the datatype library using the object type and
         - operation name. -}
         let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
-        debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
+        -- debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
         (result, ctxtSize) <- case av of
           High -> doOp op cache req ONE
           Sticky -> processStickyOp req op cache
           Un -> processUnOp req op cache pool
         ZMQ.send sock [] $ encode result
-        debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
+        -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-        maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+        -- XXX: KC
+        -- maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
         return ()
       ReqTxnCommit txid deps -> do
-        debugPrint $ "Committing transaction " ++ show txid
+        -- debugPrint $ "Committing transaction " ++ show txid
         when (S.size deps > 0) $ runCas pool $ insertTxn txid deps
         ZMQ.send sock [] $ encode ResCommit
       ReqSnapshot objs -> do
@@ -138,7 +137,7 @@ worker dtLib pool cache = do
       let (ot, k, sid) = (req^.objTypeReq, req^.keyReq, req^.sidReq)
       -- Get Lock
       getLock ot k sid pool
-      debugPrint $ "processUnOp: obtained lock"
+      -- debugPrint $ "processUnOp: obtained lock"
       -- Read latest values at the key - under ALL
       fetchUpdates cache ALL [(ot,k)]
       -- Perform the op
@@ -153,6 +152,7 @@ doOp op cache request const = do
   -- Build the context
   (ctxt, deps) <- buildContext objType key mbtxid
   -- Perform the operation on this context
+  debugPrint $ "doOp: length of context = " ++ show (Prelude.length ctxt)
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key

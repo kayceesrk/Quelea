@@ -17,6 +17,7 @@ module Codeec.ShimLayer.Cache (
   getInclTxnsAt,
 ) where
 
+import Codeec.Consts
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Data.ByteString hiding (map, pack, putStrLn, foldl, length, filter)
@@ -62,7 +63,7 @@ initCacheManager pool = do
       if isEmpty
       then tryPutMVar semMVar ()
       else return True
-      threadDelay 1000000 -- 1 second
+      threadDelay cCACHE_THREAD_DELAY-- 1 second
 
 getInclTxnsAt :: CacheManager -> ObjType -> Key -> IO (S.Set TxnID)
 getInclTxnsAt cm ot k = do

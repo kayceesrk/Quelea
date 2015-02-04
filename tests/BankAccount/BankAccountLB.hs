@@ -45,20 +45,9 @@ main = do
     S -> do
       runShimNode dtLib [("localhost","9042")] keyspace ns
     C -> runSession ns $ do
-      -- liftIO $ threadDelay 100000
       key <- liftIO $ newKey
-      liftIO $ putStrLn "Client : performing deposit"
-      r::() <- invoke key Deposit (64::Int)
 
-      liftIO $ putStrLn "Client : performing withdraw"
-      r::Bool <- invoke key Withdraw (10::Int)
-      liftIO . putStrLn $ show r
-
-      liftIO $ putStrLn "Client : performing getBalance"
-      r::Int <- invoke key GetBalance ()
-      liftIO . putStrLn $ show r
-
-      replicateM_ 20000 $ do
+      replicateM_ 8192 $ do
         r::() <- invoke key Deposit (1::Int)
         r :: Int <- invoke key GetBalance ()
         liftIO . putStrLn $ show r
@@ -72,6 +61,6 @@ main = do
       s <- runCommand $ progName ++ " S"
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " C"
-      threadDelay 5000000
+      threadDelay 10000000
       mapM_ terminateProcess [b,s,c]
       runCas pool $ dropTable "BankAccount"
