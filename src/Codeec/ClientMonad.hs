@@ -24,17 +24,18 @@ import qualified Codeec.Client as CCLow
 import Control.Monad.Trans.State
 import Control.Monad.Trans (liftIO)
 import Control.Lens
-import Codeec.NameService.SimpleBroker
+import Codeec.NameService.Types
 import Data.Serialize hiding (get, put)
 import qualified Data.Set as S
+import qualified System.ZMQ4 as ZMQ4
 
 makeLenses ''Session
 
 type CSN a = StateT Session IO a
 
-runSession :: Frontend -> CSN a -> IO a
-runSession fe comp = do
-  session <- beginSession fe
+runSession :: NameService -> CSN a -> IO a
+runSession ns comp = do
+  session <- beginSession ns
   res <- evalStateT comp session
   endSession session
   return res

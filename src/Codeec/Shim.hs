@@ -8,7 +8,7 @@ module Codeec.Shim (
 ) where
 
 import Codeec.Types
-import Codeec.NameService.SimpleBroker
+import Codeec.NameService.Types
 import Codeec.Marshall
 import Codeec.DBDriver
 import Codeec.ShimLayer.Cache
@@ -58,17 +58,16 @@ debugPrint _ = return ()
 runShimNode :: OperationClass a
             => DatatypeLibrary a
             -> [Server] -> Keyspace -- Cassandra connection info
-            -> Backend              -- Shim layer broker connection info
-            -> String -> Int        -- IP + port for server connection
+            -> NameService
             -> IO ()
-runShimNode dtLib serverList keyspace backend ip port = do
+runShimNode dtLib serverList keyspace ns = do
   {- Connection to the Cassandra deployment -}
   pool <- newPool serverList keyspace Nothing
   {- Spawn cache manager -}
   cache <- initCacheManager pool
   {- Spawn a pool of workers -}
   replicateM NUM_WORKERS (forkIO $ worker dtLib pool cache)
-  serverJoin backend ip port
+  getServerJoin ns
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
 worker dtLib pool cache = do

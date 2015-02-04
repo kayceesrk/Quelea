@@ -19,7 +19,7 @@ module Codeec.Client (
 
 import Data.UUID
 import Codeec.Types
-import Codeec.NameService.SimpleBroker
+import Codeec.NameService.Types
 import Control.Lens
 import Control.Monad (when)
 import System.ZMQ4
@@ -61,13 +61,13 @@ data Session = Session {
 
 makeLenses ''Session
 
-beginSession :: Frontend -> IO Session
-beginSession fe = do
-  (serverAddr, sock) <- clientJoin fe
+beginSession :: NameService -> IO Session
+beginSession ns = do
+  (serverAddr, sock) <- getClientJoin ns
   -- Create a session id
   sessid <- SessID <$> randomIO
   -- Initialize session
-  return $ Session fe sock serverAddr sessid M.empty S.empty Nothing Nothing
+  return $ Session (getFrontend ns) sock serverAddr sessid M.empty S.empty Nothing Nothing
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)

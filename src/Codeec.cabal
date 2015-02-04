@@ -30,7 +30,9 @@ Library
     tuple,
     derive
   Exposed-modules:
+    Codeec.NameService.Types
     Codeec.NameService.SimpleBroker
+    Codeec.NameService.LoadBalancingBroker
     Codeec.Marshall
     Codeec.Shim
     Codeec.Client
