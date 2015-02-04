@@ -63,7 +63,7 @@ runShimNode :: OperationClass a
             -> IO ()
 runShimNode dtLib serverList keyspace backend port = runZMQ $ do
 
-  {- Join with broker, and send the nodes address as a message. Whenever a new
+  {- Join with broker, and send the node's address as a message. Whenever a new
    - client joins, the broker will share one of the shim layer's address. The
    - client subsequently connects to this shim layer node. -}
   liftIO $ serverJoin backend $ "tcp://localhost:" ++ show port
