@@ -82,6 +82,10 @@ fetchUpdates cm const todoList = do
   let todoObjsCRS = S.fromList todoList
   let crs = CollectRowsState (sel1 inclTxns) todoObjsCRS M.empty M.empty
   CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) const) crs
+  -- Update disk row count for later use by gcDB
+  drc <- takeMVar $ cm^.diskRowCntMVar
+  let newDrc = M.foldlWithKey (\iDrc (ot,k) rows -> M.insert (ot,k) (length rows) iDrc) drc rowsMapCRS
+  putMVar (cm^.diskRowCntMVar) newDrc
   -- Construct uncovered effects and cursor (constructed from cursor in cache
   -- as well as any gc cursor, if present)
   let (effRowsMap, gcMarkerMap) = M.foldlWithKey (\(erm, gcmm) (ot,k) rowList ->

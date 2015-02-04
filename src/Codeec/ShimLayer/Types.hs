@@ -23,12 +23,13 @@ type Effect = ByteString
 
 type CacheMap    = (M.Map (ObjType, Key) (S.Set (Addr, Effect)))
 type HwmMap      = M.Map (ObjType, Key) Int
+type DiskRowCount = M.Map (ObjType, Key) Int
 type Cache       = MVar CacheMap
 type CursorAtKey = M.Map SessID SeqNo
 type CursorMap   = (M.Map (ObjType, Key) CursorAtKey)
 type Cursor      = MVar CursorMap
 type NearestDepsMap = (M.Map (ObjType, Key) (S.Set Addr))
-type NearestDeps = MVar NearestDepsMap
+type NearestDeps  = MVar NearestDepsMap
 type HotLocs     = MVar (S.Set (ObjType, Key))
 type Semaphore   = MVar ()
 type ThreadQueue = MVar ([MVar ()])
@@ -42,6 +43,7 @@ data CacheManager = CacheManager {
   _includedTxnsMVar :: MVar (S.Set TxnID, M.Map (ObjType,Key) (S.Set TxnID)),
 
   _hwmMVar          :: MVar HwmMap,
+  _diskRowCntMVar   :: MVar DiskRowCount,
   _hotLocsMVar      :: HotLocs,
   _semMVar          :: Semaphore,
   _blockedMVar      :: ThreadQueue,

@@ -58,7 +58,7 @@ main = do
       r::Int <- invoke key GetBalance ()
       liftIO . putStrLn $ show r
 
-      replicateM_ 1024 $ do
+      replicateM_ 20000 $ do
         r::() <- invoke key Deposit (1::Int)
         r :: Int <- invoke key GetBalance ()
         liftIO . putStrLn $ show r

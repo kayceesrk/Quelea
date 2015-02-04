@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns  #-}
 
 module Codeec.ShimLayer.GC (
-  maybeGCCache
+  maybeGCCache,
+  gcWorker
 ) where
 
 import Codeec.Types
@@ -13,15 +14,19 @@ import Control.Monad.State
 import Control.Lens
 import qualified Data.Set as S
 import qualified Data.Map as M
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
 import System.Random (randomIO)
 import Database.Cassandra.CQL
 import Control.Applicative ((<$>))
+import Data.Maybe (fromJust)
 
 makeLenses ''CacheManager
+makeLenses ''DatatypeLibrary
 
 -- Minimum high water mark size for GC
-#define LWM 128
+#define CACHE_LWM 128
+#define DISK_LWM 256
 
 data VisitedState = Visited Bool  -- Boolean indicates whether the effect is resolved
                   | NotVisited (S.Set Addr)
@@ -104,13 +109,16 @@ gcDB cm ot k gc = do
     -- Delete old rows
     mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
   releaseLock ot k gcSid $ cm^.pool
+  {- Remove the current object from diskRowCount map -}
+  drc <- takeMVar $ cm^.diskRowCntMVar
+  putMVar (cm^.diskRowCntMVar) $ M.delete (ot,k) drc
 
 maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
-maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
+maybeGCCache cm ot k curSize gc | curSize < CACHE_LWM = return ()
                                 | otherwise = do
   hwmMap <- readMVar $ cm^.hwmMVar
   let hwm = case M.lookup (ot,k) hwmMap of
-              Nothing -> LWM
+              Nothing -> CACHE_LWM
               Just x -> x
   when (curSize > hwm) $ do
     cache <- takeMVar $ cm^.cacheMVar
@@ -167,3 +175,19 @@ isResolved addr = do
       newVs <- use visitedState
       visitedState .= M.insert addr (Visited res) newVs
       return res
+
+
+gcWorker :: OperationClass a => DatatypeLibrary a -> CacheManager -> IO ()
+gcWorker dtLib cm = forever $ do
+  threadDelay 1000000
+  drc <- readMVar $ cm^.diskRowCntMVar
+  let todoObjs = M.foldlWithKey (\todoObjs (ot,k) rowCount ->
+                                    if rowCount > DISK_LWM
+                                    then (ot,k):todoObjs
+                                    else todoObjs) [] drc
+  print todoObjs
+  mapM_ (\(ot,k) ->
+    let gcFun = fromJust $ dtLib ^. sumMap ^.at ot
+    in gcDB cm ot k gcFun) todoObjs
+
+
