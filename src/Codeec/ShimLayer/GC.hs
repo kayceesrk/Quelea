@@ -107,17 +107,22 @@ gcDB cm ot k gc = do
 
 maybeGCCache :: CacheManager -> ObjType -> Key -> Int -> GenSumFun -> IO ()
 maybeGCCache cm ot k curSize gc | curSize < LWM = return ()
-                           | otherwise = do
-  cache <- takeMVar $ cm^.cacheMVar
-  let ctxt = case M.lookup (ot, k) cache of
-               Nothing -> []
-               Just s -> map (\(a,e) -> e) $ S.toList s
-  let !newCtxt = gc ctxt
-  newUUID <- SessID <$> randomIO
-  let (newCache,_) = foldl (\(s,i) e -> (S.insert (Addr newUUID i, e) s, i+1)) (S.empty, 1) newCtxt
-  hwm <- takeMVar $ cm^.hwmMVar
-  putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
-  putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
+                                | otherwise = do
+  hwmMap <- readMVar $ cm^.hwmMVar
+  let hwm = case M.lookup (ot,k) hwmMap of
+              Nothing -> LWM
+              Just x -> x
+  when (curSize > hwm) $ do
+    cache <- takeMVar $ cm^.cacheMVar
+    let ctxt = case M.lookup (ot, k) cache of
+                Nothing -> []
+                Just s -> map (\(a,e) -> e) $ S.toList s
+    let !newCtxt = gc ctxt
+    newUUID <- SessID <$> randomIO
+    let (newCache,_) = foldl (\(s,i) e -> (S.insert (Addr newUUID i, e) s, i+1)) (S.empty, 1) newCtxt
+    hwm <- takeMVar $ cm^.hwmMVar
+    putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
+    putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
 
 filterUnresolved :: CursorAtKey             -- Key Cursor
                  -> M.Map Addr VisitedState -- Input visited state
