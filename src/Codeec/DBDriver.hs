@@ -64,7 +64,7 @@ type ReadRow = (SessID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 -- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++
-                      " (objid blob, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno)) with gc_grace_seconds = 0"
+                      " (objid blob, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno))"
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname

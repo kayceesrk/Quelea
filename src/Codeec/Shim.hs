@@ -68,7 +68,7 @@ runShimNode dtLib serverList keyspace ns = do
   {- Spawn a pool of workers -}
   replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache)
   {- Spawn gcWorker -}
-  forkIO $ gcWorker dtLib cache
+  -- forkIO $ gcWorker dtLib cache
   {- Join the broker to serve clients -}
   getServerJoin ns
 
