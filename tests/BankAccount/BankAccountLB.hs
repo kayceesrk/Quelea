@@ -26,7 +26,7 @@ bePort :: Int
 bePort = 5559
 
 
-data Kind = B | C | S | D | Drop deriving (Read, Show)
+data Kind = B | C | S | D | Drop | Create deriving (Read, Show)
 
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
@@ -57,6 +57,9 @@ main = do
         round <- liftIO $ readIORef cnt
         liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
         liftIO $ writeIORef cnt $ round + 1
+    Create -> do
+      pool <- newPool [("localhost","9042")] keyspace Nothing
+      runCas pool $ createTable "BankAccount"
     D -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable "BankAccount"
