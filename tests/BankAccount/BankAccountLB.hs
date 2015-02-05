@@ -9,7 +9,7 @@ import System.Process (runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (threadDelay)
 import Codeec.NameService.Types
-import Codeec.NameService.SimpleBroker
+import Codeec.NameService.LoadBalancingBroker
 import Codeec.Marshall
 import Codeec.TH
 import Database.Cassandra.CQL
@@ -37,9 +37,10 @@ dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(checkOp Deposit depositC
 
 main :: IO ()
 main = do
-  (kindStr:_) <- getArgs
+  (kindStr:broker:_) <- getArgs
   let k :: Kind = read kindStr
-  let ns = mkNameService (Frontend $ "tcp://localhost:" ++ show fePort) (Backend $ "tcp://localhost:" ++ show bePort) "localhost" 5560
+  let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
+                         (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
