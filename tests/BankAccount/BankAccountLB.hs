@@ -39,6 +39,8 @@ main :: IO ()
 main = do
   (kindStr:broker:_) <- getArgs
   let k :: Kind = read kindStr
+  print k
+  print broker
   let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
                          (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
@@ -65,11 +67,11 @@ main = do
       runCas pool $ createTable "BankAccount"
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
-      b <- runCommand $ progName ++ " B"
+      b <- runCommand $ progName ++ " B " ++ broker
       putStrLn "Driver : Starting server"
-      s <- runCommand $ progName ++ " S +RTS -N4 -RTS"
+      s <- runCommand $ progName ++ " S " ++ broker
       putStrLn "Driver : Starting client"
-      c <- runCommand $ progName ++ " C +RTS -N4 -RTS"
+      c <- runCommand $ progName ++ " C " ++ broker
       threadDelay 60000000
       mapM_ terminateProcess [b,s,c]
       runCas pool $ dropTable "BankAccount"
