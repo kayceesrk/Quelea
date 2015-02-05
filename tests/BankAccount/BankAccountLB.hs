@@ -50,7 +50,8 @@ main = do
 
       cnt <- liftIO $ newIORef 1
       replicateM_ 100000 $ do
-        r::() <- invoke key Deposit (1::Int)
+        r::() <- invoke key Deposit (2::Int)
+        r::() <- invoke key Withdraw (1::Int)
         r :: Int <- invoke key GetBalance ()
         round <- liftIO $ readIORef cnt
         liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
@@ -64,7 +65,7 @@ main = do
       putStrLn "Driver : Starting server"
       s <- runCommand $ progName ++ " S +RTS -N4 -RTS"
       putStrLn "Driver : Starting client"
-      c <- runCommand $ progName ++ " C"
+      c <- runCommand $ progName ++ " C +RTS -N4 -RTS"
       threadDelay 60000000
       mapM_ terminateProcess [b,s,c]
       runCas pool $ dropTable "BankAccount"

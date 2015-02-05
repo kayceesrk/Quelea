@@ -173,11 +173,12 @@ writeEffect cm ot k addr eff deps const mbtxnid = do
     putMVar (cm^.depsMVar) $ M.insert (ot,k) (S.singleton addr) curDeps
     -- Write to database
     runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, newDeps, EffectVal eff, mbtxnid)
-    debugPrint $ "numDeps = " ++ show (S.size newDeps)
+    -- debugPrint $ "numDeps = " ++ show (S.size newDeps)
   else do
     -- Write to database
     runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
-    debugPrint $ "numDeps = " ++ show (S.size deps)
+    -- debugPrint $ "numDeps = " ++ show (S.size deps)
+  printStats cm ot k
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do
