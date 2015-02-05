@@ -17,6 +17,7 @@ import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
 import Codeec.Types (summarize)
 import Control.Monad (replicateM_)
+import Data.IORef
 
 fePort :: Int
 fePort = 5558
@@ -47,10 +48,13 @@ main = do
     C -> runSession ns $ do
       key <- liftIO $ newKey
 
-      replicateM_ 8192 $ do
-        r::() <- invoke key Deposit (1::Int)
+      cnt <- liftIO $ newIORef 1
+      replicateM_ 100000 $ do
+        r::() <- invoke key Deposit (2::Int)
         r :: Int <- invoke key GetBalance ()
-        liftIO . putStrLn $ show r
+        round <- liftIO $ readIORef cnt
+        liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
+        liftIO $ writeIORef cnt $ round + 1
     D -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable "BankAccount"
@@ -58,7 +62,7 @@ main = do
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " B"
       putStrLn "Driver : Starting server"
-      s <- runCommand $ progName ++ " S"
+      s <- runCommand $ progName ++ " S +RTS -N4 -RTS"
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " C"
       threadDelay 10000000

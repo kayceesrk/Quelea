@@ -67,7 +67,7 @@ gcDB cm ot k gc = do
   -- Allocate new session id
   gcSid <- SessID <$> randomIO
   getLock ot k gcSid $ cm^.pool
-  rows <- runCas (cm^.pool) $ cqlRead ot ALL k
+  rows <- runCas (cm^.pool) $ cqlRead ot ONE k
   -- Split the rows into effects and gc markers
   let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val,txnid) ->
         case txnid of
@@ -102,7 +102,7 @@ gcDB cm ot k gc = do
               ([],2) gcedEffList
   runCas (cm^.pool) $ do
     -- Insert new effects
-    mapM_ (\r -> cqlInsert ot ALL k r) outRows
+    mapM_ (\r -> cqlInsert ot ONE k r) outRows
     -- Delete previous marker if it exists
     case gcMarker of
       Nothing -> return ()

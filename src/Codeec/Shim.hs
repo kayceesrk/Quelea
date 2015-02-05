@@ -97,8 +97,7 @@ worker dtLib pool cache = do
         -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-        -- XXX: KC
-        -- maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+        maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
         return ()
       ReqTxnCommit txid deps -> do
         -- debugPrint $ "Committing transaction " ++ show txid
@@ -152,7 +151,7 @@ doOp op cache request const = do
   -- Build the context
   (ctxt, deps) <- buildContext objType key mbtxid
   -- Perform the operation on this context
-  debugPrint $ "doOp: length of context = " ++ show (Prelude.length ctxt)
+  -- debugPrint $ "doOp: length of context = " ++ show (Prelude.length ctxt)
   let (res, effM) = op ctxt arg
   -- Add current location to the ones for which updates will be fetched
   addHotLocation cache objType key
