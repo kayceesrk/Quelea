@@ -66,7 +66,7 @@ gcDB cm ot k gc = do
   debugPrint $ "gcDB: start"
   -- Allocate new session id
   gcSid <- SessID <$> randomIO
-  getLock ot k gcSid $ cm^.pool
+  getGCLock ot k gcSid $ cm^.pool
   rows <- runCas (cm^.pool) $ cqlRead ot ONE k
   -- Split the rows into effects and gc markers
   let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val,txnid) ->
@@ -117,7 +117,10 @@ gcDB cm ot k gc = do
     cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker, Nothing)
     -- Delete old rows
     mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
-  releaseLock ot k gcSid $ cm^.pool
+  {- info -}
+  debugPrint $ "gcDB: inserted Rows=" ++ show (length outRows)
+  debugPrint $ "gcDB: deleted Rows=" ++ show (length addrList)
+  releaseGCLock ot k gcSid $ cm^.pool
   {- Remove the current object from diskRowCount map -}
   drc <- takeMVar $ cm^.diskRowCntMVar
   putMVar (cm^.diskRowCntMVar) $ M.delete (ot,k) drc
@@ -186,7 +189,6 @@ isResolved addr = do
       visitedState .= M.insert addr (Visited res) newVs
       return res
 
-
 gcWorker :: OperationClass a => DatatypeLibrary a -> CacheManager -> IO ()
 gcWorker dtLib cm = forever $ do
   threadDelay cGC_WORKER_THREAD_DELAY
@@ -195,7 +197,6 @@ gcWorker dtLib cm = forever $ do
                                     if rowCount > cDISK_LWM
                                     then (ot,k):todoObjs
                                     else todoObjs) [] drc
-  when (length todoObjs > 0) $ print todoObjs
   mapM_ (\(ot,k) ->
     let gcFun = fromJust $ dtLib ^. sumMap ^.at ot
     in gcDB cm ot k gcFun) todoObjs

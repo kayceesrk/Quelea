@@ -10,8 +10,12 @@ module Codeec.DBDriver (
   cqlRead,
   cqlInsert,
   cqlDelete,
+
   getLock,
   releaseLock,
+
+  getGCLock,
+  releaseGCLock,
 
   createTxnTable,
   dropTxnTable,
@@ -20,6 +24,8 @@ module Codeec.DBDriver (
 ) where
 
 
+import Codeec.Consts
+import Control.Concurrent (threadDelay)
 import Codeec.Types
 import Codeec.NameService.SimpleBroker
 import Codeec.Marshall
@@ -58,7 +64,7 @@ type ReadRow = (SessID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 -- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++
-                      " (objid blob, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno)) "
+                      " (objid blob, sessid uuid, seqno bigint, deps set<blob>, value blob, txnid uuid, primary key (objid, sessid, seqno)) with gc_grace_seconds = 0"
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
@@ -85,6 +91,21 @@ mkLockInsert tname = query $ pack $ "insert into " ++ tname ++ "_LOCK (objid, se
 
 mkLockUpdate :: TableName -> Query Write (UUID {- New -}, Key, UUID {- Old -}) ()
 mkLockUpdate tname = query $ pack $ "update " ++ tname ++ "_LOCK set sessid = ? where objid = ? if sessid = ?"
+
+-------------------------------------------------------------------------------
+
+mkCreateGCLockTable :: TableName -> Query Schema () ()
+mkCreateGCLockTable tname = query $ pack $ "create table " ++ tname ++ "_GC_LOCK (objid blob, sessid uuid, primary key (objid))"
+
+mkDropGCLockTable :: TableName -> Query Schema () ()
+mkDropGCLockTable tname = query $ pack $ "drop table " ++ tname ++ "_GC_LOCK"
+
+mkGCLockInsert :: TableName -> Query Write (Key, UUID) ()
+mkGCLockInsert tname = query $ pack $ "insert into " ++ tname ++ "_GC_LOCK (objid, sessid) values (?, ?) if not exists"
+
+mkGCLockUpdate :: TableName -> Query Write (UUID {- New -}, Key, UUID {- Old -}) ()
+mkGCLockUpdate tname = query $ pack $ "update " ++ tname ++ "_GC_LOCK set sessid = ? where objid = ? if sessid = ?"
+
 
 -------------------------------------------------------------------------------
 
@@ -131,7 +152,7 @@ cqlInsert tname c k (SessID sid,sqn,dep,val,txid) = do
     else executeWrite c (mkInsert tname) (k,sid,sqn, S.singleton $ Addr (SessID sid) 0, val, unTxnID <$> txid)
 
 cqlDelete :: TableName -> Key -> SessID -> SeqNo -> Cas ()
-cqlDelete tname k (SessID sid) sqn = executeWrite ALL (mkDelete tname) (k,sid,sqn)
+cqlDelete tname k (SessID sid) sqn = executeWrite ONE (mkDelete tname) (k,sid,sqn)
 
 createTxnTable :: Cas ()
 createTxnTable = liftIO . print =<< executeSchema ALL mkCreateTxnTable ()
@@ -151,11 +172,15 @@ createTable :: TableName -> Cas ()
 createTable tname = do
   liftIO . print =<< executeSchema ALL (mkCreateTable tname) ()
   liftIO . print =<< executeSchema ALL (mkCreateLockTable tname) ()
+  liftIO . print =<< executeSchema ALL (mkCreateGCLockTable tname) ()
 
 dropTable :: TableName -> Cas ()
 dropTable tname = do
   liftIO . print =<< executeSchema ALL (mkDropTable tname) ()
   liftIO . print =<< executeSchema ALL (mkDropLockTable tname) ()
+  liftIO . print =<< executeSchema ALL (mkDropGCLockTable tname) ()
+
+----------------------------------------------------------------------------------
 
 tryGetLock :: TableName -> Key -> SessID -> Bool {- tryInsert -} -> Cas Bool
 tryGetLock tname k (SessID sid) True = do
@@ -165,7 +190,9 @@ tryGetLock tname k (SessID sid) True = do
 tryGetLock tname k (SessID sid) False = do
   res <- executeTrans (mkLockUpdate tname) (sid, k, knownUUID)
   if res then return True
-  else tryGetLock tname k (SessID sid) False
+  else do
+    liftIO $ threadDelay cLOCK_DELAY
+    tryGetLock tname k (SessID sid) False
 
 getLock :: TableName -> Key -> SessID -> Pool -> IO ()
 getLock tname k sid pool = runCas pool $ do
@@ -177,6 +204,33 @@ releaseLock tname k (SessID sid) pool = runCas pool $ do
   res <- executeTrans (mkLockUpdate tname) (knownUUID, k, sid)
   if res then return ()
   else error $ "releaseLock : key=" ++ show k ++ " sid=" ++ show sid
+
+--------------------------------------------------------------------------------
+
+tryGetGCLock :: TableName -> Key -> SessID -> Bool {- tryInsert -} -> Cas Bool
+tryGetGCLock tname k (SessID sid) True = do
+  res <- executeTrans (mkGCLockInsert tname) (k, sid)
+  if res then return True
+  else tryGetGCLock tname k (SessID sid) False
+tryGetGCLock tname k (SessID sid) False = do
+  res <- executeTrans (mkGCLockUpdate tname) (sid, k, knownUUID)
+  if res then return True
+  else do
+    liftIO $ threadDelay cLOCK_DELAY
+    tryGetGCLock tname k (SessID sid) False
+
+getGCLock :: TableName -> Key -> SessID -> Pool -> IO ()
+getGCLock tname k sid pool = runCas pool $ do
+  tryGetGCLock tname k sid True
+  return ()
+
+releaseGCLock :: TableName -> Key -> SessID -> Pool -> IO ()
+releaseGCLock tname k (SessID sid) pool = runCas pool $ do
+  res <- executeTrans (mkGCLockUpdate tname) (knownUUID, k, sid)
+  if res then return ()
+  else error $ "releaseGCLock : key=" ++ show k ++ " sid=" ++ show sid
+
+--------------------------------------------------------------------------------
 
 createGlobalLockTable :: Cas ()
 createGlobalLockTable = do

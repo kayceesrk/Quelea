@@ -7,6 +7,7 @@ module Codeec.Shim (
  mkDtLib
 ) where
 
+import Codeec.Consts
 import Codeec.Types
 import Codeec.Consts
 import Codeec.NameService.Types
@@ -16,6 +17,7 @@ import Codeec.ShimLayer.Cache
 import Codeec.ShimLayer.GC
 import Codeec.Contract.Language
 
+import Control.Concurrent (threadDelay)
 import Data.Serialize
 import Control.Applicative ((<$>))
 import Control.Monad (forever, replicateM, when)

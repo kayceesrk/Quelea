@@ -26,7 +26,7 @@ bePort :: Int
 bePort = 5559
 
 
-data Kind = B | C | S | D deriving (Read, Show)
+data Kind = B | C | S | D | Drop deriving (Read, Show)
 
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
@@ -50,7 +50,7 @@ main = do
 
       cnt <- liftIO $ newIORef 1
       replicateM_ 100000 $ do
-        r::() <- invoke key Deposit (2::Int)
+        r::() <- invoke key Deposit (1::Int)
         r :: Int <- invoke key GetBalance ()
         round <- liftIO $ readIORef cnt
         liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
@@ -65,6 +65,9 @@ main = do
       s <- runCommand $ progName ++ " S +RTS -N4 -RTS"
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " C"
-      threadDelay 10000000
+      threadDelay 60000000
       mapM_ terminateProcess [b,s,c]
+      runCas pool $ dropTable "BankAccount"
+    Drop -> do
+      pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ dropTable "BankAccount"

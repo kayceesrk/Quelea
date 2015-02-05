@@ -148,6 +148,7 @@ fetchUpdates cm const todoList = do
 
   let CacheUpdateState !newCache !newCursor !newDeps !newLastGCAddr !newInclTxns =
         execState core (CacheUpdateState cache cursor deps lastGCAddr inclTxns)
+
   putMVar (cm^.cacheMVar) newCache
   putMVar (cm^.cursorMVar) newCursor
   putMVar (cm^.depsMVar) newDeps
@@ -177,6 +178,9 @@ fetchUpdates cm const todoList = do
         -- reset cursor
         cursor <- use cursorCUS
         cursorCUS .= M.insert (ot,k) M.empty cursor
+        -- reset deps
+        deps <- use depsCUS
+        depsCUS .= M.insert (ot,k) S.empty deps
       -- Update cache
       cache <- use cacheCUS
       let newEffs :: CacheMap = M.singleton (ot,k) (S.map (\(a,e,_) -> (a,e)) filteredSet)
@@ -193,10 +197,30 @@ fetchUpdates cm const todoList = do
                                               then M.insert sid sqn m
                                               else m) cursorAtKey filteredSet
       cursorCUS .= M.insert (ot,k) newCursorAtKey cursor
+
       -- Update dependence
       deps <- use depsCUS
-      let newDeps = M.unionWith S.union deps $ M.singleton (ot,k) (S.map (\(a,_,_) -> a) filteredSet)
+      let curDepsMap = case M.lookup (ot,k) deps of
+                         Nothing -> M.empty
+                         Just s -> S.foldl (\m (Addr sid sqn) ->
+                                     case M.lookup sid m of
+                                       Nothing -> M.insert sid sqn m
+                                       Just oldSqn -> if oldSqn < sqn
+                                                      then M.insert sid sqn m
+                                                      else m) M.empty s
+      let maxSqnMap = S.foldl (\m (Addr sid sqn,_,_) ->
+                                  case M.lookup sid m of
+                                    Nothing -> M.insert sid sqn m
+                                    Just oldSqn -> if oldSqn < sqn
+                                                   then M.insert sid sqn m
+                                                   else m) curDepsMap filteredSet
+      -- Just convert "Map sid sqn" to "Set (Addr sid sqn)"
+      let maxSqnSet = M.foldlWithKey (\s sid sqn -> S.insert (Addr sid sqn) s) S.empty maxSqnMap
+      -- Insert into deps to create newDeps
+      -- OLD CODE : let newDeps = M.unionWith S.union deps $ M.singleton (ot,k) maxSqnSet
+      let newDeps = M.insert (ot,k) maxSqnSet deps
       depsCUS .= newDeps
+
       -- Update included transactions
       (inclTxnsSet, inclTxnsMap) <- use inclTxnsCUS
       let newTxns = S.foldl (\acc (_,_,mbTxid) ->

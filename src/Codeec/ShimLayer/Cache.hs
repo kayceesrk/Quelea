@@ -24,6 +24,7 @@ import Data.ByteString hiding (map, pack, putStrLn, foldl, length, filter)
 import Control.Lens
 import qualified Data.Map as M
 import qualified Data.Set as S
+import System.Posix.Process (getProcessID)
 import Data.Map.Lens
 import Control.Monad (forever, when, replicateM, foldM)
 import Data.Maybe (fromJust)
@@ -39,6 +40,20 @@ import Codeec.DBDriver
 import Codeec.ShimLayer.UpdateFetcher
 
 makeLenses ''CacheManager
+
+#define DEBUG
+
+debugPrint :: String -> IO ()
+#ifdef DEBUG
+debugPrint s = do
+  tid <- myThreadId
+  pid <- getProcessID
+  putStrLn $ "[" ++ (show pid) ++ "," ++ (show tid) ++ "] " ++ s
+  hFlush stdout
+#else
+debugPrint _ = return ()
+#endif
+
 
 initCacheManager :: Pool -> IO CacheManager
 initCacheManager pool = do
@@ -158,9 +173,11 @@ writeEffect cm ot k addr eff deps const mbtxnid = do
     putMVar (cm^.depsMVar) $ M.insert (ot,k) (S.singleton addr) curDeps
     -- Write to database
     runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, newDeps, EffectVal eff, mbtxnid)
-  else
+    debugPrint $ "numDeps = " ++ show (S.size newDeps)
+  else do
     -- Write to database
     runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
+    debugPrint $ "numDeps = " ++ show (S.size deps)
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do
