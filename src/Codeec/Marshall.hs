@@ -94,11 +94,26 @@ instance CasType Addr where
   getCas = get
   casType _ = CBlob
 
+
+$(derive makeSerialize ''Deps)
+
+instance CasType Deps where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
 $(derive makeSerialize ''TxnPayload)
 
 $(derive makeSerialize ''TxnDep)
 
 instance CasType TxnDep where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+$(derive makeSerialize ''TxnDepSet)
+
+instance CasType TxnDepSet where
   putCas = put
   getCas = get
   casType _ = CBlob

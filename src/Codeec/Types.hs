@@ -3,6 +3,7 @@
 
 module Codeec.Types (
   Cell(..),
+  Deps(..),
   Effectish(..),
   Availability(..),
   DatatypeLibrary(..),
@@ -22,6 +23,7 @@ module Codeec.Types (
   SessID(..),
   TxnID(..),
   TxnDep(..),
+  TxnDepSet(..),
   SeqNo,
   knownUUID,
 
@@ -154,11 +156,14 @@ data TxnDep = TxnDep {
   _sqnTx     :: SeqNo
 } deriving (Eq, Ord, Show)
 
+newtype TxnDepSet = TxnDepSet (S.Set TxnDep) deriving (Show, Eq)
 
 -- The type of value stored in a row of the cassandra table
 data Cell = EffectVal ByteString -- An effect value
           | GCMarker             -- Marks a GC
           deriving (Show, Eq)
+
+newtype Deps = Deps (S.Set Addr) deriving (Show, Eq)
 
 {- TODO: GCMarker should include a set of transaction identifiers corresponding
  - to the transactions to which the GC'ed effects belonged to. Otherwise, do
