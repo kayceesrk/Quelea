@@ -16,6 +16,7 @@ import qualified Data.Set as S
 import Data.ByteString
 import Control.Concurrent.MVar
 import Database.Cassandra.CQL
+import Data.Time
 
 import Codeec.Types
 
@@ -39,7 +40,7 @@ data CacheManager = CacheManager {
   _cacheMVar        :: Cache,
   _cursorMVar       :: Cursor,
   _depsMVar         :: NearestDeps,
-  _lastGCAddrMVar   :: MVar (M.Map (ObjType, Key) SessID),
+  _lastGCAddrMVar   :: MVar (M.Map (ObjType, Key) (SessID, UTCTime)),
   _includedTxnsMVar :: MVar (S.Set TxnID, M.Map (ObjType,Key) (S.Set TxnID)),
 
   _hwmMVar          :: MVar HwmMap,

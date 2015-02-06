@@ -9,6 +9,7 @@ module Codeec.DBDriver (
   dropTable,
   cqlRead,
   cqlInsert,
+  -- cqlInsertWithTime,
   cqlDelete,
 
   getLock,
@@ -35,6 +36,7 @@ import Control.Monad (forever)
 import Data.ByteString hiding (map, pack)
 import Data.Either (rights)
 import Data.Map (Map)
+import Data.Time
 import qualified Data.Map as Map
 import System.ZMQ4
 import Control.Lens
@@ -51,8 +53,8 @@ import Control.Monad (when)
 type TableName = String
 
 type ReadRow = (SessID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
-type ReadRowInternal =       (UUID, SeqNo, Deps, Cell, Maybe UUID)
-type WriteRowInternal = (Key, UUID, SeqNo, Deps, Cell, Maybe UUID)
+type ReadRowInternal = (UUID, SeqNo, Deps, Cell, Maybe UUID)
+type WriteRowInternal = (UTCTime, Key, UUID, SeqNo, Deps, Cell, Maybe UUID)
 
 --------------------------------------------------------------------------------
 -- Cassandra Link Layer
@@ -65,13 +67,13 @@ type WriteRowInternal = (Key, UUID, SeqNo, Deps, Cell, Maybe UUID)
 -- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++
-                      " (objid blob, sessid uuid, seqno bigint, deps blob, value blob, txnid uuid, primary key (objid, sessid, seqno))"
+                      " (addedat timestamp, objid blob, sessid uuid, seqno bigint, deps blob, value blob, txnid uuid, primary key (timestamp, objid, sessid, seqno))"
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
 
 mkInsert :: TableName -> Query Write WriteRowInternal ()
-mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (objid, sessid, seqno, deps, value, txnid) values (?, ?, ?, ?, ?, ?)"
+mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (addedat, objid, sessid, seqno, deps, value, txnid) values (?, ?, ?, ?, ?, ?, ?)"
 
 mkDelete :: TableName -> Query Write (Key, UUID, SeqNo) ()
 mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and sessid = ? and seqno = ?"
@@ -143,14 +145,20 @@ cqlRead tname c k = do
   rows <- executeRows c (mkRead tname) k
   return $ map (\(sid, sqn, Deps deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
 
-cqlInsert :: TableName -> Consistency -> Key -> ReadRow -> Cas ()
-cqlInsert tname c k (SessID sid, sqn, dep,val,txid) = do
+
+cqlInsertWithTime :: TableName -> Consistency -> Key -> ReadRow -> UTCTime -> Cas ()
+cqlInsertWithTime tname c k (SessID sid, sqn, dep,val,txid) ct = do
   if sqn == 0
   then error "cqlInsert : sqn is 0"
   else do
     if S.size dep > 0
-    then executeWrite c (mkInsert tname) (k,sid,sqn,Deps dep,val,unTxnID <$> txid)
-    else executeWrite c (mkInsert tname) (k,sid,sqn,Deps $ S.singleton $ Addr (SessID sid) 0, val, unTxnID <$> txid)
+    then executeWrite c (mkInsert tname) (ct,k,sid,sqn,Deps dep,val,unTxnID <$> txid)
+    else executeWrite c (mkInsert tname) (ct,k,sid,sqn,Deps $ S.singleton $ Addr (SessID sid) 0, val, unTxnID <$> txid)
+
+cqlInsert :: TableName -> Consistency -> Key -> ReadRow -> Cas ()
+cqlInsert tname c k row = do
+  ct <- liftIO $ getCurrentTime
+  cqlInsertWithTime tname c k row ct
 
 cqlDelete :: TableName -> Key -> SessID -> SeqNo -> Cas ()
 cqlDelete tname k (SessID sid) sqn = executeWrite ONE (mkDelete tname) (k,sid,sqn)

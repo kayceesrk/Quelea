@@ -20,6 +20,7 @@ import Data.UUID
 import Data.Maybe (fromJust)
 import Data.Word
 import Data.DeriveTH
+import Data.Time
 
 $(derive makeSerialize ''OperationPayload)
 
@@ -71,6 +72,18 @@ decodeResponse b = case decode b of
                      Left s -> error $ "decodeResponse : " ++ s
                      Right v -> v
 
+instance Serialize UTCTime where
+  put = putCas
+  get = getCas
+
+$(derive makeSerialize ''Cell)
+
+instance CasType Cell where
+  putCas = put
+  getCas = get
+  casType _ = CBlob
+
+{-
 instance CasType Cell where
   putCas (EffectVal b) = do
     putWord8 0
@@ -86,6 +99,7 @@ instance CasType Cell where
         return $ EffectVal bs
       1 -> return $ GCMarker
   casType _ = CBlob
+-}
 
 $(derive makeSerialize ''Addr)
 

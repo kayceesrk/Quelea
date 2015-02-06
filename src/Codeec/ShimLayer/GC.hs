@@ -21,6 +21,7 @@ import System.Random (randomIO)
 import Database.Cassandra.CQL
 import Control.Applicative ((<$>))
 import Data.Maybe (fromJust)
+import Data.Time
 
 makeLenses ''CacheManager
 makeLenses ''DatatypeLibrary
@@ -64,10 +65,12 @@ makeLenses ''ResolutionState
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
 gcDB cm ot k gc = do
   debugPrint $ "gcDB: start"
+  -- Get time at the start of GC
+  currentTime <- getCurrentTime
   -- Allocate new session id
   gcSid <- SessID <$> randomIO
   getGCLock ot k gcSid $ cm^.pool
-  rows <- runCas (cm^.pool) $ cqlRead ot ONE k
+  rows <- runCas (cm^.pool) $ cqlRead ot ALL k
   -- Split the rows into effects and gc markers
   let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val,txnid) ->
         case txnid of
@@ -75,7 +78,7 @@ gcDB cm ot k gc = do
           Nothing ->
             case val of
               EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
-              GCMarker -> case gcAcc of
+              GCMarker _ -> case gcAcc of
                             Nothing -> (effAcc, Just (sid,sqn,deps))
                             Just _ -> error "Multiple GC Markers") ([], Nothing) rows
   -- Build the GC cursor
@@ -102,7 +105,7 @@ gcDB cm ot k gc = do
               ([],2) gcedEffList
   runCas (cm^.pool) $ do
     -- Insert new effects
-    mapM_ (\r -> cqlInsert ot ONE k r) outRows
+    mapM_ (\r -> cqlInsert ot ALL k r) outRows
     -- Delete previous marker if it exists
     case gcMarker of
       Nothing -> return ()
@@ -114,7 +117,7 @@ gcDB cm ot k gc = do
                  Just oldSqn -> M.insert sid (max oldSqn sqn) m) M.empty addrList
     let newCursor = M.unionWith max am gcCursor
     let newDeps = S.fromList $ map (\(sid,sqn) -> Addr sid sqn) $ M.toList newCursor
-    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker, Nothing)
+    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker currentTime, Nothing)
     -- Delete old rows
     mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
   {- info -}

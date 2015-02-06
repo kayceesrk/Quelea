@@ -46,6 +46,7 @@ import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Tuple.Select (sel1)
+import Data.Time
 
 class (CasType a, Serialize a) => Effectish a where
   summarize :: [a] -> [a]
@@ -160,7 +161,7 @@ newtype TxnDepSet = TxnDepSet (S.Set TxnDep) deriving (Show, Eq)
 
 -- The type of value stored in a row of the cassandra table
 data Cell = EffectVal ByteString -- An effect value
-          | GCMarker             -- Marks a GC
+          | GCMarker UTCTime     -- Marks a GC with GC start time
           deriving (Show, Eq)
 
 newtype Deps = Deps (S.Set Addr) deriving (Show, Eq)

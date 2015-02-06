@@ -19,6 +19,7 @@ import Debug.Trace
 import System.IO (hFlush, stdout)
 import System.Posix.Process (getProcessID)
 import Data.Tuple.Select
+import Data.Time
 
 import Codeec.Types
 import Codeec.ShimLayer.Types
@@ -67,7 +68,7 @@ data CacheUpdateState = CacheUpdateState {
   _cacheCUS      :: CacheMap,
   _cursorCUS     :: CursorMap,
   _depsCUS       :: NearestDepsMap,
-  _lastGCAddrCUS :: M.Map (ObjType, Key) SessID,
+  _lastGCAddrCUS :: M.Map (ObjType, Key) (SessID, UTCTime),
   _inclTxnsCUS   :: (S.Set TxnID, M.Map (ObjType, Key) (S.Set TxnID))
 }
 
@@ -90,12 +91,12 @@ fetchUpdates cm const todoList = do
 
   -- First collect the GC markers
   let gcMarkerMap = M.foldlWithKey (\gcmm (ot,k) rowList ->
-         let gcm = foldl (\gcm (sid,sqn,deps,val,mbTxid) ->
+         let gcm = foldl (\gcm (sid::SessID,sqn,deps,val,mbTxid) ->
                 case val of
                   EffectVal bs -> gcm
-                  GCMarker ->
+                  GCMarker atTime ->
                     case gcm of
-                      Nothing -> Just (sid, sqn, deps)
+                      Nothing -> Just (sid, sqn, deps, atTime)
                       Just _ -> error "Multiple GC Markers") Nothing rowList
          in M.insert (ot,k) gcm gcmm) M.empty rowsMapCRS
 
@@ -131,7 +132,7 @@ fetchUpdates cm const todoList = do
                            Just txid -> case M.lookup txid newTransMap of
                                           Nothing -> mkRetVal (Just txid) S.empty {- Eventual consistency (or) txn in progress! -}
                                           Just txnDeps -> mkRetVal (Just txid) txnDeps
-                  GCMarker -> er) M.empty rowList
+                  GCMarker _ -> er) M.empty rowList
          in M.insert (ot,k) er erm) M.empty rowsMapCRS
 
   -- debugPrint $ "newCursor"
@@ -170,7 +171,7 @@ fetchUpdates cm const todoList = do
   putMVar (cm^.lastGCAddrMVar) newLastGCAddr
   putMVar (cm^.includedTxnsMVar) newInclTxns
   where
-    buildCursorFromGCMarker (sid, sqn, deps) =
+    buildCursorFromGCMarker (sid, sqn, deps,_) =
       S.foldl (\m (Addr sid sqn) ->
             case M.lookup sid m of
               Nothing -> M.insert sid sqn m
@@ -182,9 +183,9 @@ fetchUpdates cm const todoList = do
       -- If a new GC has occurred, flush the cache and get the new effects
       -- inserted by the GC.
       when (newGCHasOccurred cacheGCId gcMarker) $ do
-        let (newGCSessID, _, _) = fromJust $ gcMarker
+        let (newGCSessID, _, _, atTime) = fromJust $ gcMarker
         lgca <- use lastGCAddrCUS
-        lastGCAddrCUS .= M.insert (ot,k) newGCSessID lgca
+        lastGCAddrCUS .= M.insert (ot,k) (newGCSessID, atTime) lgca
         -- empty cache
         cache <- use cacheCUS
         cacheCUS .= M.insert (ot,k) S.empty cache
@@ -244,10 +245,11 @@ fetchUpdates cm const todoList = do
       let newInclTxns = (S.union inclTxnsSet newTxns, M.insertWith S.union (ot,k) newTxns inclTxnsMap)
       inclTxnsCUS .= newInclTxns
 
+    newGCHasOccurred :: Maybe (SessID, UTCTime) -> Maybe (SessID, SeqNo, S.Set Addr, UTCTime) -> Bool
     newGCHasOccurred Nothing Nothing = False
     newGCHasOccurred Nothing (Just _) = True
     newGCHasOccurred (Just _) Nothing = error "newGCHasOccurred: unexpected state"
-    newGCHasOccurred (Just fromCache) (Just (fromDB,_,_)) = fromCache /= fromDB
+    newGCHasOccurred (Just (fromCache,_)) (Just (fromDB,_,_,_)) = fromCache /= fromDB
 
 
 isCovered :: CursorMap -> ObjType -> Key -> SessID -> SeqNo -> Bool
