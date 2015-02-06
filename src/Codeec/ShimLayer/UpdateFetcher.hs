@@ -68,7 +68,7 @@ data CacheUpdateState = CacheUpdateState {
   _cacheCUS      :: CacheMap,
   _cursorCUS     :: CursorMap,
   _depsCUS       :: NearestDepsMap,
-  _lastGCAddrCUS :: M.Map (ObjType, Key) (SessID, UTCTime),
+  _lastGCAddrCUS :: M.Map (ObjType, Key) SessID,
   _inclTxnsCUS   :: (S.Set TxnID, M.Map (ObjType, Key) (S.Set TxnID))
 }
 
@@ -79,10 +79,11 @@ fetchUpdates cm const todoList = do
   -- Recursively read the DB and collect all the rows
   !cursor <- readMVar $ cm^.cursorMVar
   !inclTxns <- readMVar $ cm^.includedTxnsMVar
+  !lgctMap <- readMVar $ cm^.lastGCTimeMVar
 
   let todoObjsCRS = S.fromList todoList
   let crs = CollectRowsState (sel1 inclTxns) todoObjsCRS M.empty M.empty
-  CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) const) crs
+  CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) const lgctMap) crs
 
   -- Update disk row count for later use by gcDB
   drc <- takeMVar $ cm^.diskRowCntMVar
@@ -161,9 +162,8 @@ fetchUpdates cm const todoList = do
   let CacheUpdateState !newCache !new2Cursor !newDeps !newLastGCAddr !newInclTxns =
         execState core (CacheUpdateState cache cursor deps lastGCAddr inclTxns)
 
-  debugPrint $ "finalCursor"
-  mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList new2Cursor
-
+  -- debugPrint $ "finalCursor"
+  -- mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList new2Cursor
 
   putMVar (cm^.cacheMVar) newCache
   putMVar (cm^.cursorMVar) new2Cursor
@@ -185,7 +185,7 @@ fetchUpdates cm const todoList = do
       when (newGCHasOccurred cacheGCId gcMarker) $ do
         let (newGCSessID, _, _, atTime) = fromJust $ gcMarker
         lgca <- use lastGCAddrCUS
-        lastGCAddrCUS .= M.insert (ot,k) (newGCSessID, atTime) lgca
+        lastGCAddrCUS .= M.insert (ot,k) newGCSessID lgca
         -- empty cache
         cache <- use cacheCUS
         cacheCUS .= M.insert (ot,k) S.empty cache
@@ -245,11 +245,11 @@ fetchUpdates cm const todoList = do
       let newInclTxns = (S.union inclTxnsSet newTxns, M.insertWith S.union (ot,k) newTxns inclTxnsMap)
       inclTxnsCUS .= newInclTxns
 
-    newGCHasOccurred :: Maybe (SessID, UTCTime) -> Maybe (SessID, SeqNo, S.Set Addr, UTCTime) -> Bool
+    newGCHasOccurred :: Maybe SessID -> Maybe (SessID, SeqNo, S.Set Addr, UTCTime) -> Bool
     newGCHasOccurred Nothing Nothing = False
     newGCHasOccurred Nothing (Just _) = True
     newGCHasOccurred (Just _) Nothing = error "newGCHasOccurred: unexpected state"
-    newGCHasOccurred (Just (fromCache,_)) (Just (fromDB,_,_,_)) = fromCache /= fromDB
+    newGCHasOccurred (Just fromCache) (Just (fromDB,_,_,_)) = fromCache /= fromDB
 
 
 isCovered :: CursorMap -> ObjType -> Key -> SessID -> SeqNo -> Bool
@@ -330,8 +330,10 @@ resolve cursor ot k sid sqn = do
 mergeCursorsAtKey :: CursorAtKey -> CursorAtKey -> CursorAtKey
 mergeCursorsAtKey = M.unionWith max
 
-collectTransitiveRows :: Pool -> Consistency -> StateT CollectRowsState IO ()
-collectTransitiveRows pool const = do
+collectTransitiveRows :: Pool -> Consistency
+                      -> M.Map (ObjType, Key) UTCTime
+                      -> StateT CollectRowsState IO ()
+collectTransitiveRows pool const lgct = do
   to <- use todoObjsCRS
   case S.minView to of
     Nothing -> return ()
@@ -343,11 +345,18 @@ collectTransitiveRows pool const = do
         Just _ -> return ()
         Nothing -> do -- Work
           -- Read this (ot,k)
-          rows <- liftIO $ runCas pool $ cqlRead ot const k
+          rows <- case M.lookup (ot,k) lgct of
+                  Nothing -> liftIO $ do
+                    putStrLn "collectTransitiveRows(1)"
+                    runCas pool $ cqlRead ot const k
+                  Just gcTime -> liftIO $ do
+                    putStrLn "collectTransitiveRows(2)"
+                    runCas pool $ cqlReadAfterTime ot const k gcTime
+          liftIO $ putStrLn $ show (ot,k,length rows)
           -- Mark as read
           rowsMapCRS .= M.insert (ot,k) rows rm
           mapM_ processRow rows
-      collectTransitiveRows pool const
+      collectTransitiveRows pool const lgct
   where
     processRow (_,_,_,_,Nothing) = return ()
     processRow (sid, sqn, deps, val, Just txid) = do

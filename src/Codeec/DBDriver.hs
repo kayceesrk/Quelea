@@ -7,7 +7,12 @@ module Codeec.DBDriver (
 
   createTable,
   dropTable,
+
   cqlRead,
+  cqlReadAfterTime,
+  cqlReadWithTime,
+  cqlReadAfterTimeWithTime,
+
   cqlInsert,
   -- cqlInsertWithTime,
   cqlDelete,
@@ -54,6 +59,10 @@ type TableName = String
 
 type ReadRow = (SessID, SeqNo, S.Set Addr, Cell, Maybe TxnID)
 type ReadRowInternal = (UUID, SeqNo, Deps, Cell, Maybe UUID)
+
+type ReadRowWithTime = (SessID, SeqNo, UTCTime, S.Set Addr, Cell, Maybe TxnID)
+type ReadRowWithTimeInternal = (UUID, SeqNo, UTCTime, Deps, Cell, Maybe UUID)
+
 type WriteRowInternal = (UTCTime, Key, UUID, SeqNo, Deps, Cell, Maybe UUID)
 
 --------------------------------------------------------------------------------
@@ -67,7 +76,7 @@ type WriteRowInternal = (UTCTime, Key, UUID, SeqNo, Deps, Cell, Maybe UUID)
 -- this cursor are considered to have been GC'ed.
 mkCreateTable :: TableName -> Query Schema () ()
 mkCreateTable tname = query $ pack $ "create table " ++ tname ++
-                      " (addedat timestamp, objid blob, sessid uuid, seqno bigint, deps blob, value blob, txnid uuid, primary key (timestamp, objid, sessid, seqno))"
+                      " ( objid blob, sessid uuid, seqno bigint, addedat timestamp, deps blob, value blob, txnid uuid, primary key (objid, addedat, sessid, seqno))"
 
 mkDropTable :: TableName -> Query Schema () ()
 mkDropTable tname = query $ pack $ "drop table " ++ tname
@@ -75,11 +84,20 @@ mkDropTable tname = query $ pack $ "drop table " ++ tname
 mkInsert :: TableName -> Query Write WriteRowInternal ()
 mkInsert tname = query $ pack $ "insert into " ++ tname ++ " (addedat, objid, sessid, seqno, deps, value, txnid) values (?, ?, ?, ?, ?, ?, ?)"
 
-mkDelete :: TableName -> Query Write (Key, UUID, SeqNo) ()
-mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and sessid = ? and seqno = ?"
+mkDelete :: TableName -> Query Write (Key, UTCTime, UUID, SeqNo) ()
+mkDelete tname = query $ pack $ "delete from " ++ tname ++ " where objid = ? and addedat = ? and sessid = ? and seqno = ?"
 
 mkRead :: TableName -> Query Rows (Key) ReadRowInternal
-mkRead tname = query $ pack $ "select sessid, seqno, deps, value, txnid from " ++ tname ++ " where objid = ? order by sessid, seqno"
+mkRead tname = query $ pack $ "select sessid, seqno, deps, value, txnid from " ++ tname ++ " where objid = ?"
+
+mkReadAfterTime :: TableName -> Query Rows (Key,UTCTime) ReadRowInternal
+mkReadAfterTime tname = query $ pack $ "select sessid, seqno, deps, value, txnid from " ++ tname ++ " where objid = ? and addedat > ?"
+
+mkReadWithTime :: TableName -> Query Rows (Key) ReadRowWithTimeInternal
+mkReadWithTime tname = query $ pack $ "select sessid, seqno, addedat, deps, value, txnid from " ++ tname ++ " where objid = ?"
+
+mkReadAfterTimeWithTime :: TableName -> Query Rows (Key, UTCTime) ReadRowWithTimeInternal
+mkReadAfterTimeWithTime tname = query $ pack $ "select sessid, seqno, addedat, deps, value, txnid from " ++ tname ++ " where objid = ? and addedat > ?"
 
 -------------------------------------------------------------------------------
 
@@ -140,11 +158,25 @@ mkGlobalLockUpdate = "update GlobalLock set txnid = ? where id = ? if txnid = ?"
 
 -------------------------------------------------------------------------------
 
+cqlReadAfterTime :: TableName -> Consistency -> Key -> UTCTime -> Cas [ReadRow]
+cqlReadAfterTime tname c k gcTime = do
+  rows <- executeRows c (mkReadAfterTime tname) (k, gcTime)
+  return $ map (\(sid, sqn, Deps deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
+
 cqlRead :: TableName -> Consistency -> Key -> Cas [ReadRow]
 cqlRead tname c k = do
   rows <- executeRows c (mkRead tname) k
   return $ map (\(sid, sqn, Deps deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
 
+cqlReadAfterTimeWithTime :: TableName -> Consistency -> Key -> UTCTime -> Cas [ReadRowWithTime]
+cqlReadAfterTimeWithTime tname c k gcTime = do
+  rows <- executeRows c (mkReadAfterTimeWithTime tname) (k, gcTime)
+  return $ map (\(sid, sqn, addedat, Deps deps, val, txid) -> (SessID sid, sqn, addedat, deps, val, TxnID <$> txid)) rows
+
+cqlReadWithTime :: TableName -> Consistency -> Key -> Cas [ReadRowWithTime]
+cqlReadWithTime tname c k = do
+  rows <- executeRows c (mkReadWithTime tname) k
+  return $ map (\(sid, sqn, addedat, Deps deps, val, txid) -> (SessID sid, sqn, addedat, deps, val, TxnID <$> txid)) rows
 
 cqlInsertWithTime :: TableName -> Consistency -> Key -> ReadRow -> UTCTime -> Cas ()
 cqlInsertWithTime tname c k (SessID sid, sqn, dep,val,txid) ct = do
@@ -160,8 +192,9 @@ cqlInsert tname c k row = do
   ct <- liftIO $ getCurrentTime
   cqlInsertWithTime tname c k row ct
 
-cqlDelete :: TableName -> Key -> SessID -> SeqNo -> Cas ()
-cqlDelete tname k (SessID sid) sqn = executeWrite ONE (mkDelete tname) (k,sid,sqn)
+cqlDelete :: TableName -> Key -> UTCTime -> SessID -> SeqNo -> Cas ()
+cqlDelete tname k time (SessID sid) sqn =
+  executeWrite ONE (mkDelete tname) (k,time,sid,sqn)
 
 createTxnTable :: Cas ()
 createTxnTable = liftIO . print =<< executeSchema ALL mkCreateTxnTable ()

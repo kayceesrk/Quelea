@@ -60,15 +60,16 @@ initCacheManager pool = do
   cache <- newMVar M.empty
   cursor <- newMVar M.empty
   nearestDeps <- newMVar M.empty
-  lastGC <- newMVar M.empty
+  lastGCAddr <- newMVar M.empty
+  lastGCTime <- newMVar M.empty
   seenTxns <- newMVar (S.empty, M.empty)
   hwm <- newMVar M.empty
   drc <- newMVar M.empty
   hotLocs <- newMVar S.empty
   sem <- newEmptyMVar
   blockedList <- newMVar []
-  let cm = CacheManager cache cursor nearestDeps lastGC seenTxns hwm drc
-                        hotLocs sem blockedList pool
+  let cm = CacheManager cache cursor nearestDeps lastGCAddr lastGCTime
+                        seenTxns hwm drc hotLocs sem blockedList pool
   forkIO $ cacheMgrCore cm
   forkIO $ signalGenerator sem
   return $ cm
@@ -173,12 +174,9 @@ writeEffect cm ot k addr eff deps const mbtxnid = do
     putMVar (cm^.depsMVar) $ M.insert (ot,k) (S.singleton addr) curDeps
     -- Write to database
     runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, newDeps, EffectVal eff, mbtxnid)
-    -- debugPrint $ "numDeps = " ++ show (S.size newDeps)
   else do
     -- Write to database
     runCas (cm^.pool) $ cqlInsert ot const k (sid, sqn, deps, EffectVal eff, mbtxnid)
-    -- debugPrint $ "numDeps = " ++ show (S.size deps)
-  printStats cm ot k
 
 doesCacheInclude :: CacheManager -> ObjType -> Key -> SessID -> SeqNo -> IO Bool
 doesCacheInclude cm ot k sid sqn = do

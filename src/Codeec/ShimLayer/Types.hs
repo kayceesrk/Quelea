@@ -40,7 +40,8 @@ data CacheManager = CacheManager {
   _cacheMVar        :: Cache,
   _cursorMVar       :: Cursor,
   _depsMVar         :: NearestDeps,
-  _lastGCAddrMVar   :: MVar (M.Map (ObjType, Key) (SessID, UTCTime)),
+  _lastGCAddrMVar   :: MVar (M.Map (ObjType, Key) SessID),
+  _lastGCTimeMVar   :: MVar (M.Map (ObjType, Key) UTCTime),
   _includedTxnsMVar :: MVar (S.Set TxnID, M.Map (ObjType,Key) (S.Set TxnID)),
 
   _hwmMVar          :: MVar HwmMap,

@@ -16,7 +16,7 @@ import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
 import Codeec.Types (summarize)
-import Control.Monad (replicateM_)
+import Control.Monad (replicateM_, when)
 import Data.IORef
 
 fePort :: Int
@@ -51,10 +51,11 @@ main = do
       cnt <- liftIO $ newIORef 1
       replicateM_ 100000 $ do
         r::() <- invoke key Deposit (2::Int)
-        r::() <- invoke key Withdraw (1::Int)
+        -- r::() <- invoke key Withdraw (1::Int)
         r :: Int <- invoke key GetBalance ()
         round <- liftIO $ readIORef cnt
-        liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
+        when (round `mod` 1000 == 0) $ do
+          liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
         liftIO $ writeIORef cnt $ round + 1
     Create -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing

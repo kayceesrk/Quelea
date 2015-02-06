@@ -69,33 +69,37 @@ gcDB cm ot k gc = do
   currentTime <- getCurrentTime
   -- Allocate new session id
   gcSid <- SessID <$> randomIO
+  -- Get GC lock
   getGCLock ot k gcSid $ cm^.pool
-  rows <- runCas (cm^.pool) $ cqlRead ot ALL k
+  lgctMap <- readMVar $ cm^.lastGCTimeMVar
+  rows <- case M.lookup (ot,k) lgctMap of
+            Nothing -> runCas (cm^.pool) $ cqlReadWithTime ot ONE k
+            Just lastGCTime -> runCas (cm^.pool) $ cqlReadAfterTimeWithTime ot ONE k lastGCTime
   -- Split the rows into effects and gc markers
-  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,deps,val,txnid) ->
+  let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,time,deps,val,txnid) ->
         case txnid of
           Just _ -> error "gcDB: Cannot handle transactions yet! TODO."
           Nothing ->
             case val of
-              EffectVal bs -> ((sid,sqn,deps,bs):effAcc, gcAcc)
+              EffectVal bs -> ((sid,sqn,time,deps,bs):effAcc, gcAcc)
               GCMarker _ -> case gcAcc of
-                            Nothing -> (effAcc, Just (sid,sqn,deps))
+                            Nothing -> (effAcc, Just (sid,sqn,time,deps))
                             Just _ -> error "Multiple GC Markers") ([], Nothing) rows
   -- Build the GC cursor
   let gcCursor = case gcMarker of
                    Nothing -> M.empty
-                   Just (sid, sqn, deps) ->
+                   Just (sid, sqn, time, deps) ->
                      S.foldl (\m (Addr sid sqn) -> M.insert sid sqn m)
                              (M.singleton sid sqn) deps
   -- Build datastructure for filtering out unresolved effects
   let (effSet, depsMap) =
-        foldl (\(setAcc, mapAcc) (sid, sqn, deps, eff) ->
-                  (S.insert (Addr sid sqn, eff) setAcc,
+        foldl (\(setAcc, mapAcc) (sid, sqn, time, deps, eff) ->
+                  (S.insert (Addr sid sqn, eff, time) setAcc,
                    M.insert (Addr sid sqn) (NotVisited deps) mapAcc))
           (S.empty, M.empty) effRows
   -- filter unresolved effects i,e) effects whose causal cut is also not visible.
   let filteredSet = filterUnresolved gcCursor depsMap effSet
-  let (addrList, effList) = unzip (S.toList filteredSet)
+  let (addrList, effList, timeList) = unzip3 (S.toList filteredSet)
   let gcedEffList = gc effList
   -- Allocate new gc address
   let gcAddr = Addr gcSid 1
@@ -109,7 +113,7 @@ gcDB cm ot k gc = do
     -- Delete previous marker if it exists
     case gcMarker of
       Nothing -> return ()
-      Just (sid, sqn, _) -> cqlDelete ot k sid sqn
+      Just (sid, sqn, time, _) -> cqlDelete ot k time sid sqn
     -- Insert marker
     let am = foldl (\m (Addr sid sqn) ->
                case M.lookup sid m of
@@ -118,8 +122,12 @@ gcDB cm ot k gc = do
     let newCursor = M.unionWith max am gcCursor
     let newDeps = S.fromList $ map (\(sid,sqn) -> Addr sid sqn) $ M.toList newCursor
     cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker currentTime, Nothing)
+    -- Update lastGCTime before deleting
+    liftIO $ do
+      lgctMap <- takeMVar $ cm^.lastGCTimeMVar
+      putMVar (cm^.lastGCTimeMVar) $ M.insert (ot,k) currentTime lgctMap
     -- Delete old rows
-    mapM_ (\(Addr sid sqn) -> cqlDelete ot k sid sqn) addrList
+    mapM_ (\(Addr sid sqn, time) -> cqlDelete ot k time sid sqn) $ zip addrList timeList
   {- info -}
   debugPrint $ "gcDB: inserted Rows=" ++ show (length outRows)
   debugPrint $ "gcDB: deleted Rows=" ++ show (length addrList)
@@ -148,15 +156,15 @@ maybeGCCache cm ot k curSize gc | curSize < cCACHE_LWM = return ()
     putMVar (cm^.hwmMVar) $ M.insert (ot, k) (length newCtxt * 2) hwm
     putMVar (cm^.cacheMVar) $ M.insert (ot, k) newCache cache
 
-filterUnresolved :: CursorAtKey             -- Key Cursor
-                 -> M.Map Addr VisitedState -- Input visited state
-                 -> S.Set (Addr, Effect)    -- Unfiltered input
-                 -> S.Set (Addr, Effect)    -- Filtered result
+filterUnresolved :: CursorAtKey                   -- Key Cursor
+                 -> M.Map Addr VisitedState       -- Input visited state
+                 -> S.Set (Addr, Effect, UTCTime) -- Unfiltered input
+                 -> S.Set (Addr, Effect, UTCTime) -- Filtered result
 filterUnresolved kc m1 s2 =
   let addrList = M.keys m1
       ResolutionState _ vs =
         foldl (\vs addr -> execState (isResolved addr) vs) (ResolutionState kc m1) addrList
-  in S.filter (\(addr,eff) ->
+  in S.filter (\(addr,_,_) ->
         case M.lookup addr vs of
           Nothing -> error "filterUnresolved: unexpected state(1)"
           Just (Visited True) -> True
