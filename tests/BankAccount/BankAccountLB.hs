@@ -9,7 +9,7 @@ import System.Process (runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (threadDelay)
 import Codeec.NameService.Types
-import Codeec.NameService.LoadBalancingBroker
+import Codeec.NameService.SimpleBroker
 import Codeec.Marshall
 import Codeec.TH
 import Database.Cassandra.CQL
@@ -39,8 +39,6 @@ main :: IO ()
 main = do
   (kindStr:broker:_) <- getArgs
   let k :: Kind = read kindStr
-  print k
-  print broker
   let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
                          (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
@@ -50,7 +48,6 @@ main = do
       runShimNode dtLib [("localhost","9042")] keyspace ns
     C -> runSession ns $ do
       key <- liftIO $ newKey
-
       cnt <- liftIO $ newIORef 1
       replicateM_ 100000 $ do
         r::() <- invoke key Deposit (2::Int)

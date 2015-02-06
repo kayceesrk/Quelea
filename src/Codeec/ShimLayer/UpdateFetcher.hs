@@ -100,16 +100,21 @@ fetchUpdates cm const todoList = do
          in M.insert (ot,k) gcm gcmm) M.empty rowsMapCRS
 
   -- Build new cursor with GC markers. The idea here is that if we did find a
-  -- GC marker, then keep hold of all the rows except the ones explicitly
-  -- covered by the GC. The reason is that subsequently, we will clear our
-  -- cache and rebuild it. Here, it is not correct to ignore those rows, which
-  -- might have already been seen, but was not GCed.
+  -- GC marker & we have not seen this marker already, then keep hold of all
+  -- the rows except the ones explicitly covered by the GC. The reason is that
+  -- subsequently, we will clear our cache and rebuild it. Here, it is not
+  -- correct to ignore those rows, which might have already been seen, but was
+  -- not GCed.
+  !lastGCAddrMap <- readMVar $ cm^.lastGCAddrMVar
   let !newCursor = M.foldlWithKey (\c (ot,k) gcMarker ->
-                    case gcMarker of
-                      Nothing -> c
-                      Just marker ->
-                        let gcCursor = buildCursorFromGCMarker marker
-                        in M.insert (ot,k) gcCursor c)
+                    let lastGCAddr = M.lookup (ot,k) lastGCAddrMap
+                    in if newGCHasOccurred lastGCAddr gcMarker
+                         then case gcMarker of
+                                Nothing -> c
+                                Just marker ->
+                                  let gcCursor = buildCursorFromGCMarker marker
+                                  in M.insert (ot,k) gcCursor c
+                         else c)
                      cursor gcMarkerMap
 
   -- Once we have built the cursor, filter those rows which are covered.
@@ -129,9 +134,15 @@ fetchUpdates cm const todoList = do
                   GCMarker -> er) M.empty rowList
          in M.insert (ot,k) er erm) M.empty rowsMapCRS
 
+  debugPrint $ "newCursor"
+  mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList newCursor
+
   -- Now filter those rows which are unresolved i.e) those rows whose
   -- dependencies are not visible.
   let !filteredMap = filterUnresolved newCursor effRowsMap
+
+  debugPrint $ "filteredMap"
+  mapM_ (\((ot,k), s) -> mapM_ (\(addr,_,_) -> debugPrint $ show addr) $ S.toList s) $ M.toList filteredMap
 
   -- Update state. First obtain locks...
   !cache      <- takeMVar $ cm^.cacheMVar
@@ -146,11 +157,15 @@ fetchUpdates cm const todoList = do
             (case M.lookup (ot,k) newCursor of {Nothing -> M.empty; Just m -> m})
             (fromJust $ M.lookup (ot,k) gcMarkerMap)) $ M.toList filteredMap
 
-  let CacheUpdateState !newCache !newCursor !newDeps !newLastGCAddr !newInclTxns =
+  let CacheUpdateState !newCache !new2Cursor !newDeps !newLastGCAddr !newInclTxns =
         execState core (CacheUpdateState cache cursor deps lastGCAddr inclTxns)
 
+  debugPrint $ "finalCursor"
+  mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList new2Cursor
+
+
   putMVar (cm^.cacheMVar) newCache
-  putMVar (cm^.cursorMVar) newCursor
+  putMVar (cm^.cursorMVar) new2Cursor
   putMVar (cm^.depsMVar) newDeps
   putMVar (cm^.lastGCAddrMVar) newLastGCAddr
   putMVar (cm^.includedTxnsMVar) newInclTxns
@@ -163,9 +178,7 @@ fetchUpdates cm const todoList = do
     updateCache ot k filteredSet gcCursor gcMarker = do
       -- Handle GC
       lgca <- use lastGCAddrCUS
-      let cacheGCId = case M.lookup (ot,k) lgca of
-                        Nothing -> SessID knownUUID
-                        Just id -> id
+      let cacheGCId = M.lookup (ot,k) lgca
       -- If a new GC has occurred, flush the cache and get the new effects
       -- inserted by the GC.
       when (newGCHasOccurred cacheGCId gcMarker) $ do
@@ -181,6 +194,7 @@ fetchUpdates cm const todoList = do
         -- reset deps
         deps <- use depsCUS
         depsCUS .= M.insert (ot,k) S.empty deps
+
       -- Update cache
       cache <- use cacheCUS
       let newEffs :: CacheMap = M.singleton (ot,k) (S.map (\(a,e,_) -> (a,e)) filteredSet)
@@ -230,8 +244,10 @@ fetchUpdates cm const todoList = do
       let newInclTxns = (S.union inclTxnsSet newTxns, M.insertWith S.union (ot,k) newTxns inclTxnsMap)
       inclTxnsCUS .= newInclTxns
 
-    newGCHasOccurred fromCache Nothing = False
-    newGCHasOccurred fromCache (Just (fromDB,_,_)) = fromCache /= fromDB
+    newGCHasOccurred Nothing Nothing = False
+    newGCHasOccurred Nothing (Just _) = True
+    newGCHasOccurred (Just _) Nothing = error "newGCHasOccurred: unexpected state"
+    newGCHasOccurred (Just fromCache) (Just (fromDB,_,_)) = fromCache /= fromDB
 
 
 isCovered :: CursorMap -> ObjType -> Key -> SessID -> SeqNo -> Bool
