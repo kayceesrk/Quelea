@@ -69,6 +69,7 @@ data CacheUpdateState = CacheUpdateState {
   _cursorCUS     :: CursorMap,
   _depsCUS       :: NearestDepsMap,
   _lastGCAddrCUS :: M.Map (ObjType, Key) SessID,
+  _lastGCTimeCUS :: M.Map (ObjType, Key) UTCTime,
   _inclTxnsCUS   :: (S.Set TxnID, M.Map (ObjType, Key) (S.Set TxnID))
 }
 
@@ -151,6 +152,7 @@ fetchUpdates cm const todoList = do
   !cursor     <- takeMVar $ cm^.cursorMVar
   !deps       <- takeMVar $ cm^.depsMVar
   !lastGCAddr <- takeMVar $ cm^.lastGCAddrMVar
+  !lastGCTime <- takeMVar $ cm^.lastGCTimeMVar
   !inclTxns   <- takeMVar $ cm^.includedTxnsMVar
 
   let core =
@@ -159,8 +161,8 @@ fetchUpdates cm const todoList = do
             (case M.lookup (ot,k) newCursor of {Nothing -> M.empty; Just m -> m})
             (fromJust $ M.lookup (ot,k) gcMarkerMap)) $ M.toList filteredMap
 
-  let CacheUpdateState !newCache !new2Cursor !newDeps !newLastGCAddr !newInclTxns =
-        execState core (CacheUpdateState cache cursor deps lastGCAddr inclTxns)
+  let CacheUpdateState !newCache !new2Cursor !newDeps !newLastGCAddr !newLastGCTime !newInclTxns =
+        execState core (CacheUpdateState cache cursor deps lastGCAddr lastGCTime inclTxns)
 
   -- debugPrint $ "finalCursor"
   -- mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList new2Cursor
@@ -169,6 +171,7 @@ fetchUpdates cm const todoList = do
   putMVar (cm^.cursorMVar) new2Cursor
   putMVar (cm^.depsMVar) newDeps
   putMVar (cm^.lastGCAddrMVar) newLastGCAddr
+  putMVar (cm^.lastGCTimeMVar) newLastGCTime
   putMVar (cm^.includedTxnsMVar) newInclTxns
   where
     buildCursorFromGCMarker (sid, sqn, deps,_) =
@@ -183,9 +186,12 @@ fetchUpdates cm const todoList = do
       -- If a new GC has occurred, flush the cache and get the new effects
       -- inserted by the GC.
       when (newGCHasOccurred cacheGCId gcMarker) $ do
+        -- Update GC information
         let (newGCSessID, _, _, atTime) = fromJust $ gcMarker
         lgca <- use lastGCAddrCUS
         lastGCAddrCUS .= M.insert (ot,k) newGCSessID lgca
+        lgct <- use lastGCTimeCUS
+        lastGCTimeCUS .= M.insert (ot,k) atTime lgct
         -- empty cache
         cache <- use cacheCUS
         cacheCUS .= M.insert (ot,k) S.empty cache
@@ -322,7 +328,6 @@ resolve cursor ot k sid sqn = do
             Just vsObj -> M.insert (Addr sid sqn) val vsObj
       visitedState .= M.insert (ot,k) newVsObj vs
 
-
 -- Combines curors at a particular key. Since a cursor at a given (key, sessid)
 -- records the largest sequence number seen so far, given two cursors at some
 -- key k, the merge operation picks the larger of the sequence numbers for each
@@ -347,12 +352,9 @@ collectTransitiveRows pool const lgct = do
           -- Read this (ot,k)
           rows <- case M.lookup (ot,k) lgct of
                   Nothing -> liftIO $ do
-                    putStrLn "collectTransitiveRows(1)"
                     runCas pool $ cqlRead ot const k
                   Just gcTime -> liftIO $ do
-                    putStrLn "collectTransitiveRows(2)"
                     runCas pool $ cqlReadAfterTime ot const k gcTime
-          liftIO $ putStrLn $ show (ot,k,length rows)
           -- Mark as read
           rowsMapCRS .= M.insert (ot,k) rows rm
           mapM_ processRow rows
