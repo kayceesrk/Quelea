@@ -233,10 +233,6 @@ data TweetEffect = NewTweet_ UserID String UTCTime
 
 $(derive makeSerialize ''TweetID)
 
-instance Serialize UTCTime where
-  put t = put $ show t
-  get = read <$> get
-
 $(derive makeSerialize ''TweetEffect)
 
 instance CasType TweetEffect where

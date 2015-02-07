@@ -44,10 +44,6 @@ instance Ord LWWRegister where
 
 $(derive makeSerialize ''LWWRegister)
 
-instance Serialize UTCTime where
-  put t = put $ show t
-  get = read <$> get
-
 instance CasType LWWRegister where
   getCas = get
   putCas = put
