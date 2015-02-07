@@ -37,7 +37,7 @@ dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(checkOp Deposit depositC
 
 main :: IO ()
 main = do
-  (kindStr:broker:_) <- getArgs
+  (kindStr:broker:restArgs) <- getArgs
   let k :: Kind = read kindStr
   let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
                          (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
@@ -49,7 +49,7 @@ main = do
     C -> runSession ns $ do
       key <- liftIO $ newKey
       cnt <- liftIO $ newIORef 1
-      replicateM_ 10000 $ do
+      replicateM_ 100000 $ do
         r::() <- invoke key Deposit (2::Int)
         -- r::() <- invoke key Withdraw (1::Int)
         r :: Int <- invoke key GetBalance ()
@@ -65,15 +65,18 @@ main = do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable "BankAccount"
     D -> do
+      let rtsArg = case restArgs of
+                     [] -> ""
+                     r:_ -> r
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable "BankAccount"
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
-      b <- runCommand $ progName ++ " B " ++ broker
+      b <- runCommand $ progName ++ " +RTS " ++ rtsArg ++ " -RTS B " ++ broker
       putStrLn "Driver : Starting server"
-      s <- runCommand $ progName ++ " S " ++ broker
+      s <- runCommand $ progName ++ " +RTS " ++ rtsArg ++ " -RTS S " ++ broker
       putStrLn "Driver : Starting client"
-      c <- runCommand $ progName ++ " C " ++ broker
+      c <- runCommand $ progName ++ " +RTS " ++ rtsArg ++ " -RTS C " ++ broker
       threadDelay 60000000
       mapM_ terminateProcess [b,s,c]
       runCas pool $ dropTable "BankAccount"
