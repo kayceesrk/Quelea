@@ -67,11 +67,10 @@ runShimNode dtLib serverList keyspace ns = do
   cache <- initCacheManager pool
   {- Spawn a pool of workers -}
   replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache)
-  {- Spawn gcWorker -}
+  {- Start gcWorker. For LBBroker, spawn serverjoin and call gcWorker. -}
   forkIO $ gcWorker dtLib cache
   {- Join the broker to serve clients -}
   getServerJoin ns
-
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
 worker dtLib pool cache = do
