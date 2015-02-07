@@ -64,7 +64,7 @@ makeLenses ''ResolutionState
 
 
 gcDB :: CacheManager -> ObjType -> Key -> GenSumFun -> IO ()
-gcDB cm ot k gc = gcDBCore cm ot k gc 2
+gcDB cm ot k gc = gcDBCore cm ot k gc 1
 
 gcDBCore :: CacheManager -> ObjType -> Key -> GenSumFun -> Int -> IO ()
 gcDBCore cm ot k gc 0 = return ()

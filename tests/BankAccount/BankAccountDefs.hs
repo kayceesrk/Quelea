@@ -62,6 +62,7 @@ $(derive makeSerialize ''Operation)
 
 depositCtrt :: Contract Operation
 depositCtrt x = liftProp $ true
+-- depositCtrt x = forall_ $ \a -> liftProp $ hbo a x ⇒ vis a x
 
 withdrawCtrt :: Contract Operation
 withdrawCtrt x = forallQ_ [Deposit] $ \a -> forallQ_ [Withdraw] $ \b ->

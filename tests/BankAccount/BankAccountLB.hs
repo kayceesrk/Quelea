@@ -10,6 +10,7 @@ import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (threadDelay)
 import Codeec.NameService.Types
 import Codeec.NameService.SimpleBroker
+-- import Codeec.NameService.LoadBalancingBroker
 import Codeec.Marshall
 import Codeec.TH
 import Database.Cassandra.CQL
@@ -77,7 +78,7 @@ main = do
       s <- runCommand $ progName ++ " +RTS " ++ rtsArg ++ " -RTS S " ++ broker
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " +RTS " ++ rtsArg ++ " -RTS C " ++ broker
-      threadDelay 60000000
+      threadDelay 20000000
       mapM_ terminateProcess [b,s,c]
       runCas pool $ dropTable "BankAccount"
     Drop -> do
