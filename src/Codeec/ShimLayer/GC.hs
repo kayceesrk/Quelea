@@ -76,6 +76,7 @@ gcDBCore cm ot k gc repeat = do
   getGCLock ot k gcSid $ cm^.pool
   -- Get time at the start of GC
   currentTime <- getCurrentTime
+  let gcTime = addUTCTime (-1) currentTime
   lgctMap <- readMVar $ cm^.lastGCTimeMVar
   rows <- case M.lookup (ot,k) lgctMap of
             Nothing -> runCas (cm^.pool) $ cqlReadWithTime ot ALL k
@@ -126,11 +127,11 @@ gcDBCore cm ot k gc repeat = do
                  Just oldSqn -> M.insert sid (max oldSqn sqn) m) M.empty addrList
     let newCursor = M.unionWith max am gcCursor
     let newDeps = S.fromList $ map (\(sid,sqn) -> Addr sid sqn) $ M.toList newCursor
-    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker currentTime, Nothing)
+    cqlInsert ot ALL k (gcSid, 1, newDeps, GCMarker gcTime, Nothing)
     -- Update lastGCTime before deleting
     liftIO $ do
       lgctMap <- takeMVar $ cm^.lastGCTimeMVar
-      putMVar (cm^.lastGCTimeMVar) $ M.insert (ot,k) currentTime lgctMap
+      putMVar (cm^.lastGCTimeMVar) $ M.insert (ot,k) gcTime lgctMap
     -- Delete old rows
     mapM_ (\(Addr sid sqn, time) -> cqlDelete ot k time sid sqn) $ zip addrList timeList
   {- info -}
