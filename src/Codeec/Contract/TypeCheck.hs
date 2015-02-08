@@ -433,8 +433,8 @@ mkRawImpl2 a b =
   let p::Prop () = (Raw $ fol2Z3Ctrt a) ⇒ (Raw $ fol2Z3Ctrt b)
   in prop2Z3Ctrt p
 
-isUnavailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
-isUnavailable c mkOperSort =
+isStronglyConsistent :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
+isStronglyConsistent c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
     (curEff, _) <- newEff
@@ -450,8 +450,8 @@ isUnavailable c mkOperSort =
     assertProp "CTRT_NOT_IMPL_CC" $ not_ test2
     lift $ res2Bool <$> check
 
-isStickyAvailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
-isStickyAvailable c mkOperSort =
+isCausallyConsistent :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
+isCausallyConsistent c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
     (curEff, _) <- newEff
@@ -467,8 +467,8 @@ isStickyAvailable c mkOperSort =
     assertProp "CTRT_NOT_IMPL_CV" $ not_ test2
     lift $ res2Bool <$> check
 
-isHighlyAvailable :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
-isHighlyAvailable c mkOperSort =
+isEventuallyConsistent :: OperationClass a  => Contract a -> Z3 Sort -> IO Bool
+isEventuallyConsistent c mkOperSort =
   typecheck mkOperSort $ do
     assertBasicAxioms
     (curEff, _) <- newEff
@@ -517,14 +517,14 @@ classifyOperContract c info = do
     isWt <- isWellTyped c mkOperSort
     if not isWt then fail $ info ++ " contract is not well-typed"
     else do
-      res <- isHighlyAvailable c mkOperSort
-      if res then return High
+      res <- isEventuallyConsistent c mkOperSort
+      if res then return Eventual
       else do
-        res <- isStickyAvailable c mkOperSort
-        if res then return Sticky
+        res <- isCausallyConsistent c mkOperSort
+        if res then return Causal
         else do
-          res <- isUnavailable c mkOperSort
-          if res then return Un
+          res <- isStronglyConsistent c mkOperSort
+          if res then return Strong
           else fail $ info ++ " -- strange contract"
 
 isValidProto :: OperationClass a => Z3 Sort -> String -> Fol a -> IO Bool

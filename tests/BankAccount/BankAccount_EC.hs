@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
 import Codeec.Shim
+import Codeec.Types
 import Codeec.ClientMonad
 import Codeec.DBDriver
 import BankAccountDefs
@@ -120,9 +121,9 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(checkOp Deposit depositCtrt)),
-                 (Withdraw, mkGenOp withdraw summarize, $(checkOp Withdraw withdrawCtrt)),
-                 (GetBalance, mkGenOp getBalance summarize, $(checkOp GetBalance getBalanceCtrt))]
+dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, Eventual),
+                 (Withdraw, mkGenOp withdraw summarize, Eventual),
+                 (GetBalance, mkGenOp getBalance summarize, Eventual)]
 
 
 run :: Args -> IO ()

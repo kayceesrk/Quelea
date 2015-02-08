@@ -91,9 +91,9 @@ worker dtLib pool cache = do
         let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
         -- debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
         (result, ctxtSize) <- case av of
-          High -> doOp op cache req ONE
-          Sticky -> processStickyOp req op cache
-          Un -> processUnOp req op cache pool
+          Eventual -> doOp op cache req ONE
+          Causal -> processStickyOp req op cache
+          Strong -> processUnOp req op cache pool
         ZMQ.send sock [] $ encode result
         -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization

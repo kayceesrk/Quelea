@@ -54,7 +54,7 @@ class (CasType a, Serialize a) => Effectish a where
 type OpFun eff arg res = [eff] -> arg -> (res, Maybe eff)
 type GenOpFun = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
 type GenSumFun = [ByteString] -> [ByteString]
-data Availability = High | Sticky | Un deriving (Show, Eq, Ord)
+data Availability = Eventual | Causal | Strong deriving (Show, Eq, Ord)
 
 data TxnKind = ReadCommitted
              | MonotonicAtomicView
@@ -69,9 +69,9 @@ instance Lift TxnKind where
   lift RepeatableRead = [| RepeatableRead |]
 
 instance Lift Availability where
-  lift High = [| High |]
-  lift Sticky = [| Sticky |]
-  lift Un = [| Un |]
+  lift Eventual = [| Eventual |]
+  lift Causal = [| Causal |]
+  lift Strong = [| Strong |]
 
 type ObjType = String
 class (Show a, Read a, Eq a, Ord a, Serialize a) => OperationClass a where
