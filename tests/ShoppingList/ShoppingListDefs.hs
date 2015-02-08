@@ -43,10 +43,6 @@ getTimestamp (RenameItem_ _ _ ts) = ts
 getTimestamp (ChangeQuantity_ _ _ ts) = ts
 getTimestamp (ViewList_) = error "getTimeStamp: ViewList"
 
-instance Serialize UTCTime where
-  put t = put $ show t
-  get = read <$> get
-
 instance Ord ShoppingList where
   (<=) a b = (<=) (getTimestamp a) (getTimestamp b)
 

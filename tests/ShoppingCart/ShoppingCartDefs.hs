@@ -112,6 +112,7 @@ instance Effectish CartEffect where
   summarize [AddCart_,RemoveCart_] = []
   summarize [RemoveCart_,AddCart_] = []
   summarize [AddCart_] = [AddCart_]
+  summarize [RemoveCart_] = []
   summarize _ = error "Cart summarization encountered strange case"
 
 instance CasType CartEffect where

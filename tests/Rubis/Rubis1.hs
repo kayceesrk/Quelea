@@ -3,6 +3,7 @@
 import Codeec.Shim
 import Codeec.ClientMonad
 import Codeec.Marshall
+import Codeec.NameService.Types
 import Codeec.NameService.SimpleBroker
 import Codeec.TH
 
@@ -38,17 +39,18 @@ dtLib = mkDtLib [(StockItem, mkGenOp stockItem summarize, $(checkOp StockItem st
 
 main :: IO ()
 main = do
-  (kindStr:_) <- getArgs
+  (kindStr:broker:restArgs) <- getArgs
   let k :: Kind = read kindStr
+  let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
+                         (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
 
     S -> do
-      runShimNode dtLib [("localhost","9042")] keyspace
-        (Backend $ "tcp://localhost:" ++ show bePort) 5560
+      runShimNode dtLib [("localhost","9042")] keyspace ns
 
-    C -> runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
+    C -> runSession ns $ do
       key <- liftIO $ newKey
       r::() <- invoke key StockItem ("Organic Milk",2::Int, 20::Int)
       return ()

@@ -3,6 +3,7 @@
 import Codeec.Shim
 import Codeec.ClientMonad
 import Codeec.Marshall
+import Codeec.NameService.Types
 import Codeec.NameService.SimpleBroker
 import Codeec.TH
 
@@ -16,6 +17,7 @@ import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
 
 import MicroBlogDefs
+import MicroBlogCtrts
 import MicroBlogTxns
 
 fePort :: Int
@@ -53,17 +55,18 @@ dtLib = mkDtLib [(AddUser, mkGenOp addUser summarize, $(checkOp AddUser addUserC
 
 main :: IO ()
 main = do
-  (kindStr:_) <- getArgs
+  (kindStr:broker:restArgs) <- getArgs
   let k :: Kind = read kindStr
+  let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
+                         (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
     B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
 
     S -> do
-      runShimNode dtLib [("localhost","9042")] keyspace
-        (Backend $ "tcp://localhost:" ++ show bePort) 5560
+      runShimNode dtLib [("localhost","9042")] keyspace ns
 
-    C -> runSession (Frontend $ "tcp://localhost:" ++ show fePort) $ do
+    C -> runSession ns $ do
       key <- liftIO $ newKey
       r::() <- invoke key AddUser ("Alice","test123")
       return ()
@@ -78,7 +81,7 @@ main = do
       s <- runCommand $ progName ++ " S"
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " C"
-      threadDelay 5000000
+      threadDelay 25000000
       mapM_ terminateProcess [b,s,c]
       runCas pool $ dropTables
 
