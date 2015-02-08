@@ -26,7 +26,7 @@ import Data.Time
 makeLenses ''CacheManager
 makeLenses ''DatatypeLibrary
 
-#define DEBUG
+-- #define DEBUG
 
 debugPrint :: String -> IO ()
 #ifdef DEBUG
