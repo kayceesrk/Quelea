@@ -48,7 +48,7 @@ data ResolutionState = ResolutionState {
 
 makeLenses ''ResolutionState
 
-{- TODO: How to GC a transactional effect?
+{- How to GC a transactional effect?
  -----------------------------------------
  - When GCing a set of effects {a@t1,b@t2} belonging to transactions t1 and t2,
  - one needs to ensure that the transaction markers are preserved after the GC.
@@ -84,7 +84,7 @@ gcDBCore cm ot k gc repeat = do
   -- Split the rows into effects and gc markers
   let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,time,deps,val,txnid) ->
         case txnid of
-          Just _ -> error "gcDB: Cannot handle transactions yet! TODO."
+          Just _ -> error "gcDB: unexpected state."
           Nothing ->
             case val of
               EffectVal bs -> ((sid,sqn,time,deps,bs):effAcc, gcAcc)
