@@ -62,13 +62,11 @@ flipRes EQ = EQ
 flipRes LT = GT
 flipRes GT = LT
 
-
 instance Effectish LWWRegister where
   summarize ctxt =
     case sortBy (\a b -> flipRes $ compare a b) ctxt of
       [] -> [WriteReg_ Nothing 0]
       x:_ -> [x]
-
 
 mkOperations [''LWWRegister]
 $(derive makeSerialize ''Operation)

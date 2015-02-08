@@ -36,9 +36,9 @@ instance CasType TxnID where
   casType _ = CBlob
 
 mkGenOp :: (Effectish eff, Serialize arg, Serialize res)
-          => OpFun eff arg res
-          -> ([eff] -> [eff])
-          -> (GenOpFun, GenSumFun)
+        => OpFun eff arg res
+        -> ([eff] -> [eff])
+        -> (GenOpFun, GenSumFun)
 mkGenOp foo bar = (fun1 foo, mkGenSum bar)
   where
     fun1 foo ctxt arg =

@@ -11,7 +11,7 @@ import Codeec.Marshall
 import Codeec.TH
 #ifdef LBB
   import Codeec.NameService.LoadBalancingBroker
-#elif
+#else
   import Codeec.NameService.SimpleBroker
 #endif
 
