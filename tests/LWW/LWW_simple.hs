@@ -48,7 +48,7 @@ numOpsPerRound :: Num a => a
 numOpsPerRound = 2
 
 printEvery :: Int
-printEvery = 1000
+printEvery = 10
 
 --------------------------------------------------------------------------------
 
@@ -109,7 +109,7 @@ args = Args
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
      <> help "Number of client rounds"
-     <> value "100000")
+     <> value "1000")
   <*> strOption
       ( long "numThreads"
      <> metavar "NUM_THREADS"

@@ -101,7 +101,7 @@ args = Args
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
      <> help "Number of client rounds"
-     <> value "100000")
+     <> value "1000")
   <*> strOption
       ( long "numThreads"
      <> metavar "NUM_THREADS"

@@ -99,12 +99,12 @@ args = Args
       ( long "terminateAfter"
     <> metavar "SECS"
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
-    <> value "10")
+    <> value "60")
   <*> strOption
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
      <> help "Number of client rounds"
-     <> value "100000")
+     <> value "1000")
   <*> strOption
       ( long "numThreads"
      <> metavar "NUM_THREADS"
