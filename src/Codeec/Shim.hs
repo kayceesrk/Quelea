@@ -4,7 +4,7 @@
 
 module Codeec.Shim (
  runShimNode,
- runShimNodeWithGCOpts,
+ runShimNodeWithOpts,
  mkDtLib
 ) where
 
@@ -56,17 +56,18 @@ debugPrint s = do
 debugPrint _ = return ()
 #endif
 
-runShimNodeWithGCOpts :: OperationClass a
-                      => GCSetting
-                      -> DatatypeLibrary a
-                      -> [Server] -> Keyspace -- Cassandra connection info
-                      -> NameService
-                      -> IO ()
-runShimNodeWithGCOpts gcSetting dtLib serverList keyspace ns = do
+runShimNodeWithOpts :: OperationClass a
+                    => GCSetting
+                    -> Int -- fetch update interval
+                    -> DatatypeLibrary a
+                    -> [Server] -> Keyspace -- Cassandra connection info
+                    -> NameService
+                    -> IO ()
+runShimNodeWithOpts gcSetting fetchUpdateInterval dtLib serverList keyspace ns = do
   {- Connection to the Cassandra deployment -}
   pool <- newPool serverList keyspace Nothing
   {- Spawn cache manager -}
-  cache <- initCacheManager pool
+  cache <- initCacheManager pool fetchUpdateInterval
   {- Spawn a pool of workers -}
   replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache gcSetting)
   case gcSetting of
@@ -83,7 +84,7 @@ runShimNode :: OperationClass a
             -> [Server] -> Keyspace -- Cassandra connection info
             -> NameService
             -> IO ()
-runShimNode = runShimNodeWithGCOpts GC_Full
+runShimNode = runShimNodeWithOpts GC_Full cCACHE_THREAD_DELAY
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> GCSetting -> IO ()
 worker dtLib pool cache gcSetting = do

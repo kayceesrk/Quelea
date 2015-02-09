@@ -143,7 +143,8 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
-      runShimNodeWithGCOpts (read $ gcSetting args) dtLib [("localhost","9042")] keyspace ns
+      let fetchUpdateInterval = 100000
+      runShimNodeWithOpts (read $ gcSetting args) 100000 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
@@ -214,7 +215,7 @@ clientCore args delay key someTime avgLat round = do
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
   when (round `mod` printEvery == 0) $ do
-    liftIO . putStrLn $ "Operations = " ++ (show $ round * numOpsPerRound)
+    liftIO . putStrLn $ "Rounds = " ++ (show $ round)
                         ++ if (measureLatency args)
                             then " latency = " ++ show newAvgLat else ""
   return newAvgLat

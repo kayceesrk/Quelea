@@ -55,8 +55,8 @@ debugPrint _ = return ()
 #endif
 
 
-initCacheManager :: Pool -> IO CacheManager
-initCacheManager pool = do
+initCacheManager :: Pool -> Int -> IO CacheManager
+initCacheManager pool fetchUpdateInterval = do
   cache <- newMVar M.empty
   cursor <- newMVar M.empty
   nearestDeps <- newMVar M.empty
@@ -71,15 +71,15 @@ initCacheManager pool = do
   let cm = CacheManager cache cursor nearestDeps lastGCAddr lastGCTime
                         seenTxns hwm drc hotLocs sem blockedList pool
   forkIO $ cacheMgrCore cm
-  forkIO $ signalGenerator sem
+  forkIO $ signalGenerator sem fetchUpdateInterval
   return $ cm
   where
-    signalGenerator semMVar = forever $ do
+    signalGenerator semMVar fetchUpdateInterval = forever $ do
       isEmpty <- isEmptyMVar semMVar
       if isEmpty
       then tryPutMVar semMVar ()
       else return True
-      threadDelay cCACHE_THREAD_DELAY-- 1 second
+      threadDelay fetchUpdateInterval
 
 getInclTxnsAt :: CacheManager -> ObjType -> Key -> IO (S.Set TxnID)
 getInclTxnsAt cm ot k = do

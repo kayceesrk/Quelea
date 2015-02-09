@@ -179,7 +179,8 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
-      runShimNodeWithGCOpts (read $ gcSetting args)  dtLib [("localhost","9042")] keyspace ns
+      let fetchUpdateInterval = 100000
+      runShimNodeWithOpts (read $ gcSetting args) fetchUpdateInterval dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
@@ -189,7 +190,7 @@ run args = do
 
       t1 <- getCurrentTime
       replicateM_ threads $ forkIO $ do
-        avgLatency <- runSession ns $ foldM (clientCore args key delay someTime) 0 [1 .. rounds]
+        (avgLatency,_) <- runSession ns $ foldM (clientCore args key delay someTime) (0,0) [1 .. rounds]
         putMVar mv avgLatency
       totalLat <- foldM (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
       t2 <- getCurrentTime
@@ -236,8 +237,8 @@ reportSignal pool procList mainTid = do
   killThread mainTid
 
 clientCore :: Args -> Key -> Int -> UTCTime -- default arguments
-           -> NominalDiffTime -> Int -> CSN NominalDiffTime
-clientCore args key delay someTime avgLat round = do
+           -> (NominalDiffTime, NominalDiffTime) -> Int -> CSN (NominalDiffTime, NominalDiffTime)
+clientCore args key delay someTime (avgLat,runningAvgLat) round = do
   -- Delay thread if required
   when (delay /= 0) $ liftIO $ threadDelay delay
   -- Perform the operations
@@ -249,10 +250,15 @@ clientCore args key delay someTime avgLat round = do
   let timeDiff = diffUTCTime t2 t1
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
-  when (round `mod` printEvery == 0) $ do
-    liftIO . putStrLn $ "Operations= " ++ (show $ round * numOpsPerRound)
-                        ++ if (measureLatency args) then " latency = " ++ show newAvgLat else ""
-  return newAvgLat
+  if (round `mod` printEvery == 0)
+  then do
+    liftIO . putStrLn $ "Rounds= " ++ (show $ round)
+                        ++ if (measureLatency args) then " running.avg.latency(last 1000) = " ++ show runningAvgLat else ""
+    return (newAvgLat, 0)
+  else do
+    let newRunningAvgLat = ((timeDiff / numOpsPerRound) + (runningAvgLat * (fromIntegral $ (round `mod` printEvery) - 1)))
+                         / (fromIntegral $ round `mod` printEvery)
+    return (newAvgLat, newRunningAvgLat)
 
 getNow :: Args -> UTCTime -> CSN UTCTime
 getNow args someTime =
