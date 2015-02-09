@@ -4,6 +4,7 @@
 
 module Codeec.Shim (
  runShimNode,
+ runShimNodeWithGCOpts,
  mkDtLib
 ) where
 
@@ -55,25 +56,37 @@ debugPrint s = do
 debugPrint _ = return ()
 #endif
 
-runShimNode :: OperationClass a
-            => DatatypeLibrary a
-            -> [Server] -> Keyspace -- Cassandra connection info
-            -> NameService
-            -> IO ()
-runShimNode dtLib serverList keyspace ns = do
+runShimNodeWithGCOpts :: OperationClass a
+                      => GCSetting
+                      -> DatatypeLibrary a
+                      -> [Server] -> Keyspace -- Cassandra connection info
+                      -> NameService
+                      -> IO ()
+runShimNodeWithGCOpts gcSetting dtLib serverList keyspace ns = do
   {- Connection to the Cassandra deployment -}
   pool <- newPool serverList keyspace Nothing
   {- Spawn cache manager -}
   cache <- initCacheManager pool
   {- Spawn a pool of workers -}
-  replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache)
-  {- Join the broker to serve clients -}
-  forkIO $ getServerJoin ns
-  {- Start gcWorker -}
-  gcWorker dtLib cache
+  replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache gcSetting)
+  case gcSetting of
+    No_GC -> getServerJoin ns
+    GC_Mem_Only -> getServerJoin ns
+    otherwise -> do
+      {- Join the broker to serve clients -}
+      forkIO $ getServerJoin ns
+      {- Start gcWorker -}
+      gcWorker dtLib cache
 
-worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
-worker dtLib pool cache = do
+runShimNode :: OperationClass a
+            => DatatypeLibrary a
+            -> [Server] -> Keyspace -- Cassandra connection info
+            -> NameService
+            -> IO ()
+runShimNode = runShimNodeWithGCOpts GC_Full
+
+worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> GCSetting -> IO ()
+worker dtLib pool cache gcSetting = do
   ctxt <- ZMQ.context
   sock <- ZMQ.socket ctxt ZMQ.Rep
   pid <- getProcessID
@@ -98,7 +111,9 @@ worker dtLib pool cache = do
         -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-        maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+        case gcSetting of
+          No_GC -> return ()
+          otherwise -> maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
         return ()
       ReqTxnCommit txid deps -> do
         -- debugPrint $ "Committing transaction " ++ show txid

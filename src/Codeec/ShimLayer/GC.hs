@@ -76,7 +76,7 @@ gcDBCore cm ot k gc repeat = do
   getGCLock ot k gcSid $ cm^.pool
   -- Get time at the start of GC
   currentTime <- getCurrentTime
-  let gcTime = addUTCTime (-1) currentTime
+  let gcTime = currentTime
   lgctMap <- readMVar $ cm^.lastGCTimeMVar
   rows <- case M.lookup (ot,k) lgctMap of
             Nothing -> runCas (cm^.pool) $ cqlReadWithTime ot ALL k
