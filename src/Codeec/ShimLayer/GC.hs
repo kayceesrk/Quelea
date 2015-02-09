@@ -84,7 +84,7 @@ gcDBCore cm ot k gc repeat = do
   -- Split the rows into effects and gc markers
   let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,time,deps,val,txnid) ->
         case txnid of
-          Just _ -> error "gcDB: unexpected state."
+          Just _ -> (effAcc, gcAcc) -- XXX KC; Handle transactions
           Nothing ->
             case val of
               EffectVal bs -> ((sid,sqn,time,deps,bs):effAcc, gcAcc)
