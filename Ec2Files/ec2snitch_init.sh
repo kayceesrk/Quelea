@@ -11,4 +11,7 @@ perl -p -i -e "s/__MYIP/$MYIP/g" cassandra.yaml
 perl -p -i -e "s/__SEEDS/$SEEDS/g" cassandra.yaml
 mv cassandra.yaml /home/ubuntu/dsc-cassandra-2.0.12/conf
 
-## Keyspace -- create keyspace Codeec with replication = { 'class' : 'NetworkTopologyStrategy', 'us-west-2' : 2 }
+## Creating keyspace -- create keyspace Codeec with replication = { 'class' : 'NetworkTopologyStrategy', 'us-west-2' : 2 }
+## Comment: In the above, 'us-west-2' is the datacenter name and 2 is the
+## replication factor. So if you have 5 nodes, the replication factor
+## should be 5.

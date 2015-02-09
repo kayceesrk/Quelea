@@ -29,7 +29,8 @@ Library
     directory,
     tuple,
     derive,
-    ghc-datasize
+    process,
+    optparse-applicative
   Exposed-modules:
     Codeec.NameService.Types
     Codeec.NameService.SimpleBroker
@@ -52,3 +53,8 @@ Library
     Codeec.ShimLayer.GC
   Extensions: CPP
   ghc-options: -Wall -O2 -threaded
+
+-- Executable LWW_txn
+-- main-is:
+--    LWW_txn.hs
+--  ghc-options: -prof -XCPP -O2 -threaded -osuf p_o -hisuf p_hi -fprof-auto "-with-rtsopts=-N -p -s -h -i0.1"

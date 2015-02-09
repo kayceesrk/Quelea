@@ -34,7 +34,6 @@ import qualified Data.Set as S
 import Data.Maybe (fromJust)
 import Data.Tuple.Select
 import Debug.Trace
-import GHC.DataSize
 
 type Effect = ByteString
 
@@ -81,8 +80,11 @@ beginTxn s tk = do
     if (tk == RR)
     then do
       let req :: Request () = ReqSnapshot $ s^.readObjs
-      send (s^.server) [] $ encode req
+      let encodedReq = encode req
+      -- putStrLn $ "beginTxn: req length=" ++ show (B.length encodedReq)
+      send (s^.server) [] encodedReq
       responseBlob <- receive (s^.server)
+      -- putStrLn $ "beginTxn: res length=" ++ show (B.length responseBlob)
       let (ResSnapshot s) = decodeResponse responseBlob
       return $ Just s
     else return Nothing
@@ -130,7 +132,10 @@ invokeInternal getDeps s key operName arg = do
     Left s -> error $ "invoke : decode failure " ++ s
     Right res -> do
       let newSeqMap = M.insert (ot, key) newSeqNo $ s^.seqMap
-      let newReadObjs = S.insert (ot,key) $ s^.readObjs
+      {- XXX KC -}
+      let newReadObjs = if (S.size $ s^.readObjs) > 32
+                        then S.insert (ot,key) $ S.deleteMin $ s^.readObjs
+                        else S.insert (ot,key) $ s^.readObjs
       let partialSessRV = Session (s^.broker) (s^.server) (s^.serverAddr)
                                   (s^.sessid) newSeqMap newReadObjs
       let newLastEff = Just $ TxnDep ot key (s^.sessid) newSeqNo
