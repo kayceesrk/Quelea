@@ -13,6 +13,8 @@ import Codeec.NameService.Types
 import Codeec.NameService.SimpleBroker
 -- import Codeec.NameService.LoadBalancingBroker
 import Codeec.Marshall
+import Language.Haskell.TH 
+import System.IO (hFlush, stdout)
 import Codeec.TH
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
@@ -120,10 +122,30 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(checkOp Deposit depositCtrt)),
-                 (Withdraw, mkGenOp withdraw summarize, $(checkOp Withdraw withdrawCtrt)),
-                 (GetBalance, mkGenOp getBalance summarize, $(checkOp GetBalance getBalanceCtrt))]
+depositA = $(checkOp Deposit depositCtrt)
+withdrawA = $(checkOp Withdraw withdrawCtrt)
+getBalanceA = $(checkOp GetBalance getBalanceCtrt)
 
+{--
+[depositA, withdrawA, getBalanceA] = 
+  $(do 
+      t1 <- runIO getCurrentTime
+      d <- checkOp Deposit depositCtrt
+      w <- checkOp Withdraw withdrawCtrt
+      g <- checkOp GetBalance getBalanceCtrt
+      le <- listE [lift d,w,g]
+      t2 <- runIO getCurrentTime
+      _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
+                (show $ diffUTCTime t2 t1)++"."
+      _ <- runIO $ hFlush stdout
+      return le)
+--}
+
+dtLib = do
+  putStrLn "Hello"
+  return $ mkDtLib [(Deposit, mkGenOp deposit summarize, depositA),
+           (Withdraw, mkGenOp withdraw summarize, withdrawA),
+           (GetBalance, mkGenOp getBalance summarize, getBalanceA)]
 
 run :: Args -> IO ()
 run args = do
@@ -137,6 +159,7 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
+      dtLib <- dtLib
       runShimNode dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
