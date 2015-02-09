@@ -164,7 +164,7 @@ doOp op cache request const = do
       writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const $ sel1 <$> mbtxid
       case mbtxid of
         Nothing -> return $ ResOper (seqno + 1) res Nothing Nothing resDeps
-        Just (_,MAV _ _) -> do
+        Just (_,MAV_TxnPl _ _) -> do
           txns <- getInclTxnsAt cache objType key
           return $ ResOper (seqno + 1) res (Just eff) (Just txns) resDeps
         otherwise -> return $ ResOper (seqno + 1) res (Just eff) Nothing resDeps
@@ -172,18 +172,18 @@ doOp op cache request const = do
   return (result, Prelude.length ctxt)
   where
     buildContext ot k Nothing = getContext cache ot k
-    buildContext ot k (Just (_, RC l)) = do
+    buildContext ot k (Just (_, RC_TxnPl l)) = do
       (ctxtVanilla, depsVanilla) <- buildContext ot k Nothing
       let (el, as) = S.foldl (\(el,as) (addr, eff) ->
                       (eff:el, S.insert addr as)) ([],S.empty) l
       return (el ++ ctxtVanilla, S.union as depsVanilla)
-    buildContext ot k (Just (txid, MAV l txndeps)) = do
+    buildContext ot k (Just (txid, MAV_TxnPl l txndeps)) = do
       res <- doesCacheIncludeTxns cache txndeps
-      if res then buildContext ot k (Just (txid,RC l))
+      if res then buildContext ot k (Just (txid,RC_TxnPl l))
       else do
         fetchTxns cache txndeps
-        buildContext ot k (Just (txid, MAV l txndeps))
-    buildContext ot k (Just (_,RR effSet)) = return $
+        buildContext ot k (Just (txid, MAV_TxnPl l txndeps))
+    buildContext ot k (Just (_,RR_TxnPl effSet)) = return $
       S.foldl (\(el,as) (addr, eff) -> (eff:el, S.insert addr as))
               ([], S.empty) effSet
 

@@ -34,6 +34,7 @@ import qualified Data.Set as S
 import Data.Maybe (fromJust)
 import Data.Tuple.Select
 import Debug.Trace
+import GHC.DataSize
 
 type Effect = ByteString
 
@@ -77,7 +78,7 @@ beginTxn s tk = do
   when (s^.curTxn /= Nothing) $ error "beginTxn: Nested transactions are not supported!"
   txnID <- TxnID <$> randomIO
   snapshot <-
-    if (tk == RepeatableRead)
+    if (tk == RR)
     then do
       let req :: Request () = ReqSnapshot $ s^.readObjs
       send (s^.server) [] $ encode req
@@ -155,9 +156,9 @@ invokeInternal getDeps s key operName arg = do
               let newTxnState = (Just (TxnState txid txnKind newDeps newCache newSeenTxns))
               return (res, visSet, partialSessRV newTxnState newLastEff)
   where
-    getEffectSet (RC es) = Just es
-    getEffectSet (MAV es _) = Just es
-    getEffectSet (RR es) = Just es
+    getEffectSet (RC_TxnPl es) = Just es
+    getEffectSet (MAV_TxnPl es _) = Just es
+    getEffectSet (RR_TxnPl es) = Just es
 
     mkTxnReq ot k Nothing = Nothing
     mkTxnReq ot k (Just ts) =
@@ -167,11 +168,11 @@ invokeInternal getDeps s key operName arg = do
                  Nothing -> S.empty
                  Just s -> s
       in Just $ case ts^.txnKindTS of
-           ReadCommitted ->
-             (txid, RC es)
-           RepeatableRead ->
-             (txid, RR es)
-           MonotonicAtomicView -> (txid, MAV es $ ts^.seenTxnsTS)
+           RC ->
+             (txid, RC_TxnPl es)
+           RR ->
+             (txid, RR_TxnPl es)
+           MAV -> (txid, MAV_TxnPl es $ ts^.seenTxnsTS)
 
 newKey :: IO Key
 newKey = Key . encodeUUID <$> randomIO

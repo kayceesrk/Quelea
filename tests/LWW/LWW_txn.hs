@@ -45,14 +45,12 @@ tableName :: String
 tableName = "LWWRegister"
 
 numOpsPerRound :: Num a => a
-numOpsPerRound = 2
+numOpsPerRound = 10
 
 printEvery :: Int
-printEvery = 1000
+printEvery = 100
 
 --------------------------------------------------------------------------------
-
-data Availability = Eventual | Strong | Causal deriving (Show, Read)
 
 data Kind = Broker | Client | Server
           | Daemon | Drop | Create deriving (Read, Show)
@@ -80,8 +78,8 @@ data Args = Args {
   delayReq :: String,
   -- Measure latency
   measureLatency :: Bool,
-  -- Availability
-  availability :: String
+  -- Ttransaction kind
+  txnKind :: String
 }
 
 args :: Parser Args
@@ -124,44 +122,24 @@ args = Args
       ( long "measureLatency"
      <> help "Measure operation latency")
   <*> strOption
-      ( long "availability"
-     <> metavar "[Eventual|Causal|Strong]"
-     <> help "Availability kind" )
+      ( long "txnKind"
+     <> metavar "[RC|MAV|RR]"
+     <> help "Trasaction kind" )
 -------------------------------------------------------------------------------
 
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
 dtLib = mkDtLib [(HAWrite, mkGenOp writeReg summarize, $(checkOp HAWrite haWriteCtrt)),
-                 (CAUWrite, mkGenOp writeReg summarize, $(checkOp CAUWrite cauWriteCtrt)),
-                 (STWrite, mkGenOp writeReg summarize, $(checkOp STWrite stWriteCtrt)),
-                 (HARead, mkGenOp readReg summarize, $(checkOp HARead haReadCtrt)),
-                 (CAURead, mkGenOp readReg summarize, $(checkOp CAURead cauReadCtrt)),
-                 (STRead, mkGenOp readReg summarize, $(checkOp STRead stReadCtrt))]
+                 (HARead, mkGenOp readReg summarize, $(checkOp HARead haReadCtrt))]
 
 ecRead :: Key -> CSN Int
 ecRead k = invoke k HARead ()
-
-ccRead :: Key -> CSN Int
-ccRead k = invoke k CAURead ()
-
-scRead :: Key -> CSN Int
-scRead k = invoke k STRead ()
 
 ecWrite :: Key -> Int -> CSN ()
 ecWrite k v = do
   t <- liftIO $ getCurrentTime
   invoke k HAWrite (t,v)
-
-ccWrite :: Key -> Int -> CSN ()
-ccWrite k v = do
-  t <- liftIO $ getCurrentTime
-  invoke k CAUWrite (t,v)
-
-scWrite :: Key -> Int -> CSN ()
-scWrite k v = do
-  t <- liftIO $ getCurrentTime
-  invoke k STWrite (t,v)
 
 -------------------------------------------------------------------------------
 
@@ -195,23 +173,27 @@ run args = do
       putStrLn $ "Latency (s) = " ++ (show $ (totalLat / fromIntegral threads))
     Create -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ createTable tableName
+      runCas pool $ do
+        createTable tableName
+        createTxnTable
     Daemon -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ createTable tableName
+      runCas pool $ do
+        createTable tableName
+        createTxnTable
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Broker --brokerAddr " ++ broker
-                        ++ " --availability " ++ (availability args)
+                        ++ " --txnKind " ++ (txnKind args)
       putStrLn "Driver : Starting server"
       s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Server --brokerAddr " ++ broker
-                        ++ " --availability " ++ (availability args)
+                        ++ " --txnKind " ++ (txnKind args)
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Client --brokerAddr " ++ broker
-                        ++ " --availability " ++ (availability args)
+                        ++ " --txnKind " ++ (txnKind args)
                         ++ " --numThreads " ++ (numThreads args)
                         ++ " --numRounds " ++ (numRounds args)
                         ++ " --delayReq " ++ (delayReq args)
@@ -224,31 +206,36 @@ run args = do
       threadDelay (termWait * 1000000)
       -- Woken up..
       mapM_ terminateProcess [b,s,c]
-      runCas pool $ dropTable tableName
+      runCas pool $ do
+        dropTable tableName
+        dropTxnTable
     Drop -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ dropTable tableName
+      runCas pool $ do
+        dropTable tableName
+        dropTxnTable
 
 reportSignal :: Pool -> [ProcessHandle] -> ThreadId -> IO ()
 reportSignal pool procList mainTid = do
   mapM_ terminateProcess procList
-  runCas pool $ dropTable tableName
+  runCas pool $ do
+    dropTable tableName
+    dropTxnTable
   killThread mainTid
 
 clientCore :: Args -> Int -> UTCTime -- default arguments
            -> NominalDiffTime -> Int -> CSN NominalDiffTime
 clientCore args delay someTime avgLat round = do
-  -- Generate key
-  key <- liftIO $ (mkKey . (\i -> i `mod` (100000::Int))) <$> randomIO
   -- Delay thread if required
   when (delay /= 0) $ liftIO $ threadDelay delay
   -- Perform the operations
   t1 <- getNow args someTime
-  randInt <- liftIO $ randomIO
-  case read $ availability args of
-    Eventual -> ecWrite key randInt >> ecRead key
-    Causal -> ccWrite key randInt >> ccRead key
-    Strong -> scWrite key randInt >> scRead key
+  atomically (read $ txnKind args) $ replicateM_ (numOpsPerRound `div` 2) $ do
+    -- Generate key
+    key <- liftIO $ (mkKey . (\i -> i `mod` (100000::Int))) <$> randomIO
+    randInt <- liftIO $ randomIO
+    ecWrite key randInt
+    ecRead key
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
@@ -270,5 +257,5 @@ main = execParser opts >>= run
   where
     opts = info (helper <*> args)
       ( fullDesc
-     <> progDesc "Run the LWW simple benchmark"
-     <> header "LWW Simple -- A benchmark for testing the performance of least-write-wins register" )
+     <> progDesc "Run the LWW transaction benchmark"
+     <> header "LWW transaction -- A benchmark for testing the performance of least-write-wins register transactions" )

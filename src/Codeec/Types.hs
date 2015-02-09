@@ -56,17 +56,17 @@ type GenOpFun = [ByteString] -> ByteString -> (ByteString, Maybe ByteString)
 type GenSumFun = [ByteString] -> [ByteString]
 data Availability = Eventual | Causal | Strong deriving (Show, Eq, Ord)
 
-data TxnKind = ReadCommitted
-             | MonotonicAtomicView
-             | RepeatableRead deriving (Show, Eq, Ord)
+data TxnKind = RC
+             | MAV
+             | RR deriving (Show, Eq, Ord, Read)
 
 instance Show GenOpFun where
   show f = "GenOpFun"
 
 instance Lift TxnKind where
-  lift ReadCommitted = [| ReadCommitted |]
-  lift MonotonicAtomicView = [| MonotonicAtomicView |]
-  lift RepeatableRead = [| RepeatableRead |]
+  lift RC = [| RC |]
+  lift MAV = [| MAV |]
+  lift RR = [| RR |]
 
 instance Lift Availability where
   lift Eventual = [| Eventual |]
@@ -109,10 +109,10 @@ instance Show SessID where
 
 type EffectVal = ByteString
 
-data TxnPayload = RC  {writeBuffer :: S.Set (Addr, EffectVal)}
-                | MAV {writeBuffer :: S.Set (Addr, EffectVal),
+data TxnPayload = RC_TxnPl  {writeBuffer :: S.Set (Addr, EffectVal)}
+                | MAV_TxnPl {writeBuffer :: S.Set (Addr, EffectVal),
                        txnDepsMAV :: S.Set TxnID}
-                | RR {cacheSI :: S.Set (Addr, EffectVal)}
+                | RR_TxnPl {cacheSI :: S.Set (Addr, EffectVal)}
 
 data OperationPayload a = OperationPayload {
   _objTypeReq :: ObjType,

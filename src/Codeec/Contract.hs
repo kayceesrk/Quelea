@@ -39,7 +39,7 @@ module Codeec.Contract (
 
   -- Only for DEBUG
   fol2Z3Ctrt,
-  underMonotonicAtomicView,
+  underMAV,
   dummyZ3Sort
 ) where
 

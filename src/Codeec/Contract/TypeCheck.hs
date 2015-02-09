@@ -9,7 +9,7 @@ module Codeec.Contract.TypeCheck (
   -- Debug Only
   fol2Z3Ctrt,
   dummyZ3Sort,
-  underMonotonicAtomicView
+  underMAV
 ) where
 
 
@@ -479,17 +479,17 @@ isEventuallyConsistent c mkOperSort =
     assertProp "CV_IMPL_CTRT" $ not_ test1
     lift $ res2Bool <$> check
 
-underReadCommitted :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
-underReadCommitted c mkOperSort =
+underRC :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underRC c mkOperSort =
   isValidProto mkOperSort "CTRT" c
 
-underMonotonicAtomicView :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
-underMonotonicAtomicView c mkOperSort = do
+underMAV :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underMAV c mkOperSort = do
     let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 mav c
     isValidProto mkOperSort "MAV_IMPL_CTRT" test1
 
-underRepeatableRead :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
-underRepeatableRead c mkOperSort = do
+underRR :: OperationClass a => Fol a -> Z3 Sort -> IO Bool
+underRR c mkOperSort = do
     let test1 :: Fol () = liftProp . Raw $ mkRawImpl2 rr c
     isValidProto mkOperSort "RR_IMPL_CTRT" test1
 
@@ -498,14 +498,14 @@ classifyTxnContract c info = do
   mkOperSort <- mkMkZ3OperSort
   runIO $ do
     res <- do
-      res <- underReadCommitted c mkOperSort
-      if res then return ReadCommitted
+      res <- underRC c mkOperSort
+      if res then return RC
       else do
-        res <- underMonotonicAtomicView c mkOperSort
-        if res then return MonotonicAtomicView
+        res <- underMAV c mkOperSort
+        if res then return MAV
         else do
-          res <- underRepeatableRead c mkOperSort
-          if res then return RepeatableRead
+          res <- underRR c mkOperSort
+          if res then return RR
           else fail $ info ++ " contract is not well-typed"
     when (head info == '_') (putStrLn $ "classifyTxnContract: " ++ info ++ " is " ++ show res)
     return res
