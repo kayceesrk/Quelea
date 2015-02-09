@@ -28,6 +28,7 @@ import Data.Maybe (fromJust)
 import Data.List (find)
 import Control.Applicative ((<$>))
 import System.IO
+import Data.Time
 
 -------------------------------------------------------------------------------
 -- Types
@@ -496,7 +497,8 @@ underRR c mkOperSort = do
 classifyTxnContract :: OperationClass a => Fol a -> String -> Q TxnKind
 classifyTxnContract c info = do
   mkOperSort <- mkMkZ3OperSort
-  runIO $ do
+  t1 <- runIO getCurrentTime
+  a <- runIO $ do
     res <- do
       res <- underRC c mkOperSort
       if res then return RC
@@ -507,13 +509,18 @@ classifyTxnContract c info = do
           res <- underRR c mkOperSort
           if res then return RR
           else fail $ info ++ " contract is not well-typed"
-    when (head info == '_') (putStrLn $ "classifyTxnContract: " ++ info ++ " is " ++ show res)
     return res
+  t2 <- runIO getCurrentTime
+  _ <- runIO $ putStrLn $ info ++ " classified as " ++ (show a) 
+      ++" in "++(show $ diffUTCTime t2 t1)++"."
+  _ <- runIO $ hFlush stdout
+  return a
 
 classifyOperContract :: OperationClass a => Contract a -> String -> Q Availability
 classifyOperContract c info = do
   mkOperSort <- mkMkZ3OperSort
-  runIO $ do
+  t1 <- runIO (getCurrentTime)
+  a <- runIO $ do
     isWt <- isWellTyped c mkOperSort
     if not isWt then fail $ info ++ " contract is not well-typed"
     else do
@@ -526,6 +533,10 @@ classifyOperContract c info = do
           res <- isStronglyConsistent c mkOperSort
           if res then return Strong
           else fail $ info ++ " -- strange contract"
+  t2 <- runIO (getCurrentTime)
+  _ <- runIO $ putStrLn (info ++ " classified as "++(show a)++" in "++
+            (show $ diffUTCTime t2 t1)++".")
+  return a
 
 isValidProto :: OperationClass a => Z3 Sort -> String -> Fol a -> IO Bool
 isValidProto mkOperSort str c = typecheck mkOperSort $ do

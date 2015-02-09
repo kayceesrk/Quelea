@@ -14,6 +14,7 @@ import Language.Haskell.TH
 import Codeec.Marshall
 import Codeec.Shim
 import Language.Haskell.TH.Syntax (lift)
+import Debug.Trace
 
 mkOperations :: [Name] -> Q [Dec]
 mkOperations l = do
