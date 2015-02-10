@@ -106,8 +106,8 @@ worker dtLib pool cache gcSetting = do
         -- debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
         (result, ctxtSize) <- case av of
           Eventual -> doOp op cache req ONE
-          Causal -> processStickyOp req op cache
-          Strong -> processUnOp req op cache pool
+          Causal -> processCausalOp req op cache
+          Strong -> processStrongOp req op cache pool
         ZMQ.send sock [] $ encode result
         -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
@@ -127,7 +127,7 @@ worker dtLib pool cache gcSetting = do
               if S.member k objs then M.insert k v m else m) M.empty snapshot
         ZMQ.send sock [] $ encode $ ResSnapshot filteredSnapshot
   where
-    processStickyOp req op cache =
+    processCausalOp req op cache =
       -- Check whether this is the first effect in the session <= previous
       -- sequence number is 0.
       if req^.sqnReq == 0
@@ -148,12 +148,12 @@ worker dtLib pool cache gcSetting = do
           else do
             -- Wait till next cache refresh and repeat the process again
             waitForCacheRefresh cache ot k
-            processStickyOp req op cache
-    processUnOp req op cache pool = do
+            processCausalOp req op cache
+    processStrongOp req op cache pool = do
       let (ot, k, sid) = (req^.objTypeReq, req^.keyReq, req^.sidReq)
       -- Get Lock
       getLock ot k sid pool
-      -- debugPrint $ "processUnOp: obtained lock"
+      -- debugPrint $ "processStrongOp: obtained lock"
       -- Read latest values at the key - under ALL
       fetchUpdates cache ALL [(ot,k)]
       -- Perform the op
