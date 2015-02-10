@@ -1,6 +1,6 @@
 EXE=LWW_simple LWW_txn LWW_1key
 
-all: LWW_simple LWW_txn
+all: $(EXE)
 
 LWW_simple: LWW_simple.hs
 	ghc -threaded LWW_simple.hs
