@@ -59,7 +59,7 @@ data Availability = Eventual | Causal | Strong deriving (Show, Eq, Ord)
 
 data TxnKind = RC
              | MAV
-             | RR deriving (Show, Eq, Ord, Read)
+             | RR deriving (Eq, Ord, Read)
 
 instance Show GenOpFun where
   show f = "GenOpFun"
