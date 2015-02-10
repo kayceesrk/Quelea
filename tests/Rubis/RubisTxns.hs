@@ -11,7 +11,9 @@ module RubisTxns (
   concludeAuction,
   showMyAuctions,
 
+  BidResult(..),
   bidForItem,
+  amIMaxBidder,
   cancelMyBid,
   showMyBids,
 ) where
@@ -47,27 +49,30 @@ newItem desc minPrice = do
 getItem :: ItemID -> CSN (Maybe (String {- desc -}, Int {- min price -}, Int {- max bid -}))
 getItem iid = invoke (mkKey $ iid) ShowItem ()
 
+
+data BidResult = ItemGone | PriceLow | BidSuccess BidID
+
 -- User places a bid for ItemID. The bid is placed only if the item is
 -- still available and the bid amount is greater than min price
 -- decided by the seller.
 -- User won't be billed until he wins the auction.
-bidForItem :: WalletID -> ItemID -> Int -> CSN BidID
+bidForItem :: WalletID -> ItemID -> Int -> CSN BidResult
 bidForItem wid id amt =
   atomically ($(checkTxn "_bidForItemTxn" bidForItemTxnCtrt)) $ do
     resOp  <- getItem id
-    let (desc,mp,maxb) = case resOp of
-                            Just x -> x
-                            Nothing -> error "Sorry, Item not available anymore"
-    let _ = if amt >= mp then () else error "Bid amount less than min price"
-    let wkey = mkKey wid
-    bidID <- liftIO $ BidID <$> randomIO
-    let bkey = mkKey bidID
-    let ikey = mkKey id
-    r::() <- invoke bkey AddBid (wid,id,amt)
-    r::() <- invoke ikey AddItemBid bidID
-    r::() <- invoke wkey AddWalletBid bidID
-    if amt>maxb then invoke ikey UpdateMaxBid (amt) else return ()
-    return bidID
+    case resOp of
+      Nothing -> return $ ItemGone
+      Just (desc, mp, maxb) -> do
+        when (amt < mp) $ error "Bid amount less than min price"
+        if amt > maxb
+        then do
+          bidID <- liftIO $ BidID <$> randomIO
+          r::() <- invoke (mkKey bidID) AddBid (wid,id,amt)
+          r::() <- invoke (mkKey id) AddItemBid bidID
+          r::() <- invoke (mkKey wid) AddWalletBid bidID
+          r::() <- invoke (mkKey id) UpdateMaxBid amt
+          return $ BidSuccess bidID
+        else return $ PriceLow
 
 bidIdFold :: [(ItemID,Int)] -> BidID -> CSN [(ItemID,Int)]
 bidIdFold acc (bidID) = do
@@ -129,11 +134,11 @@ showMyAuctions wid =
 
 -- For each bidID in bidIDs, query details of the bidID, and determine
 -- maxbidder.
--- Note: Two invocations of getMaxBid with same list of bidIDs may
+-- Note: Two invocations of getMaxBidFromList with same list of bidIDs may
 -- return different maxbidder. This happens if maxbidder from previous
 -- invocation has cancelled his bid meanwhile.
-getMaxBid :: [BidID] -> CSN (Maybe (BidID,WalletID, Int{-maxbid-}))
-getMaxBid bidIDs = foldM f Nothing bidIDs
+getMaxBidFromList :: [BidID] -> CSN (Maybe (BidID,WalletID, Int{-maxbid-}))
+getMaxBidFromList bidIDs = foldM f Nothing bidIDs
   where
     f accOp bidID = do
       (resOp::Maybe (WalletID,ItemID,Int))<- invoke (mkKey bidID) GetBid ()
@@ -148,7 +153,7 @@ getMaxBid bidIDs = foldM f Nothing bidIDs
 -- monotonically decreases.
 billBestBidder :: [BidID] -> CSN Int
 billBestBidder bidIDs = do
-  resOp <- getMaxBid bidIDs
+  resOp <- getMaxBidFromList bidIDs
   case resOp of
     Nothing -> return 0
     Just (bidID,wid,maxbid) ->
@@ -184,3 +189,13 @@ concludeAuction wID itemID = do
     amt::Int <- billBestBidder bidIDs
     r::() <- if amt>0 then invoke wkey DepositToWallet (amt) else return ()
     return amt
+
+
+amIMaxBidder :: ItemID -> WalletID -> CSN Bool
+amIMaxBidder iid wid = do
+  bidIDs <- invoke (mkKey iid) GetBidsByItem ()
+  maxInfo <- getMaxBidFromList bidIDs
+  case maxInfo of
+    Nothing -> return False
+    Just (_,maxWid,_) -> return $ wid == maxWid
+

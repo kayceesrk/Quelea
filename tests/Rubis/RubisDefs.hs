@@ -64,7 +64,7 @@ import Data.List (groupBy, find)
 --------------------------------------------------------------------------------
 -- Item table : key = ItemID
 
-newtype ItemID = ItemID Int deriving (Eq, Ord)
+newtype ItemID = ItemID Int deriving (Eq, Ord, Show)
 
 data ItemEffect = ShowItem_
                 | StockItem_ String{- Desc-} Int{- MinPrice -} Int{- MaxBid -}
@@ -349,7 +349,7 @@ depositToWalletCtrt = (trueCtrt :: Contract Operation)
 -- As usual, withdraw has to be total-order
 withdrawFromWalletCtrt :: Contract Operation
 withdrawFromWalletCtrt x = forallQ_ [WithdrawFromWallet] $ \a ->
-                              liftProp $ vis a x ∨ vis x a
+                              liftProp $ vis a x ∨ vis x a ∨ sameEff a x
 
 addBidCtrt :: Contract Operation
 addBidCtrt = trueCtrt

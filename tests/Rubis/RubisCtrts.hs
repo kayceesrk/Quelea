@@ -25,7 +25,7 @@ showMyBidsTxnCtrt = liftProp $ true
 -- AddItemBid from transaction T')
 cancelBidTxnCtrt :: Fol Operation
 cancelBidTxnCtrt = forallQ4_ [CancelBid] [RemoveItemBid, RemoveWalletBid]
-                             [AddBid] [AddItemBid, AddWalletBid] 
+                             [AddBid] [AddItemBid, AddWalletBid]
                              $ \c d a b -> liftProp $ trans (SameTxn c d) (SameTxn a b) ∧
                                             so c d ∧ sameObj b d ∧ vis a c ⇒ vis b d
 
@@ -41,7 +41,7 @@ showMyAuctionsTxnCtrt = liftProp $ true
 -- sees another withdraw, AddBid in this
 -- transaction always sees all CancelBids
 concludeAuctionTxnCtrt :: Fol Operation
-concludeAuctionTxnCtrt = forallQ4_ [WithdrawFromWallet] [GetBid] 
+concludeAuctionTxnCtrt = forallQ4_ [WithdrawFromWallet] [GetBid]
                                    [WithdrawFromWallet] [CancelBid]
                              $ \c d a b -> liftProp $ trans (SameTxn c d) (SameTxn a b) ∧
                                             so c d ∧ sameObj b d ∧ vis a c ⇒ vis b d
