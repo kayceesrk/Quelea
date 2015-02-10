@@ -142,10 +142,9 @@ getBalanceA = $(checkOp GetBalance getBalanceCtrt)
 --}
 
 dtLib = do
-  putStrLn "Hello"
   return $ mkDtLib [(Deposit, mkGenOp deposit summarize, depositA),
-           (Withdraw, mkGenOp withdraw summarize, withdrawA),
-           (GetBalance, mkGenOp getBalance summarize, getBalanceA)]
+                    (Withdraw, mkGenOp withdraw summarize, withdrawA),
+                    (GetBalance, mkGenOp getBalance summarize, getBalanceA)]
 
 save :: Key {- acc 1 -} -> Key {- acc 2 -} -> Int -> CSN ()
 save current savings amt = do
