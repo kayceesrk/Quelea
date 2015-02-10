@@ -7,6 +7,8 @@ import Codeec.NameService.Types
 import Codeec.NameService.SimpleBroker
 import Codeec.TH
 
+import Language.Haskell.TH 
+import Language.Haskell.TH.Syntax (Exp (..))
 import System.Process (runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Database.Cassandra.CQL
@@ -15,6 +17,8 @@ import Data.Text (pack)
 import Codeec.Types (summarize)
 import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
+import Data.Time
+import System.IO (hFlush, stdout)
 
 import MicroBlogDefs
 import MicroBlogCtrts
@@ -29,34 +33,88 @@ bePort = 5559
 
 data Kind = B | C | S | D | Drop deriving (Read, Show)
 
+[
+  addUserCtrtA,
+  addUsernameCtrtA,
+  getUserIDCtrtA,
+  getUserInfoCtrtA,
+  addFollowerCtrtA,
+  remFollowerCtrtA,
+  addFollowingCtrtA,
+  remFollowingCtrtA,
+  addBlocksCtrtA,
+  addIsBlockedByCtrtA,
+  getBlocksCtrtA,
+  getIsBlockedByCtrtA,
+  getFollowersCtrtA,
+  getFollowingCtrtA,
+  addTweetCtrtA,
+  getTweetCtrtA,
+  addToTimelineCtrtA,
+  getTweetsInTimelineCtrtA,
+  addToUserlineCtrtA,
+  getTweetsInUserlineCtrtA ] = 
+    $(do 
+        t1 <- runIO getCurrentTime
+        a <- (checkOp AddUser addUserCtrt)
+        b <- (checkOp AddUsername addUsernameCtrt)
+        c <- (checkOp GetUserID getUserIDCtrt)
+        d <- (checkOp GetUserInfo getUserInfoCtrt)
+        e <- (checkOp AddFollower addFollowerCtrt)
+        f <- (checkOp RemFollower remFollowerCtrt)
+        g <- (checkOp AddFollowing addFollowingCtrt)
+        h <- (checkOp RemFollowing remFollowingCtrt)
+        i <- (checkOp Blocks addBlocksCtrt)
+        j <- (checkOp IsBlockedBy addIsBlockedByCtrt)
+        k <- (checkOp GetBlocks getBlocksCtrt)
+        l <- (checkOp GetIsBlockedBy getIsBlockedByCtrt)
+        m <- (checkOp GetFollowers getFollowersCtrt)
+        n <- (checkOp GetFollowing getFollowingCtrt)
+        o <- (checkOp NewTweet addTweetCtrt)
+        p <- (checkOp GetTweet getTweetCtrt)
+        q <- (checkOp NewTweetTL addToTimelineCtrt)
+        r <- (checkOp GetTweetsInTL getTweetsInTimelineCtrt)
+        s <- (checkOp NewTweetUL addToUserlineCtrt)
+        t <- (checkOp GetTweetsInUL getTweetsInUserlineCtrt)
+        le <- return $ (ListE::[Exp] -> Exp) 
+                [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t]
+        t2 <- runIO getCurrentTime
+        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+        _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
+                  (show $ diffUTCTime t2 t1)++"."
+        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+        _ <- runIO $ hFlush stdout
+        return le)
+
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "MicroBlog"
 
-dtLib = mkDtLib [(AddUser, mkGenOp addUser summarize, $(checkOp AddUser addUserCtrt)),
-                 (AddUsername, mkGenOp addUsername summarize, $(checkOp AddUsername addUsernameCtrt)),
-                 (GetUserID, mkGenOp getUserID summarize, $(checkOp GetUserID getUserIDCtrt)),
-                 (GetUserInfo, mkGenOp getUserInfo summarize, $(checkOp GetUserInfo getUserInfoCtrt)),
-                 (AddFollower, mkGenOp addFollower summarize, $(checkOp AddFollower addFollowerCtrt)),
-                 (RemFollower, mkGenOp remFollower summarize, $(checkOp RemFollower remFollowerCtrt)),
-                 (AddFollowing, mkGenOp addFollowing summarize, $(checkOp AddFollowing addFollowingCtrt)),
-                 (RemFollowing, mkGenOp remFollowing summarize, $(checkOp RemFollowing remFollowingCtrt)),
-                 (Blocks, mkGenOp addBlocks summarize, $(checkOp Blocks addBlocksCtrt)),
-                 (IsBlockedBy, mkGenOp addIsBlockedBy summarize, $(checkOp IsBlockedBy addIsBlockedByCtrt)),
-                 (GetBlocks, mkGenOp getBlocks summarize, $(checkOp GetBlocks getBlocksCtrt)),
-                 (GetIsBlockedBy, mkGenOp getIsBlockedBy summarize, $(checkOp GetIsBlockedBy getIsBlockedByCtrt)),
-                 (GetFollowers, mkGenOp getFollowers summarize, $(checkOp GetFollowers getFollowersCtrt)),
-                 (GetFollowing, mkGenOp getFollowing summarize, $(checkOp GetFollowing getFollowingCtrt)),
-                 (NewTweet, mkGenOp addTweet summarize, $(checkOp NewTweet addTweetCtrt)),
-                 (GetTweet, mkGenOp getTweet summarize, $(checkOp GetTweet getTweetCtrt)),
-                 (NewTweetTL, mkGenOp addToTimeline summarize, $(checkOp NewTweetTL addToTimelineCtrt)),
-                 (GetTweetsInTL, mkGenOp getTweetsInTimeline summarize, $(checkOp GetTweetsInTL getTweetsInTimelineCtrt)),
-                 (NewTweetUL, mkGenOp addToUserline summarize, $(checkOp NewTweetUL addToUserlineCtrt)),
-                 (GetTweetsInUL, mkGenOp getTweetsInUserline summarize, $(checkOp GetTweetsInUL getTweetsInUserlineCtrt))]
+dtLib = do
+  return $ mkDtLib [(AddUser, mkGenOp addUser summarize, addUserCtrtA),
+                    (AddUsername, mkGenOp addUsername summarize, addUsernameCtrtA),
+                    (GetUserID, mkGenOp getUserID summarize, getUserIDCtrtA),
+                    (GetUserInfo, mkGenOp getUserInfo summarize, getUserInfoCtrtA),
+                    (AddFollower, mkGenOp addFollower summarize, addFollowerCtrtA),
+                    (RemFollower, mkGenOp remFollower summarize, remFollowerCtrtA),
+                    (AddFollowing, mkGenOp addFollowing summarize, addFollowingCtrtA),
+                    (RemFollowing, mkGenOp remFollowing summarize, remFollowingCtrtA),
+                    (Blocks, mkGenOp addBlocks summarize, addBlocksCtrtA),
+                    (IsBlockedBy, mkGenOp addIsBlockedBy summarize, addIsBlockedByCtrtA),
+                    (GetBlocks, mkGenOp getBlocks summarize, getBlocksCtrtA),
+                    (GetIsBlockedBy, mkGenOp getIsBlockedBy summarize, getIsBlockedByCtrtA),
+                    (GetFollowers, mkGenOp getFollowers summarize, getFollowersCtrtA),
+                    (GetFollowing, mkGenOp getFollowing summarize, getFollowingCtrtA),
+                    (NewTweet, mkGenOp addTweet summarize, addTweetCtrtA),
+                    (GetTweet, mkGenOp getTweet summarize, getTweetCtrtA),
+                    (NewTweetTL, mkGenOp addToTimeline summarize, addToTimelineCtrtA),
+                    (GetTweetsInTL, mkGenOp getTweetsInTimeline summarize, getTweetsInTimelineCtrtA),
+                    (NewTweetUL, mkGenOp addToUserline summarize, addToUserlineCtrtA),
+                    (GetTweetsInUL, mkGenOp getTweetsInUserline summarize, getTweetsInUserlineCtrtA)]
 
 main :: IO ()
 main = do
   (kindStr:broker:restArgs) <- getArgs
-  let k :: Kind = read kindStr
+  let k = read kindStr
   let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
                          (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
@@ -64,6 +122,7 @@ main = do
                      (Backend $ "tcp://*:" ++ show bePort)
 
     S -> do
+      dtLib <- dtLib
       runShimNode dtLib [("localhost","9042")] keyspace ns
 
     C -> runSession ns $ do

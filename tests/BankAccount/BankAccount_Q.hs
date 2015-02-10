@@ -14,6 +14,7 @@ import Codeec.NameService.SimpleBroker
 -- import Codeec.NameService.LoadBalancingBroker
 import Codeec.Marshall
 import Language.Haskell.TH 
+import Language.Haskell.TH.Syntax
 import System.IO (hFlush, stdout)
 import Codeec.TH
 import Database.Cassandra.CQL
@@ -122,27 +123,22 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-depositA = $(checkOp Deposit depositCtrt)
-withdrawA = $(checkOp Withdraw withdrawCtrt)
-getBalanceA = $(checkOp GetBalance getBalanceCtrt)
-
-{--
 [depositA, withdrawA, getBalanceA] = 
   $(do 
       t1 <- runIO getCurrentTime
       d <- checkOp Deposit depositCtrt
       w <- checkOp Withdraw withdrawCtrt
       g <- checkOp GetBalance getBalanceCtrt
-      le <- listE [lift d,w,g]
+      le <- return $ (ListE::[Exp] -> Exp) [d, w, g]
       t2 <- runIO getCurrentTime
+      _ <- runIO $ putStrLn $ "----------------------------------------------------------"
       _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
                 (show $ diffUTCTime t2 t1)++"."
+      _ <- runIO $ putStrLn $ "----------------------------------------------------------"
       _ <- runIO $ hFlush stdout
       return le)
---}
 
 dtLib = do
-  putStrLn "Hello"
   return $ mkDtLib [(Deposit, mkGenOp deposit summarize, depositA),
            (Withdraw, mkGenOp withdraw summarize, withdrawA),
            (GetBalance, mkGenOp getBalance summarize, getBalanceA)]
