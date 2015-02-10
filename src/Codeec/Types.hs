@@ -24,6 +24,7 @@ module Codeec.Types (
   TxnID(..),
   TxnDep(..),
   TxnDepSet(..),
+  GCSetting(..),
   SeqNo,
   knownUUID,
 
@@ -173,3 +174,5 @@ newtype Deps = Deps (S.Set Addr) deriving (Show, Eq)
 
 knownUUID :: UUID
 knownUUID = fromJust $ fromString $ "123e4567-e89b-12d3-a456-426655440000"
+
+data GCSetting = No_GC | GC_Mem_Only | GC_Full deriving (Read, Show)

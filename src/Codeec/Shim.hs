@@ -4,6 +4,7 @@
 
 module Codeec.Shim (
  runShimNode,
+ runShimNodeWithOpts,
  mkDtLib
 ) where
 
@@ -55,25 +56,38 @@ debugPrint s = do
 debugPrint _ = return ()
 #endif
 
+runShimNodeWithOpts :: OperationClass a
+                    => GCSetting
+                    -> Int -- fetch update interval
+                    -> DatatypeLibrary a
+                    -> [Server] -> Keyspace -- Cassandra connection info
+                    -> NameService
+                    -> IO ()
+runShimNodeWithOpts gcSetting fetchUpdateInterval dtLib serverList keyspace ns = do
+  {- Connection to the Cassandra deployment -}
+  pool <- newPool serverList keyspace Nothing
+  {- Spawn cache manager -}
+  cache <- initCacheManager pool fetchUpdateInterval
+  {- Spawn a pool of workers -}
+  replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache gcSetting)
+  case gcSetting of
+    No_GC -> getServerJoin ns
+    GC_Mem_Only -> getServerJoin ns
+    otherwise -> do
+      {- Join the broker to serve clients -}
+      forkIO $ getServerJoin ns
+      {- Start gcWorker -}
+      gcWorker dtLib cache
+
 runShimNode :: OperationClass a
             => DatatypeLibrary a
             -> [Server] -> Keyspace -- Cassandra connection info
             -> NameService
             -> IO ()
-runShimNode dtLib serverList keyspace ns = do
-  {- Connection to the Cassandra deployment -}
-  pool <- newPool serverList keyspace Nothing
-  {- Spawn cache manager -}
-  cache <- initCacheManager pool
-  {- Spawn a pool of workers -}
-  replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache)
-  {- Join the broker to serve clients -}
-  forkIO $ getServerJoin ns
-  {- Start gcWorker -}
-  gcWorker dtLib cache
+runShimNode = runShimNodeWithOpts GC_Full cCACHE_THREAD_DELAY
 
-worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> IO ()
-worker dtLib pool cache = do
+worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> GCSetting -> IO ()
+worker dtLib pool cache gcSetting = do
   ctxt <- ZMQ.context
   sock <- ZMQ.socket ctxt ZMQ.Rep
   pid <- getProcessID
@@ -92,13 +106,15 @@ worker dtLib pool cache = do
         -- debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
         (result, ctxtSize) <- case av of
           Eventual -> doOp op cache req ONE
-          Causal -> processStickyOp req op cache
-          Strong -> processUnOp req op cache pool
+          Causal -> processCausalOp req op cache
+          Strong -> processStrongOp req op cache pool
         ZMQ.send sock [] $ encode result
         -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
         let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
-        maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
+        case gcSetting of
+          No_GC -> return ()
+          otherwise -> maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun
         return ()
       ReqTxnCommit txid deps -> do
         -- debugPrint $ "Committing transaction " ++ show txid
@@ -111,7 +127,7 @@ worker dtLib pool cache = do
               if S.member k objs then M.insert k v m else m) M.empty snapshot
         ZMQ.send sock [] $ encode $ ResSnapshot filteredSnapshot
   where
-    processStickyOp req op cache =
+    processCausalOp req op cache =
       -- Check whether this is the first effect in the session <= previous
       -- sequence number is 0.
       if req^.sqnReq == 0
@@ -132,12 +148,12 @@ worker dtLib pool cache = do
           else do
             -- Wait till next cache refresh and repeat the process again
             waitForCacheRefresh cache ot k
-            processStickyOp req op cache
-    processUnOp req op cache pool = do
+            processCausalOp req op cache
+    processStrongOp req op cache pool = do
       let (ot, k, sid) = (req^.objTypeReq, req^.keyReq, req^.sidReq)
       -- Get Lock
       getLock ot k sid pool
-      -- debugPrint $ "processUnOp: obtained lock"
+      -- debugPrint $ "processStrongOp: obtained lock"
       -- Read latest values at the key - under ALL
       fetchUpdates cache ALL [(ot,k)]
       -- Perform the op

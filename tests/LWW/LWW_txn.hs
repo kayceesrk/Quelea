@@ -102,7 +102,7 @@ args = Args
       ( long "terminateAfter"
     <> metavar "SECS"
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
-    <> value "10")
+    <> value "600")
   <*> strOption
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
@@ -165,7 +165,9 @@ run args = do
 
       t1 <- getCurrentTime
       replicateM_ threads $ forkIO $ do
-        avgLatency <- runSession ns $ foldM (clientCore args delay someTime) 0 [1 .. rounds]
+        avgLatency <- runSession ns $ do
+          liftIO $ putStrLn $ "client running..."
+          foldM (clientCore args delay someTime) 0 [1 .. rounds]
         putMVar mv avgLatency
       totalLat <- foldM (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
       t2 <- getCurrentTime

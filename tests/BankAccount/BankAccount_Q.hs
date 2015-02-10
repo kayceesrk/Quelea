@@ -123,8 +123,8 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-[depositA, withdrawA, getBalanceA] = 
-  $(do 
+[depositA, withdrawA, getBalanceA] =
+  $(do
       t1 <- runIO getCurrentTime
       d <- checkOp Deposit depositCtrt
       w <- checkOp Withdraw withdrawCtrt
@@ -140,8 +140,23 @@ keyspace = Keyspace $ pack "Codeec"
 
 dtLib = do
   return $ mkDtLib [(Deposit, mkGenOp deposit summarize, depositA),
-           (Withdraw, mkGenOp withdraw summarize, withdrawA),
-           (GetBalance, mkGenOp getBalance summarize, getBalanceA)]
+                    (Withdraw, mkGenOp withdraw summarize, withdrawA),
+                    (GetBalance, mkGenOp getBalance summarize, getBalanceA)]
+
+save :: Key {- acc 1 -} -> Key {- acc 2 -} -> Int -> CSN ()
+save current savings amt = do
+  let x = $(checkTxn "saveTxn" saveTxnCtrt)
+  atomically x $ do
+    b <- invoke current Withdraw amt
+    when b $ invoke savings Deposit amt
+
+totalBalance :: Key {- acc 1 -} -> Key {- acc 2 -} -> CSN Int
+totalBalance current savings = do
+  let x = $(checkTxn "totalBalanceTxn" totalBalanceTxnCtrt)
+  atomically x $ do
+    b1 <- invoke current GetBalance ()
+    b2 <- invoke savings GetBalance ()
+    return $ b1 + b2
 
 run :: Args -> IO ()
 run args = do

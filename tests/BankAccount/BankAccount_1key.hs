@@ -40,7 +40,7 @@ tableName :: String
 tableName = "BankAccount"
 
 numOpsPerRound :: Num a => a
-numOpsPerRound = 3
+numOpsPerRound = 2
 
 printEvery :: Int
 printEvery = 1000
@@ -72,7 +72,9 @@ data Args = Args {
   -- Delay between client requests in microseconds. Used to control throughput.
   delayReq :: String,
   -- Measure latency
-  measureLatency :: Bool
+  measureLatency :: Bool,
+  -- GC setting
+  gcSetting :: String
 }
 
 args :: Parser Args
@@ -95,7 +97,7 @@ args = Args
       ( long "terminateAfter"
     <> metavar "SECS"
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
-    <> value "60")
+    <> value "600")
   <*> strOption
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
@@ -114,6 +116,11 @@ args = Args
   <*> switch
       ( long "measureLatency"
      <> help "Measure operation latency" )
+  <*> strOption
+      ( long "gcSetting"
+     <> metavar "[No_GC|GC_Mem_Only|GC_Full]"
+     <> help "Control the summarization process. GC_Full summarizes both in mem and disk."
+     <> value "GC_Full" )
 -------------------------------------------------------------------------------
 
 keyspace :: Keyspace
@@ -136,7 +143,8 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
-      runShimNode dtLib [("localhost","9042")] keyspace ns
+      let fetchUpdateInterval = 100000
+      runShimNodeWithOpts (read $ gcSetting args) 100000 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
@@ -165,6 +173,7 @@ run args = do
       putStrLn "Driver : Starting server"
       s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Server --brokerAddr " ++ broker
+                        ++ " --gcSetting " ++ (gcSetting args)
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Client --brokerAddr " ++ broker
@@ -198,8 +207,7 @@ clientCore args delay key someTime avgLat round = do
   when (delay /= 0) $ liftIO $ threadDelay delay
   -- Perform the operations
   t1 <- getNow args someTime
-  r::() <- invoke key Deposit (2::Int)
-  r::() <- invoke key Withdraw (1::Int)
+  r::() <- invoke key Deposit (1::Int)
   r :: Int <- invoke key GetBalance ()
   t2 <- getNow args someTime
   -- Calculate new latency
@@ -207,10 +215,9 @@ clientCore args delay key someTime avgLat round = do
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
   when (round `mod` printEvery == 0) $ do
-    liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
+    liftIO . putStrLn $ "Rounds = " ++ (show $ round)
                         ++ if (measureLatency args)
-                            then " latency = " ++ show newAvgLat
-                            else ""
+                            then " latency = " ++ show newAvgLat else ""
   return newAvgLat
 
 getNow :: Args -> UTCTime -> CSN UTCTime

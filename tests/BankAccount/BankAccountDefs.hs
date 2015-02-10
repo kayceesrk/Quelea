@@ -5,6 +5,7 @@ module BankAccountDefs (
   deposit, depositCtrt,
   withdraw, withdrawCtrt,
   getBalance, getBalanceCtrt,
+  saveTxnCtrt, totalBalanceTxnCtrt,
   Operation(..),
   summarize
 ) where
@@ -73,3 +74,12 @@ withdrawCtrt x = forallQ_ [Deposit] $ \a -> forallQ_ [Withdraw] $ \b ->
 getBalanceCtrt :: Contract Operation
 getBalanceCtrt x = forallQ_ [Deposit] $ \a -> forallQ_ [Withdraw] $ \b -> liftProp $
                       (vis a b ∧ vis b x) ⇒ vis a x
+
+--------------------------------------------------------------------------------
+
+saveTxnCtrt :: Fol Operation
+saveTxnCtrt = liftProp $ true
+
+totalBalanceTxnCtrt :: Fol Operation
+totalBalanceTxnCtrt = forallQ4_ [GetBalance] [GetBalance] [Deposit, Withdraw] [Deposit, Withdraw] $ \a b c d -> liftProp $
+                        trans (SameTxn a b) (SameTxn c d) ∧ vis c a ∧ sameObj d b ⇒ vis d b
