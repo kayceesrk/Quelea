@@ -10,9 +10,9 @@ import Codeec.Types (summarize)
 import Codeec.Marshall
 import Codeec.TH
 #ifdef LBB
-  import Codeec.NameService.LoadBalancingBroker
+import Codeec.NameService.LoadBalancingBroker
 #else
-  import Codeec.NameService.SimpleBroker
+import Codeec.NameService.SimpleBroker
 #endif
 
 

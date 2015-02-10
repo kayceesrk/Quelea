@@ -51,8 +51,8 @@ main = do
       runShimNode dtLib [("localhost","9042")] keyspace ns
 
     C -> runSession ns $ do
-      key <- liftIO $ newKey
-      r::() <- invoke key StockItem ("Organic Milk",2::Int, 20::Int)
+      milkKey <- liftIO $ newKey
+      r::() <- invoke milkKey StockItem ("Organic Milk",2::Int, 20::Int)
       return ()
 
     D -> do
