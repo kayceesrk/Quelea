@@ -138,6 +138,20 @@ keyspace = Keyspace $ pack "Codeec"
       _ <- runIO $ hFlush stdout
       return le)
 
+[saveTxnCtrtA, totalBalanceTxnCtrtA] =
+  $(do
+      t1 <- runIO getCurrentTime
+      st <- checkTxn "saveTxn" saveTxnCtrt
+      tbt <- checkTxn "totalBalanceTxn" totalBalanceTxnCtrt
+      le <- return $ (ListE::[Exp] -> Exp) [st, tbt]
+      t2 <- runIO getCurrentTime
+      _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+      _ <- runIO $ putStrLn $ "Classification of transaction contracts completed in "++
+                (show $ diffUTCTime t2 t1)++"."
+      _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+      _ <- runIO $ hFlush stdout
+      return le)
+
 dtLib = do
   return $ mkDtLib [(Deposit, mkGenOp deposit summarize, depositA),
                     (Withdraw, mkGenOp withdraw summarize, withdrawA),
@@ -145,15 +159,13 @@ dtLib = do
 
 save :: Key {- acc 1 -} -> Key {- acc 2 -} -> Int -> CSN ()
 save current savings amt = do
-  let x = $(checkTxn "saveTxn" saveTxnCtrt)
-  atomically x $ do
+  atomically saveTxnCtrtA $ do
     b <- invoke current Withdraw amt
     when b $ invoke savings Deposit amt
 
 totalBalance :: Key {- acc 1 -} -> Key {- acc 2 -} -> CSN Int
 totalBalance current savings = do
-  let x = $(checkTxn "totalBalanceTxn" totalBalanceTxnCtrt)
-  atomically x $ do
+  atomically totalBalanceTxnCtrtA $ do
     b1 <- invoke current GetBalance ()
     b2 <- invoke savings GetBalance ()
     return $ b1 + b2
