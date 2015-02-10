@@ -97,7 +97,7 @@ args = Args
       ( long "terminateAfter"
     <> metavar "SECS"
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
-    <> value "60")
+    <> value "600")
   <*> strOption
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
