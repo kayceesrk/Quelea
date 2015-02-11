@@ -31,6 +31,9 @@ import System.Exit (exitSuccess)
 import System.Posix.Signals
 import System.Process (ProcessHandle, runCommand, terminateProcess)
 import System.Random
+import Language.Haskell.TH
+import Language.Haskell.TH.Syntax
+import System.IO (hFlush, stdout)
 
 import RubisDefs
 import RubisTxns
@@ -139,29 +142,79 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-dtLib = mkDtLib [(StockItem, mkGenOp stockItem summarize, $(checkOp StockItem stockItemCtrt)),
-                 (RemoveFromStock, mkGenOp removeFromStock summarize, $(checkOp RemoveFromStock removeFromStockCtrt)),
-                 (UpdateMaxBid, mkGenOp updateMaxBid summarize, $(checkOp UpdateMaxBid updateMaxBidCtrt)),
-                 (ShowItem, mkGenOp showItem summarize, $(checkOp ShowItem showItemCtrt)),
+[
+  stockItemCtrtA,
+  removeFromStockCtrtA,
+  updateMaxBidCtrtA,
+  showItemCtrtA,
+  getBidsByItemCtrtA,
+  depositToWalletCtrtA,
+  withdrawFromWalletCtrtA,
+  addBidCtrtA,
+  cancelBidCtrtA,
+  getBidCtrtA,
+  addItemBidCtrtA,
+  removeItemBidCtrtA,
+  addWalletBidCtrtA,
+  removeWalletBidCtrtA,
+  getBidsByWalletCtrtA,
+  addWalletItemCtrtA,
+  getItemsByWalletCtrtA ] = 
+    $(do 
+        t1 <- runIO getCurrentTime
+        a1 <- checkOp StockItem stockItemCtrt
+        a2 <- checkOp RemoveFromStock removeFromStockCtrt
+        a3 <- checkOp UpdateMaxBid updateMaxBidCtrt
+        a4 <- checkOp ShowItem showItemCtrt
+        a5 <- checkOp GetBalance getBidsByItemCtrt
+        a6 <- checkOp DepositToWallet depositToWalletCtrt
+        a7 <- checkOp WithdrawFromWallet withdrawFromWalletCtrt
+        b1 <- checkOp AddBid addBidCtrt
+        b2 <- checkOp CancelBid cancelBidCtrt
+        b3 <- checkOp GetBid getBidCtrt
+        b4 <- checkOp AddItemBid addItemBidCtrt
+        b5 <- checkOp RemoveItemBid removeItemBidCtrt
+        b7 <- checkOp AddWalletBid addWalletBidCtrt
+        c1 <- checkOp RemoveWalletBid removeWalletBidCtrt
+        c2 <- checkOp GetBidsByWallet getBidsByWalletCtrt
+        c3 <- checkOp AddWalletItem addWalletItemCtrt
+        c4 <- checkOp GetItemsByWallet getItemsByWalletCtrt
+        le <- return $ (ListE::[Exp] -> Exp) 
+                [a1,a2,a3,a4,a5,a6,a7,b1,b2,b3,b4,b5,b7,c1,c2,c3,c4]
+        t2 <- runIO getCurrentTime
+        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+        _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
+                  (show $ diffUTCTime t2 t1)++"."
+        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+        _ <- runIO $ hFlush stdout
+        return le)
 
-                 (GetBalance, mkGenOp getBalance summarize, $(checkOp GetBalance getBidsByItemCtrt)),
-                 (DepositToWallet, mkGenOp depositToWallet summarize, $(checkOp DepositToWallet depositToWalletCtrt)),
-                 (WithdrawFromWallet, mkGenOp withdrawFromWallet summarize, $(checkOp WithdrawFromWallet withdrawFromWalletCtrt)),
 
-                 (AddBid, mkGenOp addBid summarize, $(checkOp AddBid addBidCtrt)),
-                 (CancelBid, mkGenOp cancelBid summarize, $(checkOp CancelBid cancelBidCtrt)),
-                 (GetBid, mkGenOp getBid summarize, $(checkOp GetBid getBidCtrt)),
+dtLib = do
+    return $ mkDtLib 
+              [(StockItem, mkGenOp stockItem summarize, stockItemCtrtA),
+               (RemoveFromStock, mkGenOp removeFromStock summarize, removeFromStockCtrtA),
+               (UpdateMaxBid, mkGenOp updateMaxBid summarize, updateMaxBidCtrtA),
+               (ShowItem, mkGenOp showItem summarize, showItemCtrtA),
 
-                 (AddItemBid, mkGenOp addItemBid summarize, $(checkOp AddItemBid addItemBidCtrt)),
-                 (RemoveItemBid, mkGenOp removeItemBid summarize, $(checkOp RemoveItemBid removeItemBidCtrt)),
-                 (GetBidsByItem, mkGenOp getBidsByItem summarize, $(checkOp GetBidsByItem getBidsByItemCtrt)),
+               (GetBalance, mkGenOp getBalance summarize, getBidsByItemCtrtA),
+               (DepositToWallet, mkGenOp depositToWallet summarize, depositToWalletCtrtA),
+               (WithdrawFromWallet, mkGenOp withdrawFromWallet summarize, withdrawFromWalletCtrtA),
 
-                 (AddWalletBid, mkGenOp addWalletBid summarize, $(checkOp AddWalletBid addWalletBidCtrt)),
-                 (RemoveWalletBid, mkGenOp removeWalletBid summarize, $(checkOp RemoveWalletBid removeWalletBidCtrt)),
-                 (GetBidsByWallet, mkGenOp getBidsByWallet summarize, $(checkOp GetBidsByWallet getBidsByWalletCtrt)),
+               (AddBid, mkGenOp addBid summarize, addBidCtrtA),
+               (CancelBid, mkGenOp cancelBid summarize, cancelBidCtrtA),
+               (GetBid, mkGenOp getBid summarize, getBidCtrtA),
 
-                 (AddWalletItem, mkGenOp addWalletItem summarize, $(checkOp AddWalletItem addWalletItemCtrt)),
-                 (GetItemsByWallet, mkGenOp getItemsByWallet summarize, $(checkOp GetItemsByWallet getItemsByWalletCtrt))]
+               (AddItemBid, mkGenOp addItemBid summarize, addItemBidCtrtA),
+               (RemoveItemBid, mkGenOp removeItemBid summarize, removeItemBidCtrtA),
+               (GetBidsByItem, mkGenOp getBidsByItem summarize, getBidsByItemCtrtA),
+
+               (AddWalletBid, mkGenOp addWalletBid summarize, addWalletBidCtrtA),
+               (RemoveWalletBid, mkGenOp removeWalletBid summarize, removeWalletBidCtrtA),
+               (GetBidsByWallet, mkGenOp getBidsByWallet summarize, getBidsByWalletCtrtA),
+
+               (AddWalletItem, mkGenOp addWalletItem summarize, addWalletItemCtrtA),
+               (GetItemsByWallet, mkGenOp getItemsByWallet summarize, getItemsByWalletCtrtA)]
 
 run :: Args -> IO ()
 run args = do
@@ -174,6 +227,7 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
+      dtLib <- dtLib
       runShimNode dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let threads = read $ numAuctions args
