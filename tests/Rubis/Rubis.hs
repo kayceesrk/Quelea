@@ -35,7 +35,7 @@ import System.Random
 import RubisDefs
 import RubisTxns
 
-#define DEBUG
+-- #define DEBUG
 
 debugPrint :: String -> CSN ()
 #ifdef DEBUG
@@ -65,9 +65,6 @@ maxDelta = 100
 
 minItemPrice :: Int
 minItemPrice = 1000
-
-waitBetweenSuccessfulBids :: Int
-waitBetweenSuccessfulBids = 100000 -- 100ms
 
 auctionTime :: Int
 auctionTime = 5 * 1000000 -- 5 seconds
@@ -99,14 +96,10 @@ data Args = Args {
 
   {- Client Options -}
   {- -------------- -}
-  -- Number of client rounds
-  numRounds :: String,
   -- Number of concurrent client threads
-  numThreads :: String,
+  numAuctions :: String,
   -- Delay between client requests in microseconds. Used to control throughput.
-  delayReq :: String,
-  -- Measure latency
-  measureLatency :: Bool
+  delayReq :: String
 }
 
 args :: Parser Args
@@ -131,23 +124,16 @@ args = Args
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
     <> value "600")
   <*> strOption
-      ( long "numRounds"
-     <> metavar "NUM_ROUNDS"
-     <> help "Number of client rounds"
-     <> value "1")
-  <*> strOption
-      ( long "numThreads"
-     <> metavar "NUM_THREADS"
-     <> help "Number of concurrent client threads"
+      ( long "numAuctions"
+     <> metavar "NUM_AUCTIONS"
+     <> help "Number of concurrent auctions"
      <> value "1")
   <*> strOption
       ( long "delayReq"
      <> metavar "MICROSECS"
      <> help "Delay between client requests"
-     <> value "0")
-  <*> switch
-      ( long "measureLatency"
-     <> help "Measure operation latency" )
+     <> value "100000")
+
 -------------------------------------------------------------------------------
 
 keyspace :: Keyspace
@@ -190,11 +176,11 @@ run args = do
     Server -> do
       runShimNode dtLib [("localhost","9042")] keyspace ns
     Client -> do
-      let threads = read $ numThreads args
+      let threads = read $ numAuctions args
       mv::(MVar NominalDiffTime)<- newEmptyMVar
       replicateM_ threads $ forkIO $ do
         mvarList <- replicateM numBuyers $ newEmptyMVar
-        mapM_ (\mv -> liftIO $ forkIO $ runSession ns $ buyerCore mv) mvarList
+        mapM_ (\mv -> liftIO $ forkIO $ runSession ns $ buyerCore mv $ read $ delayReq args) mvarList
         runSession ns $ do
           wid <- newWallet 0
           sellItem mvarList wid numItems
@@ -216,10 +202,8 @@ run args = do
       putStrLn "Driver : Starting client"
       c <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Client --brokerAddr " ++ broker
-                        ++ " --numThreads " ++ (numThreads args)
-                        ++ " --numRounds " ++ (numRounds args)
+                        ++ " --numAuctions " ++ (numAuctions args)
                         ++ " --delayReq " ++ (delayReq args)
-                        ++ if (measureLatency args) then " --measureLatency" else ""
       -- Install handler for Ctrl-C
       tid <- myThreadId
       installHandler keyboardSignal (Catch $ reportSignal pool [b,s,c] tid) Nothing
@@ -244,56 +228,63 @@ data Message = NewItem ItemID | Terminate
 
 tryWinItem :: WalletID
            -> ItemID
-           -> Int      -- My current max bid
-           -> Int      -- My max price willing to pay
-           -> CSN Bool -- True = Won!
-tryWinItem wid iid currentBid maxPrice = do
+           -> Int             -- Wait between successful bids
+           -> Int             -- My current max bid
+           -> Int             -- My max price willing to pay
+           -> CSN (Bool, Int) -- True = Won! Int = maxBid
+tryWinItem wid iid waitBetweenSuccessfulBids currentBid maxPrice = do
   delta <- liftIO $ randomIO
   let newBidAmt = currentBid + delta `mod` maxDelta
   if newBidAmt > maxPrice
-  then waitTillAuctionEnd
+  then waitTillAuctionEnd currentBid
   else do
     bidResult <- bidForItem wid iid newBidAmt
     case bidResult of
       ItemNotYetAvailable -> do
         liftIO $ threadDelay waitBetweenSuccessfulBids
-        tryWinItem wid iid currentBid maxPrice
-      ItemGone -> amIMaxBidder iid wid
-      PriceLow -> tryWinItem wid iid newBidAmt maxPrice
+        tryWinItem wid iid waitBetweenSuccessfulBids currentBid maxPrice
+      ItemGone -> do
+        res <- amIMaxBidder iid wid
+        return $ (res, currentBid)
+      PriceLow -> tryWinItem wid iid waitBetweenSuccessfulBids newBidAmt maxPrice
       BidSuccess bid -> do
         debugPrint $ "Item = " ++ (show iid) ++ " Buyer = " ++ (show wid) ++ " amt = " ++ (show newBidAmt)
         bideTime newBidAmt
   where
-    waitTillAuctionEnd = do
+    waitTillAuctionEnd currentBid = do
       liftIO $ threadDelay waitBetweenSuccessfulBids
       item <- getItem iid
       case item of
-        ItemRemoved -> amIMaxBidder iid wid
-        otherwise -> waitTillAuctionEnd
+        ItemRemoved -> do
+          res <- amIMaxBidder iid wid
+          return (res, currentBid)
+        otherwise -> waitTillAuctionEnd currentBid
     bideTime newBidAmt = do
       liftIO $ threadDelay waitBetweenSuccessfulBids
       -- Woken up. Check if the auction is still running.
       res <- getItem iid
       iAmMaxBidder <- amIMaxBidder iid wid
       case res of
-        ItemRemoved -> return $ iAmMaxBidder
+        ItemRemoved -> return (iAmMaxBidder, newBidAmt)
         otherwise -> -- Auction in progress
           if iAmMaxBidder
           then bideTime newBidAmt
-          else tryWinItem wid iid newBidAmt maxPrice
+          else tryWinItem wid iid waitBetweenSuccessfulBids newBidAmt maxPrice
 
-buyerCore :: MVar Message -> CSN ()
-buyerCore sellerMVar = do
+buyerCore :: MVar Message -> Int -> CSN ()
+buyerCore sellerMVar waitBetweenSuccessfulBids = do
   wid <- newWallet 10000000 -- Start with 10 MILLION dollars!
   msg <- liftIO $ takeMVar sellerMVar
   case msg of
     NewItem iid -> do
       scale <- liftIO $ randomIO >>= \i -> return $ i `mod` 10
-      res <- tryWinItem wid iid minItemPrice (scale * minItemPrice)
+      (res, bid) <- tryWinItem wid iid waitBetweenSuccessfulBids minItemPrice (scale * minItemPrice)
       let WalletID widInt = wid
       let ItemID iidInt = iid
-      when res $ liftIO $ putStrLn $ "Buyer " ++ show widInt ++ " won item " ++ show iidInt
-      buyerCore sellerMVar
+      if res
+      then liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") won " ++ show iidInt ++ " for " ++ (show bid)
+      else liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") lost " ++ show iidInt ++ "; Max bid = " ++ (show bid)
+      buyerCore sellerMVar waitBetweenSuccessfulBids
     Terminate -> return ()
 
 sellItem :: [MVar Message] -> WalletID -> Int -> CSN ()
@@ -304,10 +295,9 @@ sellItem buyerList wid numItems = do
   let iid = ItemID $ iidInt
   let desc = show $ iid
   openAuction wid iid desc minItemPrice
-  debugPrint $ "sellItem: auction opened: ItemID = " ++ (show iid)
+  liftIO $ putStrLn $ "Auction opened: ItemID = " ++ (show iid)
   mapM_ (\m -> liftIO $ putMVar m $ NewItem iid) buyerList
   liftIO $ threadDelay auctionTime
-  debugPrint $ "sellItem: woken up: ItemID = " ++ (show iid)
   maxBidAmt <- concludeAuction wid iid
   liftIO $ putStrLn $ "Sold: " ++ (show iid) ++ " price = " ++ (show maxBidAmt)
   sellItem buyerList wid $ numItems - 1
