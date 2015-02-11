@@ -70,7 +70,7 @@ auctionTime :: Int
 auctionTime = 5 * 1000000 -- 5 seconds
 
 numBuyers :: Int
-numBuyers = 8
+numBuyers = 4
 
 numItems :: Int
 numItems = 10
@@ -177,15 +177,18 @@ run args = do
       runShimNode dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let threads = read $ numAuctions args
-      mv::(MVar NominalDiffTime)<- newEmptyMVar
+      mv::(MVar (Double, NominalDiffTime)) <- newEmptyMVar
       replicateM_ threads $ forkIO $ do
         mvarList <- replicateM numBuyers $ newEmptyMVar
-        mapM_ (\mv -> liftIO $ forkIO $ runSession ns $ buyerCore mv $ read $ delayReq args) mvarList
-        runSession ns $ do
+        mapM_ (\mv -> liftIO $ forkIO $ runSessionWithStats ns $ buyerCore mv $ read $ delayReq args) mvarList
+        runSessionWithStats ns $ do
           wid <- newWallet 0
-          sellItem mvarList wid numItems
-        putMVar mv 0
-      foldM_ (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
+          res <- sellItems mvarList wid numItems
+          liftIO $ putMVar mv res
+      statList <- replicateM threads $ takeMVar mv
+      let (tpList, latList) = unzip statList
+      putStrLn $ "Throughput (ops/s) = " ++ (show $ sum tpList)
+      putStrLn $ "Avg. Latency (s) = " ++ (show $ sum latList / (fromIntegral $ length latList))
     Create -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTables
@@ -224,7 +227,7 @@ reportSignal pool procList mainTid = do
   killThread mainTid
 
 
-data Message = NewItem ItemID | Terminate
+data Message = NewItem ItemID | Terminate (MVar (Double, NominalDiffTime))
 
 tryWinItem :: WalletID
            -> ItemID
@@ -285,13 +288,24 @@ buyerCore sellerMVar waitBetweenSuccessfulBids = do
       then liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") won " ++ show iidInt ++ " for " ++ (show bid)
       else liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") lost " ++ show iidInt ++ "; Max bid = " ++ (show bid)
       buyerCore sellerMVar waitBetweenSuccessfulBids
-    Terminate -> return ()
+    Terminate mv -> do
+      stats <- getStats
+      liftIO $ putMVar mv stats
 
-sellItem :: [MVar Message] -> WalletID -> Int -> CSN ()
-sellItem buyerList wid 0 = do
-  mapM_ (\m -> liftIO $ putMVar m Terminate) buyerList
-sellItem buyerList wid numItems = do
-  iidInt <- liftIO $ randomIO >>= \i -> return $ i `mod` 1000000
+
+sellItems :: [MVar Message] -> WalletID -> Int -> CSN (Double, NominalDiffTime)
+sellItems buyerList wid 0 = do
+  statMVList <- mapM (\m -> liftIO $ do
+                              mv <- newEmptyMVar
+                              putMVar m $ Terminate mv
+                              return mv) buyerList
+  buyerStatsList <- mapM (\m -> liftIO $ takeMVar m) statMVList
+  myStats <- getStats
+  let statsList = myStats:buyerStatsList
+  let (tpList, latList) = unzip statsList
+  return $ (sum tpList, sum latList / (fromIntegral $ length latList))
+sellItems buyerList wid numItems = do
+  iidInt <- liftIO $ randomIO
   let iid = ItemID $ iidInt
   let desc = show $ iid
   openAuction wid iid desc minItemPrice
@@ -300,7 +314,7 @@ sellItem buyerList wid numItems = do
   liftIO $ threadDelay auctionTime
   maxBidAmt <- concludeAuction wid iid
   liftIO $ putStrLn $ "Sold: " ++ (show iid) ++ " price = " ++ (show maxBidAmt)
-  sellItem buyerList wid $ numItems - 1
+  sellItems buyerList wid $ numItems - 1
 
 main :: IO ()
 main = execParser opts >>= run

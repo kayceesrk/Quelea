@@ -8,6 +8,8 @@ module Codeec.ClientMonad (
   CSN,
 
   runSession,
+  runSessionWithStats,
+  getStats,
   invoke,
   invokeAndGetDeps,
   newKey,
@@ -19,7 +21,7 @@ module Codeec.ClientMonad (
 ) where
 
 import Codeec.Types
-import Codeec.Client hiding (invoke, getServerAddr, invokeAndGetDeps, getLastEffect)
+import Codeec.Client hiding (invoke, getServerAddr, invokeAndGetDeps, getLastEffect, getStats)
 import qualified Codeec.Client as CCLow
 import Control.Monad.Trans.State
 import Control.Monad.Trans (liftIO)
@@ -28,6 +30,7 @@ import Codeec.NameService.Types
 import Data.Serialize hiding (get, put)
 import qualified Data.Set as S
 import qualified System.ZMQ4 as ZMQ4
+import Data.Time
 
 makeLenses ''Session
 
@@ -39,6 +42,18 @@ runSession ns comp = do
   res <- evalStateT comp session
   endSession session
   return res
+
+runSessionWithStats :: NameService -> CSN a -> IO a
+runSessionWithStats ns comp = do
+  session <- beginSessionStats ns True
+  res <- evalStateT comp session
+  endSession session
+  return res
+
+getStats :: CSN (Double, NominalDiffTime)
+getStats = do
+  session <- get
+  liftIO $ CCLow.getStats session
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Key -> on -> arg -> CSN res

@@ -34,7 +34,7 @@ import Control.Exception.Base
 
 newWallet :: Int {- inital deposit -} -> CSN WalletID
 newWallet amt = do
-  wid <- liftIO $ randomIO >>= \i -> return $ i `mod` 1000000
+  wid <- liftIO $ randomIO
   r::() <- invoke (mkKey $ WalletID $ wid) DepositToWallet amt
   return $ WalletID wid
 
@@ -43,7 +43,7 @@ getWalletBalance wid = invoke (mkKey $ wid) GetBalance ()
 
 newItem :: String {- description -} -> Int {- min price -} -> CSN ItemID
 newItem desc minPrice = do
-  iid <- liftIO $ randomIO >>= \i -> return $ i `mod` 1000000
+  iid <- liftIO $ randomIO
   r::() <- invoke (mkKey $ ItemID $ iid) StockItem (desc, minPrice)
   return $ ItemID iid
 

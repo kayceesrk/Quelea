@@ -6,6 +6,8 @@ module Codeec.Client (
   TxnKind(..),
 
   beginSession,
+  beginSessionStats,
+  getStats,
   endSession,
   invoke,
   invokeAndGetDeps,
@@ -34,6 +36,7 @@ import qualified Data.Set as S
 import Data.Maybe (fromJust)
 import Data.Tuple.Select
 import Debug.Trace
+import Data.Time
 
 type Effect = ByteString
 
@@ -55,19 +58,40 @@ data Session = Session {
   _sessid     :: SessID,
   _seqMap     :: M.Map (ObjType, Key) SeqNo,
   _readObjs   :: S.Set (ObjType, Key),
+
+  _collectStats :: Bool,
+  _numOps       :: Int,
+  _startTime    :: UTCTime,
+  _avgLat       :: NominalDiffTime,
+
   _curTxn     :: Maybe TxnState,
   _lastEffect :: Maybe TxnDep
+
 }
 
 makeLenses ''Session
 
-beginSession :: NameService -> IO Session
-beginSession ns = do
+getStats :: Session -> IO (Double, NominalDiffTime)
+getStats s =
+  if s^.collectStats
+  then do
+    now <- getCurrentTime
+    let diffTime = diffUTCTime now $ s^.startTime
+    let d::Double = realToFrac $ (fromIntegral $ s^.numOps) / diffTime
+    return (d, s^.avgLat)
+  else return $ (0.0,0)
+
+beginSessionStats :: NameService -> Bool -> IO Session
+beginSessionStats ns getStats = do
   (serverAddr, sock) <- getClientJoin ns
   -- Create a session id
   sessid <- SessID <$> randomIO
+  currentTime <- getCurrentTime
   -- Initialize session
-  return $ Session (getFrontend ns) sock serverAddr sessid M.empty S.empty Nothing Nothing
+  return $ Session (getFrontend ns) sock serverAddr sessid M.empty S.empty getStats 0 currentTime 0 Nothing Nothing
+
+beginSession :: NameService -> IO Session
+beginSession ns = beginSessionStats ns False
 
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
@@ -105,8 +129,12 @@ getServerAddr s = s^.serverAddr
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)
 invoke s k on arg = do
+  startTime <- getCurrentTime
   (r, deps, s) <- invokeInternal False s k on arg
-  return (r,s)
+  endTime <- getCurrentTime
+  let newOpsCnt = s^.numOps + 1
+  let newAvgLat = (s^.avgLat * (fromIntegral $ s^.numOps) + (diffUTCTime endTime startTime)) / (fromIntegral $ s^.numOps + 1)
+  return (r,s {_numOps = newOpsCnt, _avgLat = newAvgLat})
 
 invokeAndGetDeps :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, S.Set TxnDep, Session)
@@ -136,8 +164,8 @@ invokeInternal getDeps s key operName arg = do
       let newReadObjs = if (S.size $ s^.readObjs) > 32
                         then S.insert (ot,key) $ S.deleteMin $ s^.readObjs
                         else S.insert (ot,key) $ s^.readObjs
-      let partialSessRV = Session (s^.broker) (s^.server) (s^.serverAddr)
-                                  (s^.sessid) newSeqMap newReadObjs
+      let partialSessRV = Session (s^.broker) (s^.server) (s^.serverAddr) (s^.sessid) newSeqMap newReadObjs
+                                  (s^.collectStats) (s^.numOps) (s^.startTime) (s^.avgLat)
       let newLastEff = Just $ TxnDep ot key (s^.sessid) newSeqNo
       case s^.curTxn of
         Nothing -> {- This operation was not in a transaction -}
