@@ -4,7 +4,7 @@ layout: post
 permalink: prelims.html
 ---
 
-#### Starting the VM
+#### Booting the VM
 
 Once you have downloaded the VM tarball, and untar'ed it, you will see
 a virtual machine hard disk file named `UbuntuQuelea.vmdk`. The file
@@ -23,7 +23,7 @@ Select the user with display name _Quelea_, and enter _queleapldi_ for
 password. Please ignore any warnings about system errors that Ubuntu
 throws.
 
-#### Starting and Bootstrapping Cassandra
+#### Starting Cassandra
 
 Quelea uses Cassandra as its data store. VM comes with Cassandra
 installed. The first thing to do after successfully booting the VM is
@@ -39,13 +39,7 @@ Query Languagae (CQL) shell:
 
 ![cqlsh]({{ site.baseurl }}/assets/cqlsh.png)
 
-Cassandra needs to be bootstrapped before we run Quelea. This can be
-done by running the `bootstrap-quelea` script:
-
-
-![bootstrap]({{ site.baseurl }}/assets/bootstrap.png)
-
-#### Quelea Source Repository
+#### Getting familiar with Quelea source repository
 
 VM maintains a local git repository of Quelea at `~/git/quelea`. The
 sub-directory `src` contains Quelea's Haskell source files, along with
@@ -62,7 +56,7 @@ Tests (benchmarks) are located in the sub-directory called `tests`:
 A short description of benchmarks has been provided on p.9 of our
 [draft paper](http://gowthamk.github.io/docs/quelea.pdf)
 
-### Building and Running Benchmarks
+### Building and running benchmarks
 
 Contract classification is a static component of Quelea;
 classification of operation contracts (as `Strongly Consistent`,
