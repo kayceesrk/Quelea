@@ -66,7 +66,23 @@ execute, and output generated in our sample runs are shown below:
 
 The experiment can now be repeated varying the number of client
 threads (`--numThreads`) from 2 to 8. Screenshots capturing sample
-runs for `--numThreads 8` are shown below:
+runs for `--numThreads 4` are shown below:
+
+##### EC
+
+![ba-ec2]({{ site.baseurl }}/assets/ba-ec2.png)
+
+##### CC
+
+![ba-cc2]({{ site.baseurl }}/assets/ba-cc2.png)
+
+##### SC
+
+![ba-sc2]({{ site.baseurl }}/assets/ba-sc2.png)
+
+##### Q
+
+![ba-q2]({{ site.baseurl }}/assets/ba-q2.png)
 
 
 As shown in the sample runs, you should be able to observe that:
