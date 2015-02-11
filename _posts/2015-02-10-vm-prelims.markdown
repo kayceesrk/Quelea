@@ -62,8 +62,8 @@ Contract classification is a static component of Quelea;
 classification of operation contracts (as `Strongly Consistent`,
 `Causally Consistent` etc.), and transaction contracts (as `Read
 Committed`, `Monotonic Atomic View` etc.) happens when a Quelea
-application is compiled. In order to evaluate the performance of
-contract classification, it is therefore imperative to build the
+application is <u>compiled</u>. In order to evaluate the performance
+of contract classification, it is therefore imperative to build the
 benchmarks and observe the output. Performance of the run-time
 component can then be evaluated by running the binaries generated.
 
@@ -73,3 +73,4 @@ provided in the following pages:
 
 + [BankAccount]({{ site.baseurl }}/bank-account-test.html) benchmark
 + [LWW Transactions]({{ site.baseurl }}/lww-txn-test.html) benchmark
++ [RUBiS]({{ site.baseurl }}/rubis-test.html) benchmark

@@ -3,6 +3,10 @@ title: Bank Account Benchmark
 layout: post
 permalink: bank-account-test.html
 ---
+
+This benchmark implements a simple replicated BankAccount data type
+supporting three operations - `Deposit`, `Withdraw` and `GetBalance`.
+
 ### Building the Benchmark
 
 Navigate to `~/git/quelea/tests/BankAccount`, and run `make`. On the
@@ -12,7 +16,7 @@ similar to the following getting printed:
 ![ba-make]({{ site.baseurl }}/assets/ba-make.png)
 
 The above lines indicate the consistency class for each Bank Account
-operation (i.e., `Deposit`, `Withdraw` and `GetBalance`), along with
+operation (i.e., ), along with
 the time taken to classify the operation, and also the total time
 consumed by the contract classification procedure. Similar information
 is also displayed for Bank Account transactions (namely, `saveTxn`,

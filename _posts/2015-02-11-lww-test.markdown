@@ -4,14 +4,14 @@ layout: post
 permalink: lww-txn-test.html
 ---
 
-The aim of this benchmark is to compare the performance various ANSI
-transaction isolation levels implemented in Quelea (Namely, _Read
-Committed (RC)_, _Monotonic Atomi View (MAV)_, and _Repeatable Read
+The aim of this benchmark to compare the performance of various
+ANSI transaction isolation levels implemented in Quelea (Namely, _Read
+Committed (RC)_, _Monotonic Atomic View (MAV)_, and _Repeatable Read
 (RR)_). For this purpose, we use a register data type with
 least-writer-wins semantics for writes. We compose transactions with
 10 operations - 5 _EC_ writes and 5 _EC_ reads, execute them under
 different isolation levels in different experiments (one experiment
-per isolation level). 
+per isolation level).
 
 ### Building the benchmark
 
