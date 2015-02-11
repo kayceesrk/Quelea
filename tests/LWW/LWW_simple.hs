@@ -15,6 +15,8 @@ import Codeec.NameService.LoadBalancingBroker
 import Codeec.NameService.SimpleBroker
 #endif
 
+import Language.Haskell.TH 
+import Language.Haskell.TH.Syntax (Exp (..))
 import Prelude hiding (catch)
 import Control.Monad (replicateM_, foldM, when, forever)
 import Control.Monad.Trans (liftIO)
@@ -30,6 +32,8 @@ import System.Exit (exitSuccess)
 import System.Posix.Signals
 import System.Process (ProcessHandle, runCommand, terminateProcess)
 import System.Random
+import Data.Time
+import System.IO (hFlush, stdout)
 
 import LWWRegisterDefs
 
@@ -132,12 +136,37 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-dtLib = mkDtLib [(HAWrite, mkGenOp writeReg summarize, $(checkOp HAWrite haWriteCtrt)),
-                 (CAUWrite, mkGenOp writeReg summarize, $(checkOp CAUWrite cauWriteCtrt)),
-                 (STWrite, mkGenOp writeReg summarize, $(checkOp STWrite stWriteCtrt)),
-                 (HARead, mkGenOp readReg summarize, $(checkOp HARead haReadCtrt)),
-                 (CAURead, mkGenOp readReg summarize, $(checkOp CAURead cauReadCtrt)),
-                 (STRead, mkGenOp readReg summarize, $(checkOp STRead stReadCtrt))]
+[
+  haWriteCtrtA,
+  cauWriteCtrtA,
+  stWriteCtrtA,
+  haReadCtrtA,
+  cauReadCtrtA,
+  stReadCtrtA ] = 
+    $(do
+        t1 <- runIO getCurrentTime
+        a <- checkOp HAWrite haWriteCtrt
+        b <- checkOp CAUWrite cauWriteCtrt
+        c <- checkOp STWrite stWriteCtrt
+        d <- checkOp HARead haReadCtrt
+        e <- checkOp CAURead cauReadCtrt
+        f <- checkOp STRead stReadCtrt
+        le <- return $ (ListE::[Exp] -> Exp) [a,b,c,d,e,f]
+        t2 <- runIO getCurrentTime
+        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+        _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
+                  (show $ diffUTCTime t2 t1)++"."
+        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+        _ <- runIO $ hFlush stdout
+        return le)
+
+dtLib = do
+  return $ mkDtLib [(HAWrite, mkGenOp writeReg summarize, haWriteCtrtA),
+                    (CAUWrite, mkGenOp writeReg summarize, cauWriteCtrtA),
+                    (STWrite, mkGenOp writeReg summarize, stWriteCtrtA),
+                    (HARead, mkGenOp readReg summarize, haReadCtrtA),
+                    (CAURead, mkGenOp readReg summarize, cauReadCtrtA),
+                    (STRead, mkGenOp readReg summarize, stReadCtrtA)]
 
 ecRead :: Key -> CSN Int
 ecRead k = invoke k HARead ()
@@ -177,6 +206,7 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
+      dtLib <- dtLib
       runShimNode dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
