@@ -72,4 +72,4 @@ benchmark, and guidelines on how to interpret the data generated are
 provided in the following pages:
 
 + [BankAccount]({{ site.baseurl }}/bank-account-test.html) benchmark
-+ [Microblog]({{ site.baseurl }}/microblog-test.html) benchmark
++ [LWW Transactions]({{ site.baseurl }}/lww-txn-test.html) benchmark

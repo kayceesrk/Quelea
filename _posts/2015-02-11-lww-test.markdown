@@ -1,0 +1,68 @@
+---
+title: LWW Register Transactions Benchmark
+layout: post
+permalink: lww-txn-test.html
+---
+
+The aim of this benchmark is to compare the performance various ANSI
+transaction isolation levels implemented in Quelea (Namely, _Read
+Committed (RC)_, _Monotonic Atomi View (MAV)_, and _Repeatable Read
+(RR)_). For this purpose, we use a register data type with
+least-writer-wins semantics for writes. We compose transactions with
+10 operations - 5 _EC_ writes and 5 _EC_ reads, execute them under
+different isolation levels in different experiments (one experiment
+per isolation level). 
+
+### Building the benchmark
+
+Since the isolation level of transactions in an experiment is fixed,
+and all transactions are composed of _EC_ reads and writes, contract
+classification does nothing interesting in this benchmark. It is
+therefore not necessary to build this benchmark; existing binaries can
+be used. Nevertheless, if you want to build, navigate to
+`~/git/quelea/tests/LWW`, and run `make LWW_txn`. Successful build
+generates one binary - `LWW_txn`.
+
+### Running the Benchmark
+
+First, we run a basic experiment to measure latency and throughput,
+when a single client sends 1000 successive transation requests (with
+an inter-request delay of 1ms (1000 μs)). We take the measurements for
+each of the _NoTxn_, _RC_, _MAV_, and _RR_ cases. The commands to
+execute, and output generated in our sample runs are shown below:
+
+#### RC
+
+    ./LWW_txn --kind Daemon --numRounds 1000 --numThreads 1 --delayReq 1000 --measureLatency --txnKind RC
+
+![lww-txn-rc1]({{ site.baseurl }}/assets/lww-txn-rc1.png)
+
+#### MAV
+
+    ./LWW_txn --kind Daemon --numRounds 1000 --numThreads 1 --delayReq 1000 --measureLatency --txnKind MAV
+
+![lww-txn-mav1]({{ site.baseurl }}/assets/lww-txn-mav1.png)
+
+#### RR
+
+    ./LWW_txn --kind Daemon --numRounds 1000 --numThreads 1 --delayReq 1000 --measureLatency --txnKind RR
+
+![lww-txn-rr1]({{ site.baseurl }}/assets/lww-txn-rr1.png)
+
+The experiment can now be repeated varying the number of client
+threads (`--numThreads`) from 2 to 4. Screenshots capturing
+measurements for sample runs when `--numThreads` is 4 are shown below:
+
+##### RC
+
+![lww-txn-rc2]({{ site.baseurl }}/assets/lww-txn-rc2.png)
+
+##### MAV
+
+![lww-txn-mav2]({{ site.baseurl }}/assets/lww-txn-mav2.png)
+
+##### RR
+
+![lww-txn-rr2]({{ site.baseurl }}/assets/lww-txn-rr2.png)
+
+

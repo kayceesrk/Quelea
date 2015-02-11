@@ -65,8 +65,8 @@ execute, and output generated in our sample runs are shown below:
 
 
 The experiment can now be repeated varying the number of client
-threads (`--numThreads`) from 2 to 8. Screenshots capturing sample
-runs for `--numThreads 4` are shown below:
+threads (`--numThreads`) from 2 to 8. Screenshots capturing
+measurements for sample runs when `--numThreads` is 4 are shown below:
 
 ##### EC
 
