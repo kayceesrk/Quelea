@@ -255,10 +255,13 @@ clientCore args delay someTime avgLat round = do
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
   when (round `mod` printEvery == 0) $ do
-    liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
+    liftIO $ do 
+      _ <- putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
                         ++ if (measureLatency args)
                             then " latency = " ++ show newAvgLat
                             else ""
+      hFlush stdout
+
   return newAvgLat
 
 getNow :: Args -> UTCTime -> CSN UTCTime
