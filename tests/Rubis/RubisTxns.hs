@@ -31,6 +31,34 @@ import Control.Applicative ((<$>))
 import Data.Maybe (fromJust)
 import Control.Monad (foldM, when)
 import Control.Exception.Base
+import Data.Time
+import Language.Haskell.TH
+import Language.Haskell.TH.Syntax
+import System.IO (hFlush, stdout)
+
+
+[bidForItemTxnCtrtA,
+ showMyBidsTxnCtrtA,
+ cancelBidTxnCtrtA,
+ openAuctionTxnCtrtA,
+ showMyAuctionsTxnCtrtA,
+ concludeAuctionTxnCtrtA] = 
+   $(do
+      t1 <- runIO getCurrentTime
+      a1 <- checkTxn "_bidForItemTxn" bidForItemTxnCtrt
+      a2 <- checkTxn "_showMyBidsTxn" showMyBidsTxnCtrt
+      a3 <- checkTxn "_cancelBidTxn" cancelBidTxnCtrt
+      a4 <- checkTxn "_openAuctionTxn" openAuctionTxnCtrt
+      a5 <- checkTxn "_showMyAuctionsTxn" showMyAuctionsTxnCtrt
+      a6 <- checkTxn "_concludeAuctionTxn" concludeAuctionTxnCtrt
+      le <- return $ (ListE::[Exp] -> Exp) [a1,a2,a3,a4,a5,a6]
+      t2 <- runIO getCurrentTime
+      _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+      _ <- runIO $ putStrLn $ "Classification of transaction contracts completed in "++
+                (show $ diffUTCTime t2 t1)++"."
+      _ <- runIO $ putStrLn $ "----------------------------------------------------------"
+      _ <- runIO $ hFlush stdout
+      return le)
 
 newWallet :: Int {- inital deposit -} -> CSN WalletID
 newWallet amt = do
@@ -66,7 +94,7 @@ data BidResult = ItemGone | PriceLow | BidSuccess BidID | ItemNotYetAvailable
 -- User won't be billed until he wins the auction.
 bidForItem :: WalletID -> ItemID -> Int -> CSN BidResult
 bidForItem wid id amt =
-  atomically ($(checkTxn "_bidForItemTxn" bidForItemTxnCtrt)) $ do
+  atomically (bidForItemTxnCtrtA) $ do
     resOp  <- getItem id
     case resOp of
       WaitingForItem -> return $ ItemNotYetAvailable
@@ -95,7 +123,7 @@ bidIdFold acc (bidID) = do
 -- Get all my bids.
 showMyBids :: WalletID -> CSN [(ItemID,Int{-amt-})]
 showMyBids wid =
-  atomically ($(checkTxn "_showMyBidsTxn" showMyBidsTxnCtrt)) $ do
+  atomically (showMyBidsTxnCtrtA) $ do
     bidIDs::[BidID] <- invoke (mkKey wid) GetBidsByWallet ()
     bids <- foldM bidIdFold [] bidIDs
     return bids
@@ -110,7 +138,7 @@ showMyBids wid =
 -- while determining the winner of the auction.
 cancelMyBid :: BidID -> CSN ()
 cancelMyBid bidID =
-  atomically ($(checkTxn "_cancelBidTxn" cancelBidTxnCtrt)) $ do
+  atomically (cancelBidTxnCtrtA) $ do
     resOp :: Maybe (WalletID,ItemID,Int) <- invoke (mkKey bidID) GetBid ()
     let (wID,itemID,_) = case resOp of
               Just x -> x
@@ -124,7 +152,7 @@ cancelMyBid bidID =
 -- Put up an item for auction.
 openAuction :: WalletID -> ItemID -> String{-desc-} -> Int{-minPrice-} -> CSN ()
 openAuction wid id desc mp =
-  atomically ($(checkTxn "_openAuctionTxn" openAuctionTxnCtrt)) $ do
+  atomically (openAuctionTxnCtrtA) $ do
     r::() <- invoke (mkKey id) StockItem (desc,mp,0::Int)
     r::() <- invoke (mkKey wid) AddWalletItem (id)
     return ()
@@ -133,7 +161,7 @@ openAuction wid id desc mp =
 -- maxbid.
 showMyAuctions :: WalletID -> CSN [(ItemID,String,Int{-minPrice-},Int{-maxBid-})]
 showMyAuctions wid =
-  atomically ($(checkTxn "_showMyAuctionsTxn" showMyAuctionsTxnCtrt)) $ do
+  atomically (showMyAuctionsTxnCtrtA) $ do
     itemIDs <- invoke (mkKey wid) GetItemsByWallet ()
     items <- foldM f [] itemIDs
     return items
@@ -193,7 +221,7 @@ concludeAuction wID itemID = do
   -- Remove the item from stock to prevent future bids from
   -- being placed on this item.
   r::() <- invoke ikey RemoveFromStock ()
-  atomically ($(checkTxn "_concludeAuctionTxn" concludeAuctionTxnCtrt)) $ do
+  atomically (concludeAuctionTxnCtrtA) $ do
     let (wkey,ikey) =  (mkKey wID, mkKey itemID)
     -- Get all bids on the item
     bidIDs <- invoke ikey GetBidsByItem ()
