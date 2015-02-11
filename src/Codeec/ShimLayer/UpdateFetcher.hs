@@ -160,7 +160,7 @@ fetchUpdates cm const todoList = do
         mapM_ (\((ot,k), filteredSet) ->
           updateCache ot k filteredSet
             (case M.lookup (ot,k) newCursor of {Nothing -> M.empty; Just m -> m})
-            (fromJust $ M.lookup (ot,k) gcMarkerMap)) $ M.toList filteredMap
+            (case M.lookup (ot,k) gcMarkerMap of {Nothing -> error "fetchUpdates(1)"; Just x -> x})) $ M.toList filteredMap
 
   let CacheUpdateState !newCache !new2Cursor !newDeps !newLastGCAddr !newLastGCTime !newInclTxns =
         execState core (CacheUpdateState cache cursor deps lastGCAddr lastGCTime inclTxns)
@@ -209,7 +209,10 @@ fetchUpdates cm const todoList = do
       -- inserted by the GC.
       when (newGCHasOccurred cacheGCId gcMarker) $ do
         -- Update GC information
-        let (newGCSessID, _, _, atTime) = fromJust $ gcMarker
+        let (newGCSessID, _, _, atTime) =
+              case gcMarker of
+                Nothing -> error "fetchUpdates(2)"
+                Just x -> x
         lgca <- use lastGCAddrCUS
         lastGCAddrCUS .= M.insert (ot,k) newGCSessID lgca
         lgct <- use lastGCTimeCUS

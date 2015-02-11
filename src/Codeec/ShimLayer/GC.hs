@@ -216,5 +216,5 @@ gcWorker dtLib cm = forever $ do
                                     then (ot,k):todoObjs
                                     else todoObjs) [] drc
   mapM_ (\(ot,k) ->
-    let gcFun = fromJust $ dtLib ^. sumMap ^.at ot
+    let gcFun = case dtLib ^. sumMap ^.at ot of {Nothing -> error "gcWorker"; Just x -> x}
     in gcDB cm ot k gcFun) todoObjs

@@ -25,6 +25,7 @@ module RubisDefs (
 
   addBid, addBidCtrt,
   cancelBid, cancelBidCtrt,
+  getBid, getBidCtrt,
 
   addItemBid, addItemBidCtrt,
   removeItemBid, removeItemBidCtrt,
@@ -46,7 +47,6 @@ import Data.Time.Clock
 import Control.Applicative ((<$>))
 import Data.Tuple.Select (sel1)
 import Data.DeriveTH
-import Data.Maybe (fromJust)
 
 import Codeec.Types
 import Codeec.Contract
@@ -89,39 +89,42 @@ removeFromStock _ _ = ((),Just $ RemoveFromStock_)
 updateMaxBid :: [ItemEffect] -> Int -> ((), Maybe ItemEffect)
 updateMaxBid _ newbid = ((), Just $ UpdateMaxBid_ newbid)
 
-showItem :: [ItemEffect] -> () -> (Maybe (String,Int,Int), Maybe ItemEffect)
+showItem :: [ItemEffect] -> () -> (Maybe (String,Int,Int,Bool {- isRemoved -}), Maybe ItemEffect)
 showItem ctxt _ =
   case foldl acc Nothing ctxt of
-    Nothing -> (Nothing, Just ShowItem_)
-    Just (descOp, minPrice, maxb) ->
+    Nothing -> (Nothing, Nothing)
+    Just (descOp, minPrice, maxb, status) ->
       let desc = case descOp of
                    Nothing -> "- No description or minimum price available for this item -"
                    Just d -> d
-      in (Just (desc, minPrice, maxb), Just ShowItem_)
+      in (Just (desc, minPrice, maxb, status), Nothing)
   where
-    acc :: Maybe (Maybe String, Int, Int) -> ItemEffect -> Maybe (Maybe String, Int, Int)
+    acc :: Maybe (Maybe String, Int, Int, Bool) -> ItemEffect -> Maybe (Maybe String, Int, Int, Bool)
     acc resOp (StockItem_ desc mp _) =
-      let maxb = case resOp of
-                    Just (_,_, maxb) -> maxb
-                    Nothing -> 0
-      in Just (Just desc, mp, maxb)
-    acc _ (RemoveFromStock_) = Nothing
+      let (maxb, status) = case resOp of
+                    Just (_,_, maxb, status) -> (maxb, status)
+                    Nothing -> (0, False)
+      in Just (Just desc, mp, maxb, status)
+    acc resOp (RemoveFromStock_) =
+      case resOp of
+        Nothing -> Just (Nothing, 0, 0, True)
+        Just (a,b,c,d) -> Just (a,b,c,True)
     acc resOp (UpdateMaxBid_ newb) =
       case resOp of
-        Just (descOp, mp, maxb) -> Just (descOp, mp, max maxb newb )
-        Nothing -> Just (Nothing, 0, newb)
+        Just (descOp, mp, maxb, status) -> Just (descOp, mp, max maxb newb, status)
+        Nothing -> Just (Nothing, 0, newb, False)
     acc resOp ShowItem_ = resOp
 
 instance Effectish ItemEffect where
   summarize ctxt =
     case showItem ctxt () of
       (Nothing, _) -> []
-      (Just (d, mp, maxb), _) -> [StockItem_ d mp maxb]
+      (Just (d, mp, maxb, _), _) -> [StockItem_ d mp maxb]
 
 --------------------------------------------------------------------------------
 -- Wallets table : Key = WalletId
 
-newtype WalletID = WalletID Int deriving (Eq, Ord)
+newtype WalletID = WalletID Int deriving (Eq, Ord, Show)
 
 data WalletEffect = GetBalance_
                   | DepositToWallet_ Int
@@ -356,6 +359,9 @@ addBidCtrt = trueCtrt
 
 cancelBidCtrt :: Contract Operation
 cancelBidCtrt = trueCtrt
+
+getBidCtrt :: Contract Operation
+getBidCtrt = trueCtrt
 
 addItemBidCtrt :: Contract Operation
 addItemBidCtrt = trueCtrt

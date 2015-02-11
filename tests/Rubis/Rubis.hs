@@ -35,6 +35,17 @@ import System.Random
 import RubisDefs
 import RubisTxns
 
+#define DEBUG
+
+debugPrint :: String -> CSN ()
+#ifdef DEBUG
+debugPrint s = liftIO $ do
+  tid <- myThreadId
+  putStrLn $ "[" ++ (show tid) ++ "] " ++ s
+#else
+debugPrint _ = return ()
+#endif
+
 --------------------------------------------------------------------------------
 
 fePort :: Int
@@ -65,7 +76,7 @@ numBuyers :: Int
 numBuyers = 8
 
 numItems :: Int
-numItems = 1
+numItems = 10
 
 --------------------------------------------------------------------------------
 
@@ -118,7 +129,7 @@ args = Args
       ( long "terminateAfter"
     <> metavar "SECS"
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
-    <> value "60")
+    <> value "600")
   <*> strOption
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"
@@ -153,6 +164,7 @@ dtLib = mkDtLib [(StockItem, mkGenOp stockItem summarize, $(checkOp StockItem st
 
                  (AddBid, mkGenOp addBid summarize, $(checkOp AddBid addBidCtrt)),
                  (CancelBid, mkGenOp cancelBid summarize, $(checkOp CancelBid cancelBidCtrt)),
+                 (GetBid, mkGenOp getBid summarize, $(checkOp GetBid getBidCtrt)),
 
                  (AddItemBid, mkGenOp addItemBid summarize, $(checkOp AddItemBid addItemBidCtrt)),
                  (RemoveItemBid, mkGenOp removeItemBid summarize, $(checkOp RemoveItemBid removeItemBidCtrt)),
@@ -186,8 +198,6 @@ run args = do
         runSession ns $ do
           wid <- newWallet 0
           sellItem mvarList wid numItems
-          totalSale <- getWalletBalance wid
-          liftIO $ putStrLn $ "Total sale = " ++ show totalSale
         putMVar mv 0
       foldM_ (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
     Create -> do
@@ -229,61 +239,75 @@ reportSignal pool procList mainTid = do
   runCas pool $ dropTables
   killThread mainTid
 
+
+data Message = NewItem ItemID | Terminate
+
 tryWinItem :: WalletID
            -> ItemID
            -> Int      -- My current max bid
            -> Int      -- My max price willing to pay
            -> CSN Bool -- True = Won!
-tryWinItem wid iid maxBid maxPrice = do
+tryWinItem wid iid currentBid maxPrice = do
   delta <- liftIO $ randomIO
-  let newBidAmt = maxBid + delta `mod` maxDelta
+  let newBidAmt = currentBid + delta `mod` maxDelta
   if newBidAmt > maxPrice
   then waitTillAuctionEnd
   else do
     bidResult <- bidForItem wid iid newBidAmt
     case bidResult of
+      ItemNotYetAvailable -> do
+        liftIO $ threadDelay waitBetweenSuccessfulBids
+        tryWinItem wid iid currentBid maxPrice
       ItemGone -> amIMaxBidder iid wid
       PriceLow -> tryWinItem wid iid newBidAmt maxPrice
-      BidSuccess bid -> bideTime newBidAmt
+      BidSuccess bid -> do
+        debugPrint $ "Item = " ++ (show iid) ++ " Buyer = " ++ (show wid) ++ " amt = " ++ (show newBidAmt)
+        bideTime newBidAmt
   where
     waitTillAuctionEnd = do
       liftIO $ threadDelay waitBetweenSuccessfulBids
       item <- getItem iid
       case item of
-        Nothing -> amIMaxBidder iid wid
-        Just _ -> waitTillAuctionEnd
+        ItemRemoved -> amIMaxBidder iid wid
+        otherwise -> waitTillAuctionEnd
     bideTime newBidAmt = do
       liftIO $ threadDelay waitBetweenSuccessfulBids
       -- Woken up. Check if the auction is still running.
       res <- getItem iid
       iAmMaxBidder <- amIMaxBidder iid wid
       case res of
-        Nothing -> return $ iAmMaxBidder
-        Just _ -> -- Auction in progress
+        ItemRemoved -> return $ iAmMaxBidder
+        otherwise -> -- Auction in progress
           if iAmMaxBidder
           then bideTime newBidAmt
           else tryWinItem wid iid newBidAmt maxPrice
 
-buyerCore :: MVar ItemID -> CSN ()
+buyerCore :: MVar Message -> CSN ()
 buyerCore sellerMVar = do
   wid <- newWallet 10000000 -- Start with 10 MILLION dollars!
-  iid <- liftIO $ takeMVar sellerMVar
-  scale <- liftIO $ randomIO >>= \i -> return $ i `mod` 10
-  res <- tryWinItem wid iid minItemPrice (scale * minItemPrice)
-  let WalletID widInt = wid
-  let ItemID iidInt = iid
-  liftIO $ putStrLn $ "Buyer " ++ show widInt ++ " won item " ++ show iidInt
-  buyerCore sellerMVar
+  msg <- liftIO $ takeMVar sellerMVar
+  case msg of
+    NewItem iid -> do
+      scale <- liftIO $ randomIO >>= \i -> return $ i `mod` 10
+      res <- tryWinItem wid iid minItemPrice (scale * minItemPrice)
+      let WalletID widInt = wid
+      let ItemID iidInt = iid
+      when res $ liftIO $ putStrLn $ "Buyer " ++ show widInt ++ " won item " ++ show iidInt
+      buyerCore sellerMVar
+    Terminate -> return ()
 
-sellItem :: [MVar ItemID] -> WalletID -> Int -> CSN ()
-sellItem buyerList wid 0 = return ()
+sellItem :: [MVar Message] -> WalletID -> Int -> CSN ()
+sellItem buyerList wid 0 = do
+  mapM_ (\m -> liftIO $ putMVar m Terminate) buyerList
 sellItem buyerList wid numItems = do
-  iidInt <- liftIO $ randomIO
-  let iid = ItemID iidInt
+  iidInt <- liftIO $ randomIO >>= \i -> return $ i `mod` 1000000
+  let iid = ItemID $ iidInt
   let desc = show $ iid
   openAuction wid iid desc minItemPrice
-  mapM_ (\m -> liftIO $ putMVar m iid) buyerList
+  debugPrint $ "sellItem: auction opened: ItemID = " ++ (show iid)
+  mapM_ (\m -> liftIO $ putMVar m $ NewItem iid) buyerList
   liftIO $ threadDelay auctionTime
+  debugPrint $ "sellItem: woken up: ItemID = " ++ (show iid)
   maxBidAmt <- concludeAuction wid iid
   liftIO $ putStrLn $ "Sold: " ++ (show iid) ++ " price = " ++ (show maxBidAmt)
   sellItem buyerList wid $ numItems - 1

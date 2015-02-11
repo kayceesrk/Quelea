@@ -63,7 +63,11 @@ decodeOperationPayload b =
 
 instance Serialize UUID where
   put = putLazyByteString . toByteString
-  get = fromJust . fromByteString <$> getLazyByteString 16
+  get = do
+    r <- fromByteString <$> getLazyByteString 16
+    case r of
+      Nothing -> error "serialize UUID"
+      Just x -> return x
 
 $(derive makeSerialize ''Response)
 

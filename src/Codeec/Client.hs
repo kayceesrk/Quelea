@@ -93,7 +93,7 @@ beginTxn s tk = do
 endTxn :: S.Set TxnDep {- Extra dependencies -} -> Session -> IO Session
 endTxn extraDeps s = do
   when (s^.curTxn == Nothing) $ error "endTxn: No transaction in progress!"
-  let txnState = fromJust $ s^.curTxn
+  let txnState = case s^.curTxn of {Nothing -> error "endTxn"; Just st -> st}
   let txnCommit :: Request () = ReqTxnCommit (txnState^.txnidTS) (S.union extraDeps $ txnState^.txnEffsTS)
   send (s^.server) [] $ encode txnCommit
   receive (s^.server)
@@ -150,7 +150,7 @@ invokeInternal getDeps s key operName arg = do
               return (res, visSet, partialSessRV (Just orig) Nothing)
             Just newEff -> do
               let newDeps = S.insert (TxnDep ot key (s^.sessid) newSeqNo) deps
-              let (_, txnPayload) = fromJust txnReq
+              let (_, txnPayload) = case txnReq of {Nothing -> error "invokeInternal"; Just x -> x}
               let newSeenTxns = case mbTxns of
                               Nothing -> seenTxns
                               Just ts -> S.union ts seenTxns

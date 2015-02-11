@@ -102,7 +102,10 @@ worker dtLib pool cache gcSetting = do
       ReqOper req -> do
         {- Fetch the operation from the datatype library using the object type and
         - operation name. -}
-        let (op,av) = fromJust $ dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq)
+        let (op,av) =
+              case dtLib ^. avMap ^.at (req^.objTypeReq, req^.opReq) of
+                Nothing -> error $ "Not found in DatatypeLibrary:" ++ (show (req^.objTypeReq, req^.opReq))
+                Just x -> x
         -- debugPrint $ "worker: before " ++ show (req^.objTypeReq, req^.opReq, av)
         (result, ctxtSize) <- case av of
           Eventual -> doOp op cache req ONE
@@ -111,7 +114,10 @@ worker dtLib pool cache gcSetting = do
         ZMQ.send sock [] $ encode result
         -- debugPrint $ "worker: after " ++ show (req^.objTypeReq, req^.opReq)
         -- Maybe perform summarization
-        let gcFun = fromJust $ dtLib ^. sumMap ^.at (req^.objTypeReq)
+        let gcFun =
+              case dtLib ^. sumMap ^.at (req^.objTypeReq) of
+                Nothing -> error "Worker(2)"
+                Just x -> x
         case gcSetting of
           No_GC -> return ()
           otherwise -> maybeGCCache cache (req^.objTypeReq) (req^.keyReq) ctxtSize gcFun

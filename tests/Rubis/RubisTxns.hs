@@ -5,6 +5,7 @@ module RubisTxns (
   getWalletBalance,
 
   newItem,
+  ItemStatus(..),
   getItem,
 
   openAuction,
@@ -33,8 +34,8 @@ import Control.Exception.Base
 
 newWallet :: Int {- inital deposit -} -> CSN WalletID
 newWallet amt = do
-  wid <- liftIO $ randomIO
-  r::() <- invoke (mkKey $ WalletID wid) DepositToWallet amt
+  wid <- liftIO $ randomIO >>= \i -> return $ i `mod` 1000000
+  r::() <- invoke (mkKey $ WalletID $ wid) DepositToWallet amt
   return $ WalletID wid
 
 getWalletBalance :: WalletID -> CSN Int
@@ -42,15 +43,22 @@ getWalletBalance wid = invoke (mkKey $ wid) GetBalance ()
 
 newItem :: String {- description -} -> Int {- min price -} -> CSN ItemID
 newItem desc minPrice = do
-  iid <- liftIO $ randomIO
-  r::() <- invoke (mkKey $ ItemID iid) StockItem (desc, minPrice)
+  iid <- liftIO $ randomIO >>= \i -> return $ i `mod` 1000000
+  r::() <- invoke (mkKey $ ItemID $ iid) StockItem (desc, minPrice)
   return $ ItemID iid
 
-getItem :: ItemID -> CSN (Maybe (String {- desc -}, Int {- min price -}, Int {- max bid -}))
-getItem iid = invoke (mkKey $ iid) ShowItem ()
+data ItemStatus = ItemRemoved | ItemAvailable (String, Int, Int) | WaitingForItem
+
+getItem :: ItemID -> CSN ItemStatus
+getItem iid = do
+  res <- invoke (mkKey $ iid) ShowItem ()
+  case res of
+    Nothing -> return WaitingForItem
+    Just (a,b,c,True) -> return ItemRemoved
+    Just (a,b,c,False) -> return $ ItemAvailable (a,b,c)
 
 
-data BidResult = ItemGone | PriceLow | BidSuccess BidID
+data BidResult = ItemGone | PriceLow | BidSuccess BidID | ItemNotYetAvailable
 
 -- User places a bid for ItemID. The bid is placed only if the item is
 -- still available and the bid amount is greater than min price
@@ -61,8 +69,9 @@ bidForItem wid id amt =
   atomically ($(checkTxn "_bidForItemTxn" bidForItemTxnCtrt)) $ do
     resOp  <- getItem id
     case resOp of
-      Nothing -> return $ ItemGone
-      Just (desc, mp, maxb) -> do
+      WaitingForItem -> return $ ItemNotYetAvailable
+      ItemRemoved -> return $ ItemGone
+      ItemAvailable (desc, mp, maxb) -> do
         when (amt < mp) $ error "Bid amount less than min price"
         if amt > maxb
         then do
@@ -77,7 +86,10 @@ bidForItem wid id amt =
 bidIdFold :: [(ItemID,Int)] -> BidID -> CSN [(ItemID,Int)]
 bidIdFold acc (bidID) = do
   resOp :: Maybe (WalletID,ItemID,Int)  <- invoke (mkKey bidID) GetBid ()
-  let (_,id,amt) = fromJust resOp
+  let (_,id,amt) =
+        case resOp of
+          Nothing -> error "bidIdFold"
+          Just x -> x
   return $ (id,amt):acc
 
 -- Get all my bids.
@@ -129,7 +141,7 @@ showMyAuctions wid =
         f :: [(ItemID,String,Int,Int)] -> ItemID -> CSN [(ItemID,String,Int,Int)]
         f acc (itemID) = do
           resOp <- invoke (mkKey itemID) ShowItem ()
-          let (desc,mp,maxb) = fromJust resOp
+          let (desc,mp,maxb,status::Bool) = case fromJust resOp of {Nothing -> error "show my auctions"; Just x -> x}
           return $ (itemID,desc,mp,maxb):acc
 
 -- For each bidID in bidIDs, query details of the bidID, and determine
@@ -197,5 +209,5 @@ amIMaxBidder iid wid = do
   maxInfo <- getMaxBidFromList bidIDs
   case maxInfo of
     Nothing -> return False
-    Just (_,maxWid,_) -> return $ wid == maxWid
+    Just (_,maxWid,_) -> if wid == maxWid then return True else return False
 
