@@ -13,7 +13,7 @@ import Codeec.NameService.Types
 import Codeec.NameService.SimpleBroker
 -- import Codeec.NameService.LoadBalancingBroker
 import Codeec.Marshall
-import Language.Haskell.TH 
+import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import System.IO (hFlush, stdout)
 import Codeec.TH
@@ -99,7 +99,7 @@ args = Args
       ( long "terminateAfter"
     <> metavar "SECS"
     <> help "Terminate child proceeses after time. Only relevant for Daemon"
-    <> value "10")
+    <> value "600")
   <*> strOption
       ( long "numRounds"
      <> metavar "NUM_ROUNDS"

@@ -21,6 +21,7 @@ import System.Posix.Process (getProcessID)
 import Data.Tuple.Select
 import Data.Time
 
+import Codeec.Consts
 import Codeec.Types
 import Codeec.ShimLayer.Types
 import Codeec.DBDriver
@@ -167,12 +168,33 @@ fetchUpdates cm const todoList = do
   -- debugPrint $ "finalCursor"
   -- mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList new2Cursor
 
-  putMVar (cm^.cacheMVar) newCache
-  putMVar (cm^.cursorMVar) new2Cursor
-  putMVar (cm^.depsMVar) newDeps
-  putMVar (cm^.lastGCAddrMVar) newLastGCAddr
-  putMVar (cm^.lastGCTimeMVar) newLastGCTime
-  putMVar (cm^.includedTxnsMVar) newInclTxns
+  -- Flush cache if necessary {- Catch: XXX KC: A query cannot desire to see more than 1024 objects -}
+  if M.size newCache < cCACHE_MAX_OBJS
+  then do
+    putMVar (cm^.cacheMVar) newCache
+    putMVar (cm^.cursorMVar) new2Cursor
+    putMVar (cm^.depsMVar) newDeps
+    putMVar (cm^.lastGCAddrMVar) newLastGCAddr
+    putMVar (cm^.lastGCTimeMVar) newLastGCTime
+    putMVar (cm^.includedTxnsMVar) newInclTxns
+  else do
+    -- Reset almost everything
+    putMVar (cm^.cacheMVar) M.empty
+    putMVar (cm^.cursorMVar) M.empty
+    putMVar (cm^.depsMVar) M.empty
+    putMVar (cm^.lastGCAddrMVar) M.empty
+    putMVar (cm^.lastGCTimeMVar) M.empty
+    putMVar (cm^.includedTxnsMVar) (S.empty, M.empty)
+
+    takeMVar (cm^.hwmMVar)
+    putMVar (cm^.hwmMVar) M.empty
+    takeMVar (cm^.diskRowCntMVar)
+    putMVar (cm^.diskRowCntMVar) M.empty
+    takeMVar (cm^.hotLocsMVar)
+    putMVar (cm^.hotLocsMVar) S.empty
+
+    -- fetch updates again
+    fetchUpdates cm const todoList
   where
     buildCursorFromGCMarker (sid, sqn, deps,_) =
       S.foldl (\m (Addr sid sqn) ->
