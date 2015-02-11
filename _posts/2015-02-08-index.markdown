@@ -1,0 +1,32 @@
+---
+layout: post
+permalink: index.html
+---
+### Welcome to Quelea's home
+Quelea is a Haskell library that is intended to simplify programming with
+eventually consistent NoSQL stores, such as Cassandra. Among other things, the
+library implements:
+
++ A high-level logic-based DSL that lets NoSQL application programmers declare
+the consistency requirements of their applications as _contracts_, + A static
+contract classification procedure that maps high-level application contracts to
+appropriate low-level store consistency guarantees, and + A run-time that runs
+application operations after tuning the store consistency to appropriate levels
+as determined by the contract classification procedure.  
+
+While the implementations of DSL and the static contract classification
+components are largely independent of the actual NoSQL store used, the current
+implementation of run-time component is tailor-made to work with the Cassandra
+data store. 
+
+For further details, and to understand the theory behind Quelea, please read
+our [draft paper](http://gowthamk.github.io/docs/quelea.pdf).  
+
+### Try Quelea
+
+If you want to quickly see Quelea in action, [download the
+VM](https://www.cs.purdue.edu/sss/projects/catalyst/UbuntuQuelea.tar.gz)
+(wrapped in a tar ball), and follow the instructions
+[here]({{ site.baseurl }}/prelims.html) to run the benchmark
+suite that we built for evaluating Quelea.  
+
