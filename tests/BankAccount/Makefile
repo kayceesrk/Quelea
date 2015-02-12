@@ -3,7 +3,7 @@ EXE=BankAccount_Q BankAccount_SC BankAccount_CC BankAccount_EC BankAccount_1key
 all: $(EXE)
 
 BankAccount_Q: BankAccount_Q.hs
-	ghc -threaded BankAccount_Q.hs
+	ghc -rtsopts -threaded BankAccount_Q.hs
 
 BankAccount_EC: BankAccount_EC.hs
 	ghc -threaded BankAccount_EC.hs

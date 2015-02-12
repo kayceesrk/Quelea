@@ -192,7 +192,9 @@ run args = do
 
       t1 <- getCurrentTime
       replicateM_ threads $ forkIO $ do
-        avgLatency <- runSession ns $ foldM (clientCore args delay someTime) 0 [1 .. rounds]
+        avgLatency <- runSession ns $ do
+          liftIO $ putStrLn "Client running.."
+          foldM (clientCore args delay someTime) 0 [1 .. rounds]
         putMVar mv avgLatency
       totalLat <- foldM (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
       t2 <- getCurrentTime
@@ -255,7 +257,7 @@ clientCore args delay someTime avgLat round = do
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
   when (round `mod` printEvery == 0) $ do
-    liftIO $ do 
+    liftIO $ do
       _ <- putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
                         ++ if (measureLatency args)
                             then " latency = " ++ show newAvgLat
