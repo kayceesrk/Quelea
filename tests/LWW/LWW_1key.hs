@@ -184,21 +184,27 @@ run args = do
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
+      let printStats t1 mv = do
+          t2 <- getCurrentTime
+          totalLat <- foldM (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
+          putStrLn $ "Throughput (ops/s) = " ++ (show $ (fromIntegral $ numOpsPerRound * rounds * threads) / (diffUTCTime t2 t1))
+          putStrLn $ "Latency (s) = " ++ (show $ (totalLat / fromIntegral threads))
 
       key <- liftIO $ newKey
       mv::(MVar NominalDiffTime)<- newEmptyMVar
 
       t1 <- getCurrentTime
+      installHandler sigINT (Catch $ printStats t1 mv) Nothing
+      installHandler sigTERM (Catch $ printStats t1 mv) Nothing
       replicateM_ threads $ forkIO $ do
         (avgLatency,_) <- runSession ns $ foldM (clientCore args key delay someTime) (0,0) [1 .. rounds]
         putMVar mv avgLatency
-      totalLat <- foldM (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
-      t2 <- getCurrentTime
-      putStrLn $ "Throughput (ops/s) = " ++ (show $ (fromIntegral $ numOpsPerRound * rounds * threads) / (diffUTCTime t2 t1))
-      putStrLn $ "Latency (s) = " ++ (show $ (totalLat / fromIntegral threads))
+      printStats t1 mv
+
     Create -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable tableName
+
     Daemon -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTable tableName
