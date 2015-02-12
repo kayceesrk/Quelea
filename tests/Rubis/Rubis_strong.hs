@@ -147,81 +147,31 @@ args = Args
 keyspace :: Keyspace
 keyspace = Keyspace $ pack "Codeec"
 
-[
-  stockItemCtrtA,
-  removeFromStockCtrtA,
-  updateMaxBidCtrtA,
-  showItemCtrtA,
-  getBidsByItemCtrtA,
-  depositToWalletCtrtA,
-  withdrawFromWalletCtrtA,
-  addBidCtrtA,
-  cancelBidCtrtA,
-  getBidCtrtA,
-  addItemBidCtrtA,
-  removeItemBidCtrtA,
-  addWalletBidCtrtA,
-  removeWalletBidCtrtA,
-  getBidsByWalletCtrtA,
-  addWalletItemCtrtA,
-  getItemsByWalletCtrtA,
-  getBalanceCtrtA ] =
-    $(do
-        t1 <- runIO getCurrentTime
-        a1 <- checkOp StockItem stockItemCtrt
-        a2 <- checkOp RemoveFromStock removeFromStockCtrt
-        a3 <- checkOp UpdateMaxBid updateMaxBidCtrt
-        a4 <- checkOp ShowItem showItemCtrt
-        a5 <- checkOp GetBidsByItem getBidsByItemCtrt
-        a6 <- checkOp DepositToWallet depositToWalletCtrt
-        a7 <- checkOp WithdrawFromWallet withdrawFromWalletCtrt
-        b1 <- checkOp AddBid addBidCtrt
-        b2 <- checkOp CancelBid cancelBidCtrt
-        b3 <- checkOp GetBid getBidCtrt
-        b4 <- checkOp AddItemBid addItemBidCtrt
-        b5 <- checkOp RemoveItemBid removeItemBidCtrt
-        b7 <- checkOp AddWalletBid addWalletBidCtrt
-        c1 <- checkOp RemoveWalletBid removeWalletBidCtrt
-        c2 <- checkOp GetBidsByWallet getBidsByWalletCtrt
-        c3 <- checkOp AddWalletItem addWalletItemCtrt
-        c4 <- checkOp GetItemsByWallet getItemsByWalletCtrt
-        d1 <- checkOp GetBalance getBalanceCtrt
-        le <- return $ (ListE::[Exp] -> Exp)
-                [a1,a2,a3,a4,a5,a6,a7,b1,b2,b3,b4,b5,b7,c1,c2,c3,c4,d1]
-        t2 <- runIO getCurrentTime
-        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
-        _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
-                  (show $ diffUTCTime t2 t1)++"."
-        _ <- runIO $ putStrLn $ "----------------------------------------------------------"
-        _ <- runIO $ hFlush stdout
-        return le)
-
-
 dtLib = do
     return $ mkDtLib
-              [(StockItem, mkGenOp stockItem summarize, stockItemCtrtA),
-               (RemoveFromStock, mkGenOp removeFromStock summarize, removeFromStockCtrtA),
-               (UpdateMaxBid, mkGenOp updateMaxBid summarize, updateMaxBidCtrtA),
-               (ShowItem, mkGenOp showItem summarize, showItemCtrtA),
+              [(StockItem, mkGenOp stockItem summarize,Strong),
+               (RemoveFromStock, mkGenOp removeFromStock summarize,Strong),
+               (UpdateMaxBid, mkGenOp updateMaxBid summarize,Strong),
+               (ShowItem, mkGenOp showItem summarize,Strong),
 
-               (GetBalance, mkGenOp getBalance summarize, getBalanceCtrtA),
-               (DepositToWallet, mkGenOp depositToWallet summarize, depositToWalletCtrtA),
-               (WithdrawFromWallet, mkGenOp withdrawFromWallet summarize, withdrawFromWalletCtrtA),
+               (GetBalance, mkGenOp getBalance summarize,Strong),
+               (DepositToWallet, mkGenOp depositToWallet summarize,Strong),
+               (WithdrawFromWallet, mkGenOp withdrawFromWallet summarize,Strong),
 
-               (AddBid, mkGenOp addBid summarize, addBidCtrtA),
-               (CancelBid, mkGenOp cancelBid summarize, cancelBidCtrtA),
-               (GetBid, mkGenOp getBid summarize, getBidCtrtA),
+               (AddBid, mkGenOp addBid summarize,Strong),
+               (CancelBid, mkGenOp cancelBid summarize,Strong),
+               (GetBid, mkGenOp getBid summarize,Strong),
 
-               (AddItemBid, mkGenOp addItemBid summarize, addItemBidCtrtA),
-               (RemoveItemBid, mkGenOp removeItemBid summarize, removeItemBidCtrtA),
-               (GetBidsByItem, mkGenOp getBidsByItem summarize, getBidsByItemCtrtA),
+               (AddItemBid, mkGenOp addItemBid summarize,Strong),
+               (RemoveItemBid, mkGenOp removeItemBid summarize,Strong),
+               (GetBidsByItem, mkGenOp getBidsByItem summarize,Strong),
 
-               (AddWalletBid, mkGenOp addWalletBid summarize, addWalletBidCtrtA),
-               (RemoveWalletBid, mkGenOp removeWalletBid summarize, removeWalletBidCtrtA),
-               (GetBidsByWallet, mkGenOp getBidsByWallet summarize, getBidsByWalletCtrtA),
+               (AddWalletBid, mkGenOp addWalletBid summarize,Strong),
+               (RemoveWalletBid, mkGenOp removeWalletBid summarize,Strong),
+               (GetBidsByWallet, mkGenOp getBidsByWallet summarize,Strong),
 
-               (AddWalletItem, mkGenOp addWalletItem summarize, addWalletItemCtrtA),
-               (GetItemsByWallet, mkGenOp getItemsByWallet summarize, getItemsByWalletCtrtA)]
+               (AddWalletItem, mkGenOp addWalletItem summarize,Strong),
+               (GetItemsByWallet, mkGenOp getItemsByWallet summarize,Strong)]
 
 run :: Args -> IO ()
 run args = do

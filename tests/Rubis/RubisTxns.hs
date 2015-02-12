@@ -45,12 +45,12 @@ import System.IO (hFlush, stdout)
  concludeAuctionTxnCtrtA] =
    $(do
       t1 <- runIO getCurrentTime
-      a1 <- checkTxn "_bidForItemTxn" bidForItemTxnCtrt
-      a2 <- checkTxn "_showMyBidsTxn" showMyBidsTxnCtrt
-      a3 <- checkTxn "_cancelBidTxn" cancelBidTxnCtrt
-      a4 <- checkTxn "_openAuctionTxn" openAuctionTxnCtrt
-      a5 <- checkTxn "_showMyAuctionsTxn" showMyAuctionsTxnCtrt
-      a6 <- checkTxn "_concludeAuctionTxn" concludeAuctionTxnCtrt
+      a1 <- checkTxn "bidForItemTxn" bidForItemTxnCtrt
+      a2 <- checkTxn "showMyBidsTxn" showMyBidsTxnCtrt
+      a3 <- checkTxn "cancelBidTxn" cancelBidTxnCtrt
+      a4 <- checkTxn "openAuctionTxn" openAuctionTxnCtrt
+      a5 <- checkTxn "showMyAuctionsTxn" showMyAuctionsTxnCtrt
+      a6 <- checkTxn "concludeAuctionTxn" concludeAuctionTxnCtrt
       le <- return $ (ListE::[Exp] -> Exp) [a1,a2,a3,a4,a5,a6]
       t2 <- runIO getCurrentTime
       _ <- runIO $ putStrLn $ "----------------------------------------------------------"

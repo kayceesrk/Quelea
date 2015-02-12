@@ -3,6 +3,7 @@
 module Codeec.ClientMonad (
   Key,
   Session,
+  Availability(..),
   TxnKind(..),
   TxnDep,
   CSN,

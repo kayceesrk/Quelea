@@ -3,6 +3,7 @@
 module Codeec.Client (
   Key,
   Session,
+  Availability(..),
   TxnKind(..),
 
   beginSession,
