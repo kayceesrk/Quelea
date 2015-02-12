@@ -82,6 +82,14 @@ data Args = Args {
   txnKind :: String
 }
 
+data MyTxnKind = RC_ | MAV_ | RR_ | NoTxn_ deriving (Read, Show)
+
+getTxnKind :: MyTxnKind -> TxnKind
+getTxnKind RC_ = RC
+getTxnKind RR_ = RR
+getTxnKind MAV_ = MAV
+getTxnKind NoTxn_ = error "getTxnKind: unexpected value"
+
 args :: Parser Args
 args = Args
   <$> strOption
@@ -123,7 +131,7 @@ args = Args
      <> help "Measure operation latency")
   <*> strOption
       ( long "txnKind"
-     <> metavar "[RC|MAV|RR]"
+     <> metavar "[NoTxn|RC|MAV|RR]"
      <> help "Trasaction kind" )
 -------------------------------------------------------------------------------
 
@@ -230,14 +238,19 @@ clientCore :: Args -> Int -> UTCTime -- default arguments
 clientCore args delay someTime avgLat round = do
   -- Delay thread if required
   when (delay /= 0) $ liftIO $ threadDelay delay
+  -- Define the client core body
+  let body = replicateM_ (numOpsPerRound `div` 2) $ do {
+    -- Generate key
+    key <- liftIO $ (mkKey . (\i -> i `mod` (100000::Int))) <$> randomIO;
+    randInt <- liftIO $ randomIO;
+    ecWrite key randInt;
+    ecRead key
+  }
   -- Perform the operations
   t1 <- getNow args someTime
-  atomically (read $ txnKind args) $ replicateM_ (numOpsPerRound `div` 2) $ do
-    -- Generate key
-    key <- liftIO $ (mkKey . (\i -> i `mod` (100000::Int))) <$> randomIO
-    randInt <- liftIO $ randomIO
-    ecWrite key randInt
-    ecRead key
+  case read $ txnKind args ++ "_" of
+    NoTxn_ -> body
+    x -> atomically (getTxnKind x) body
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
