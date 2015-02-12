@@ -159,8 +159,8 @@ keyspace = Keyspace $ pack "Codeec"
   removeWalletBidCtrtA,
   getBidsByWalletCtrtA,
   addWalletItemCtrtA,
-  getItemsByWalletCtrtA ] = 
-    $(do 
+  getItemsByWalletCtrtA ] =
+    $(do
         t1 <- runIO getCurrentTime
         a1 <- checkOp StockItem stockItemCtrt
         a2 <- checkOp RemoveFromStock removeFromStockCtrt
@@ -179,7 +179,7 @@ keyspace = Keyspace $ pack "Codeec"
         c2 <- checkOp GetBidsByWallet getBidsByWalletCtrt
         c3 <- checkOp AddWalletItem addWalletItemCtrt
         c4 <- checkOp GetItemsByWallet getItemsByWalletCtrt
-        le <- return $ (ListE::[Exp] -> Exp) 
+        le <- return $ (ListE::[Exp] -> Exp)
                 [a1,a2,a3,a4,a5,a6,a7,b1,b2,b3,b4,b5,b7,c1,c2,c3,c4]
         t2 <- runIO getCurrentTime
         _ <- runIO $ putStrLn $ "----------------------------------------------------------"
@@ -191,7 +191,7 @@ keyspace = Keyspace $ pack "Codeec"
 
 
 dtLib = do
-    return $ mkDtLib 
+    return $ mkDtLib
               [(StockItem, mkGenOp stockItem summarize, stockItemCtrtA),
                (RemoveFromStock, mkGenOp removeFromStock summarize, removeFromStockCtrtA),
                (UpdateMaxBid, mkGenOp updateMaxBid summarize, updateMaxBidCtrtA),
@@ -234,8 +234,16 @@ run args = do
       mv::(MVar (Double, NominalDiffTime)) <- newEmptyMVar
       replicateM_ threads $ forkIO $ do
         mvarList <- replicateM numBuyers $ newEmptyMVar
-        mapM_ (\mv -> liftIO $ forkIO $ runSessionWithStats ns $ buyerCore mv $ read $ delayReq args) mvarList
+        handShakeMVar <- newEmptyMVar
+        mapM_ (\mv -> liftIO $ forkIO $ runSessionWithStats ns $ do
+                        liftIO $ putStrLn "Buyer: started..."
+                        liftIO $ putMVar handShakeMVar ()
+                        liftIO $ putStrLn "Buyer: hand shake done..."
+                        buyerCore mv $ read $ delayReq args) mvarList
         runSessionWithStats ns $ do
+          liftIO $ putStrLn "Seller: started..."
+          liftIO $ replicateM_ numBuyers $ liftIO $ takeMVar handShakeMVar
+          liftIO $ putStrLn "Seller: hand shake done..."
           wid <- newWallet 0
           res <- sellItems mvarList wid numItems
           liftIO $ putMVar mv res
@@ -293,19 +301,25 @@ tryWinItem wid iid waitBetweenSuccessfulBids currentBid maxPrice = do
   delta <- liftIO $ randomIO
   let newBidAmt = currentBid + delta `mod` maxDelta
   if newBidAmt > maxPrice
-  then waitTillAuctionEnd currentBid
+  then do
+    debugPrint $ show (iid,wid) ++ ": BeyondMaxPrice"
+    waitTillAuctionEnd currentBid
   else do
     bidResult <- bidForItem wid iid newBidAmt
     case bidResult of
       ItemNotYetAvailable -> do
+        debugPrint $ show (iid,wid) ++ ": ItemNotYetAvailable"
         liftIO $ threadDelay waitBetweenSuccessfulBids
         tryWinItem wid iid waitBetweenSuccessfulBids currentBid maxPrice
       ItemGone -> do
+        debugPrint $ show (iid,wid) ++ ": ItemGone"
         res <- amIMaxBidder iid wid
         return $ (res, currentBid)
-      PriceLow -> tryWinItem wid iid waitBetweenSuccessfulBids newBidAmt maxPrice
+      OutBid -> do
+        debugPrint $ show (iid,wid) ++ ": OutBid"
+        tryWinItem wid iid waitBetweenSuccessfulBids newBidAmt maxPrice
       BidSuccess bid -> do
-        debugPrint $ "Item = " ++ (show iid) ++ " Buyer = " ++ (show wid) ++ " amt = " ++ (show newBidAmt)
+        debugPrint $ show (iid,wid) ++ ": BidSuccess"
         bideTime newBidAmt
   where
     waitTillAuctionEnd currentBid = do
@@ -334,13 +348,14 @@ buyerCore sellerMVar waitBetweenSuccessfulBids = do
   msg <- liftIO $ takeMVar sellerMVar
   case msg of
     NewItem iid -> do
-      scale <- liftIO $ randomIO >>= \i -> return $ i `mod` 10
+      debugPrint $ show (iid,wid) ++ ": NewItem"
+      scale <- liftIO $ randomIO >>= \i -> return $ 2 + (i `mod` 10)
       (res, bid) <- tryWinItem wid iid waitBetweenSuccessfulBids minItemPrice (scale * minItemPrice)
       let WalletID widInt = wid
       let ItemID iidInt = iid
       if res
-      then liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") won " ++ show iidInt ++ " for " ++ (show bid)
-      else liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") lost " ++ show iidInt ++ "; Max bid = " ++ (show bid)
+      then liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") won  " ++ show iidInt
+      else liftIO $ putStrLn $ "Buyer (" ++ show widInt ++ ") lost " ++ show iidInt
       buyerCore sellerMVar waitBetweenSuccessfulBids
     Terminate mv -> do
       stats <- getStats

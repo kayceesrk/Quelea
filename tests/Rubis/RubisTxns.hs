@@ -42,7 +42,7 @@ import System.IO (hFlush, stdout)
  cancelBidTxnCtrtA,
  openAuctionTxnCtrtA,
  showMyAuctionsTxnCtrtA,
- concludeAuctionTxnCtrtA] = 
+ concludeAuctionTxnCtrtA] =
    $(do
       t1 <- runIO getCurrentTime
       a1 <- checkTxn "_bidForItemTxn" bidForItemTxnCtrt
@@ -86,7 +86,7 @@ getItem iid = do
     Just (a,b,c,False) -> return $ ItemAvailable (a,b,c)
 
 
-data BidResult = ItemGone | PriceLow | BidSuccess BidID | ItemNotYetAvailable
+data BidResult = ItemGone | OutBid | BidSuccess BidID | ItemNotYetAvailable
 
 -- User places a bid for ItemID. The bid is placed only if the item is
 -- still available and the bid amount is greater than min price
@@ -109,7 +109,7 @@ bidForItem wid id amt =
           r::() <- invoke (mkKey wid) AddWalletBid bidID
           r::() <- invoke (mkKey id) UpdateMaxBid amt
           return $ BidSuccess bidID
-        else return $ PriceLow
+        else return $ OutBid
 
 bidIdFold :: [(ItemID,Int)] -> BidID -> CSN [(ItemID,Int)]
 bidIdFold acc (bidID) = do
