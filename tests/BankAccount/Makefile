@@ -4,7 +4,7 @@ BROKER=
 all: $(EXE)
 
 BankAccount_Q: BankAccount_Q.hs
-	ghc $(BROKER) -threaded BankAccount_Q.hs
+	ghc $(BROKER) -rtsopts -threaded BankAccount_Q.hs
 
 BankAccount_EC: BankAccount_EC.hs
 	ghc $(BROKER) -threaded BankAccount_EC.hs
