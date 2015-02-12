@@ -10,7 +10,7 @@ a bank account. To support the rich functionality, RUBiS implements a
 large number of operations and transactions requiring varying levels
 of consistency and isolation, respectively. The primary purpose of
 this benchmark is to study the impact of using Quelea in such a
-_real-world_ setting (Fig. 9(c) of the [paper]({{ site.pldiurl}})); We
+real-world setting (Fig. 9(c) of the [paper]({{ site.pldiurl}})); We
 would like to demonstrate significant performance gains obtained by
 annotating operations/transactions with Quelea contracts, which would
 otherwise need to be executed with strong consistency/isolation to

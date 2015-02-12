@@ -40,7 +40,7 @@ example, if your pem file is saved as `~/.ssh/name-key-pair-uswestoregon.pem`,
 to log on to an instance wiht public IP of `54.149.150.102`, you should the
 following:
 
-    ssh -i ~/.ssh/name-key-pair-uswestoregon.pem ubuntu@54.149.150.102
+      ssh -i ~/.ssh/name-key-pair-uswestoregon.pem ubuntu@54.149.150.102
 
 ![ec2-5]({{ site.baseurl }}/assets/ec2-5.png)
 
