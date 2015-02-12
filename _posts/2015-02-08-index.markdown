@@ -27,9 +27,7 @@ our [draft paper](http://gowthamk.github.io/docs/quelea.pdf).
 
 ### Try Quelea
 
-If you want to quickly see Quelea in action, [download the
-VM](https://www.cs.purdue.edu/sss/projects/catalyst/UbuntuQuelea.tar.gz)
-(wrapped in a tar ball), and follow the instructions
-[here]({{ site.baseurl }}/prelims.html) to run the benchmark
-suite.  
+If you want to quickly see Quelea in action, [download the VM]({{ site.vmurl}}), 
+and follow the instructions [here]({{ site.baseurl }}/prelims.html) to
+run the benchmark suite.  
 
