@@ -76,12 +76,16 @@ following pages:
 + [RUBiS]({{ site.baseurl }}/rubis-test.html) benchmark
 + [LWW GC]({{ site.baseurl }}/lww-gc-test.html) benchmark
 
-Please note that the experiments that we reported in our paper were
-conducted in a geo-distributed cloud environment, which let us scale
-to tens of Cassandra replicas and thousands of concurrent client
-connections. As such, it is impossible to conduct experiments at
-similar scale in a VM. Nevertheless, you should be able to observe
-similar patterns as reported in Figs. 9(a) to 9(d) of the paper even
-with small-scale experiments in the VM. If you are interested in
-reconstructing experiments in a cloud setting, instructions are
+Please note that the experimental results reported in the paper were
+conducted on a 5 node Quelea cluster, where each node was a c3.4xlarge
+machine with 16 vCPUs and 30GiB of main memory. As a result, the scale
+of the results are much smaller in the VM. Nevertheless, you should be
+able to observe similar patterns as reported in the paper, at a
+smaller scale in the VM. If you are interested in reconstructing
+experiments in a cloud setting, instructions are 
 [here]({{ site.baseurl }}/ec2-instructions.html).
+
+We have tried to ensure that benchmarks can be run as smoothly as
+possible. However, you might still encounter some issues due to some
+concurrency bugs lurking in our software. We have documented some of
+the known issues, and quick fixes [here]({{ site.baseurl }}/troubleshooting.html).
