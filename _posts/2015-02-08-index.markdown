@@ -7,12 +7,15 @@ Quelea is a Haskell library that is intended to simplify programming with
 eventually consistent NoSQL stores, such as Cassandra. Among other things, the
 library implements:
 
-+ A high-level logic-based DSL that lets NoSQL application programmers declare
-the consistency requirements of their applications as _contracts_, + A static
-contract classification procedure that maps high-level application contracts to
-appropriate low-level store consistency guarantees, and + A run-time that runs
-application operations after tuning the store consistency to appropriate levels
-as determined by the contract classification procedure.  
++ A high-level logic-based DSL that lets NoSQL application programmers
+  declare the consistency requirements of their applications as
+  _contracts_, 
++ A static contract classification procedure that maps high-level
+  application contracts to appropriate low-level store consistency
+  guarantees, and 
++ A run-time that runs application operations after tuning the store
+  consistency to appropriate levels as determined by the contract
+  classification procedure.  
 
 While the implementations of DSL and the static contract classification
 components are largely independent of the actual NoSQL store used, the current

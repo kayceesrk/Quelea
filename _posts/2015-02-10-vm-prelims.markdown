@@ -67,10 +67,21 @@ of contract classification, it is therefore imperative to build the
 benchmarks and observe the output. Performance of the run-time
 component can then be evaluated by running the binaries generated.
 
-For each benchmark, instructions on how to build and execute the
-benchmark, and guidelines on how to interpret the data generated are
-provided in the following pages:
+For each benchmark, instructions on how to build and execute, and
+guidelines on how to interpret the data generated are provided in the
+following pages:
 
 + [BankAccount]({{ site.baseurl }}/bank-account-test.html) benchmark
 + [LWW Transactions]({{ site.baseurl }}/lww-txn-test.html) benchmark
 + [RUBiS]({{ site.baseurl }}/rubis-test.html) benchmark
++ [LWW GC]({{ site.baseurl }}/lww-gc-test.html) benchmark
+
+Please note that the experiments that we reported in our paper were
+conducted in a geo-distributed cloud environment, which let us scale
+to tens of Cassandra replicas and thousands of concurrent client
+connections. As such, it is impossible to conduct experiments at
+similar scale in a VM. Nevertheless, you should be able to observe
+similar patterns as reported in Figs. 9(a) to 9(d) of the paper even
+with small-scale experiments in the VM. If you are interested in
+reconstructing experiments in a cloud setting, instructions are
+[here]({{ site.baseurl }}/ec2-instructions.html).
