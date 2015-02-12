@@ -7,9 +7,9 @@ permalink: prelims.html
 #### Booting the VM
 
 The VM is packaged as a `.ova` file, which can be opened either with VirtualBox
-([instructions][http://www.virtualbox.org/manual/ch01.html#ovf]) or VMWare
+([instructions](http://www.virtualbox.org/manual/ch01.html#ovf)) or VMWare
 player
-([instructions][https://pubs.vmware.com/fusion-5/topic/com.vmware.fusion.help.doc/GUID-275EF202-CF74-43BF-A9E9-351488E16030.html]).
+([instructions](https://pubs.vmware.com/fusion-5/topic/com.vmware.fusion.help.doc/GUID-275EF202-CF74-43BF-A9E9-351488E16030.html)).
 We suggest that you allocate atleast 2GB of memory, and atleast 2 processors to
 the VM. The username and password for the VM is `quelea`.
 
