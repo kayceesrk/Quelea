@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
 import Codeec.Shim
 import Codeec.ClientMonad
@@ -10,8 +10,11 @@ import System.Process (ProcessHandle, runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (ThreadId, myThreadId, forkIO, threadDelay, killThread)
 import Codeec.NameService.Types
+#ifdef LBB
+import Codeec.NameService.LoadBalancingBroker
+#else
 import Codeec.NameService.SimpleBroker
--- import Codeec.NameService.LoadBalancingBroker
+#endif
 import Codeec.Marshall
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
@@ -255,7 +258,7 @@ clientCore args delay someTime avgLat round = do
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
   when (round `mod` printEvery == 0) $ do
-    liftIO $ do 
+    liftIO $ do
       _ <- putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
                         ++ if (measureLatency args)
                             then " latency = " ++ show newAvgLat

@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
 import Codeec.Shim
 import Codeec.Types
@@ -11,8 +11,11 @@ import System.Process (ProcessHandle, runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (ThreadId, myThreadId, forkIO, threadDelay, killThread)
 import Codeec.NameService.Types
+#ifdef LBB
+import Codeec.NameService.LoadBalancingBroker
+#else
 import Codeec.NameService.SimpleBroker
--- import Codeec.NameService.LoadBalancingBroker
+#endif
 import Codeec.Marshall
 import Codeec.TH
 import Database.Cassandra.CQL
