@@ -225,6 +225,7 @@ run args = do
       c <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Client --brokerAddr " ++ broker
                         ++ " --numAuctions " ++ (numAuctions args)
+                        ++ " --numItems " ++ (numItems args)
                         ++ " --delayReq " ++ (delayReq args)
       -- Install handler for Ctrl-C
       tid <- myThreadId
