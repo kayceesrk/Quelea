@@ -72,9 +72,6 @@ minItemPrice = 1000
 auctionTime :: Int
 auctionTime = 5 * 1000000 -- 5 seconds
 
-numBuyers :: Int
-numBuyers = 3
-
 --------------------------------------------------------------------------------
 
 data Kind = Broker | Client | Server
@@ -98,6 +95,8 @@ data Args = Args {
   {- -------------- -}
   -- Number of concurrent client threads
   numAuctions :: String,
+  -- Number of Buyers per auction
+  numBuyers :: String,
   -- Delay between client requests in microseconds. Used to control throughput.
   delayReq :: String,
   -- Number of items per auction
@@ -130,6 +129,11 @@ args = Args
      <> metavar "NUM_AUCTIONS"
      <> help "Number of concurrent auctions"
      <> value "1")
+  <*> strOption
+      ( long "numBuyers"
+     <> metavar "NUM_BUYERS"
+     <> help "Number of buyers per auction"
+     <> value "3")
   <*> strOption
       ( long "delayReq"
      <> metavar "MICROSECS"
@@ -188,9 +192,10 @@ run args = do
       runShimNode dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let threads = read $ numAuctions args
+      let buyers = read $ numBuyers args
       mv::(MVar (Double, NominalDiffTime)) <- newEmptyMVar
       replicateM_ threads $ forkIO $ do
-        mvarList <- replicateM numBuyers $ newEmptyMVar
+        mvarList <- replicateM buyers $ newEmptyMVar
         handShakeMVar <- newEmptyMVar
         mapM_ (\mv -> liftIO $ forkIO $ runSessionWithStats ns $ do
                         liftIO $ putStrLn "Buyer: started..."
@@ -199,7 +204,7 @@ run args = do
                         buyerCore mv $ read $ delayReq args) mvarList
         runSessionWithStats ns $ do
           liftIO $ putStrLn "Seller: started..."
-          liftIO $ replicateM_ numBuyers $ liftIO $ takeMVar handShakeMVar
+          liftIO $ replicateM_ buyers $ liftIO $ takeMVar handShakeMVar
           liftIO $ putStrLn "Seller: hand shake done..."
           wid <- newWallet 0
           res <- sellItems mvarList wid (read $ numItems args)
