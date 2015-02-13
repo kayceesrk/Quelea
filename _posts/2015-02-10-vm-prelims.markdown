@@ -23,9 +23,9 @@ service:
   _terminal_).
 + Run `sudo ~/dsc-cassandra-2.0.12/bin/cassandra -f > /dev/null`
 
-Cassandra service should now run in the foreground, listening on port 9042 for
-new connections. We can verify this by opening a Cassandra Query Languagae
-(CQL) shell:
+Cassandra service should now run in the foreground, listening on port
+9160 for new connections. We can verify this by opening a Cassandra
+Query Languagae (CQL) shell:
 
 ![cqlsh]({{ site.baseurl }}/assets/cqlsh.png)
 

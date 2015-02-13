@@ -50,8 +50,7 @@ for a quick fix.
 This is the case where Quelea does garbage collection only in the
 memory, but not on the disk. The command to run is:
 
-    ./LWW_1key --kind Daemon --numRounds 10000 --numThreads 2
-    --measureLatency --gcSetting GC_Mem_Only --terminateAfter 60
+    ./LWW_1key --kind Daemon --numRounds 10000 --numThreads 2 --measureLatency --gcSetting GC_Mem_Only --terminateAfter 60
 
 ![lww-gc-mgc]({{ site.baseurl }}/assets/lww-gc-mgc.png)
 
@@ -60,8 +59,7 @@ memory, but not on the disk. The command to run is:
 Corresponds to Quelea with effect summarization in both memory and
 disk. The command to run is:
 
-    ./LWW_1key --kind Daemon --numRounds 10000 --numThreads 2
-    --measureLatency --gcSetting GC_Full --terminateAfter 60
+    ./LWW_1key --kind Daemon --numRounds 10000 --numThreads 2 --measureLatency --gcSetting GC_Full --terminateAfter 60
 
 ![lww-gc-fgc]({{ site.baseurl }}/assets/lww-gc-fgc.png)
     
