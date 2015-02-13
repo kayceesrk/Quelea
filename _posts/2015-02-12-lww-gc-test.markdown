@@ -5,7 +5,7 @@ permalink: lww-gc-test.html
 ---
 
 Quelea's programming model encourages programmers to define operations
-on a replicated data object as _fold_s over effects accumulated over
+on a replicated data object as _folds_ over effects accumulated over
 the object. A straightforward implementation, which lets effects to
 simply accumulate over time would not scale. Quelea implements effect
 summarization (or, garbage collection), which is the key to ensure
@@ -28,7 +28,7 @@ experiments with the binary, each lasting for 1 minute and employing
 different garbage collection strategy. For 1 minute, clients keep
 making write and read requests (with an inter-request delay of 1ms
 (1000 μs)) to a single LWW register object. For each GC strategy, we
-then measure how many client requests have been served.
+then measure how many client requests have been served under 1 minute.
 
 #### No GC
 
