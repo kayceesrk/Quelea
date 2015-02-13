@@ -32,11 +32,11 @@ new connections. We can verify this by opening a Cassandra Query Languagae
 #### Getting familiar with Quelea source repository
 
 VM maintains a local git repository of Quelea at `~/git/quelea`. The
-sub-directory `src` contains Quelea's Haskell source files, along with a cabal
-build file named `Codeec.cabal`. The cabal package of Quelea is called Codeec
-(for historic reasons), and is already installed in the VM. However, should you
-chose to do a `git pull` (not required), you can build and install latest
-version of Codeec by simply running a `cabal install` under the `src`
+sub-directory `src` contains Quelea's Haskell source files, along with
+a cabal build file named `Codeec.cabal`. The cabal package of Quelea
+is called Codeec (for historic reasons), and is already installed in
+the VM. However, it is advisable to do a `git pull`, and install the
+latest version of Codeec by running a `cabal install` under the `src`
 directory.
 
 Tests (benchmarks) are located in the sub-directory called `tests`:
