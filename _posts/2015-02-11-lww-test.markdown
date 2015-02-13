@@ -31,6 +31,12 @@ an inter-request delay of 1ms (1000 μs)). We take the measurements for
 each of the _NoTxn_, _RC_, _MAV_, and _RR_ cases. The commands to
 execute, and output generated in our sample runs are shown below:
 
+#### NoTxn
+
+    ./LWW_txn --kind Daemon --numRounds 1000 --numThreads 1 --delayReq 1000 --measureLatency --txnKind NoTxn
+
+![lww-txn-notxn1]({{ site.baseurl }}/assets/lww-txn-notxn1.png)
+
 #### RC
 
     ./LWW_txn --kind Daemon --numRounds 1000 --numThreads 1 --delayReq 1000 --measureLatency --txnKind RC
@@ -53,6 +59,10 @@ The experiment can now be repeated varying the number of client
 threads (`--numThreads`) from 2 to 4. Screenshots capturing
 measurements for sample runs when `--numThreads` is 4 are shown below:
 
+##### NoTxn
+
+![lww-txn-notxn2]({{ site.baseurl }}/assets/lww-txn-notxn2.png)
+
 ##### RC
 
 ![lww-txn-rc2]({{ site.baseurl }}/assets/lww-txn-rc2.png)
@@ -65,4 +75,16 @@ measurements for sample runs when `--numThreads` is 4 are shown below:
 
 ![lww-txn-rr2]({{ site.baseurl }}/assets/lww-txn-rr2.png)
 
+### Observations
+
+As demonstrated in sample runs, experimental results should indicate
+that throughput depends on the strength of the isolation level of
+transactions:
+
++ Througput is highest when no transactional guarantees (including
+  atomicity) are required. 
++ Transactions requiring the weakest isolation level (_RC_) yeild
+  highest throughput.
++ Transactions requiring strongest isolation level (_RR_) yeild
+  lowest throughput.
 
