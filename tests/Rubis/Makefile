@@ -3,10 +3,10 @@ BROKER=
 
 all: $(EXE)
 
-Rubis: Rubis.hs
+Rubis: Rubis.hs RubisDefs.hs RubisTxns.hs
 	ghc $(BROKER) -threaded -rtsopts Rubis.hs
 
-Rubis_strong: Rubis_strong.hs
+Rubis_strong: Rubis_strong.hs RubisDefs.hs RubisTxns.hs
 	ghc $(BROKER) -threaded -rtsopts Rubis_strong.hs
 
 

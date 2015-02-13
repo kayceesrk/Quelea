@@ -119,7 +119,8 @@ instance Effectish ItemEffect where
   summarize ctxt =
     case showItem ctxt () of
       (Nothing, _) -> []
-      (Just (d, mp, maxb, _), _) -> [StockItem_ d mp maxb]
+      (Just (d, mp, maxb, False), _) -> [StockItem_ d mp maxb]
+      (Just (d, mp, maxb, True), _) -> [RemoveFromStock_]
 
 --------------------------------------------------------------------------------
 -- Wallets table : Key = WalletId
