@@ -35,9 +35,9 @@ VM maintains a local git repository of Quelea at `~/git/quelea`. The
 sub-directory `src` contains Quelea's Haskell source files, along with
 a cabal build file named `Codeec.cabal`. The cabal package of Quelea
 is called Codeec (for historic reasons), and is already installed in
-the VM. However, it is advisable to do a `git pull`, and install the
-latest version of Codeec by running a `cabal install` under the `src`
-directory.
+the VM. However, it is advisable to do a `git pull origin master`, and
+install the latest version of Codeec by running a `cabal install`
+under the `src` directory.
 
 Tests (benchmarks) are located in the sub-directory called `tests`:
 
@@ -64,6 +64,8 @@ how to interpret the data generated are provided in the following pages:
 + [RUBiS]({{ site.baseurl }}/rubis-test.html) benchmark
 + [LWW GC]({{ site.baseurl }}/lww-gc-test.html) benchmark
 
+### Running experiments in cloud
+
 Please note that the experimental results reported in the paper were conducted
 on a 5 node Quelea cluster, where each node was a c3.4xlarge machine with 16
 vCPUs and 30GiB of main memory. As a result, the scale of the results are much
@@ -71,6 +73,8 @@ smaller in the VM. Nevertheless, you should be able to observe similar patterns
 as reported in the paper, at a smaller scale in the VM. If you are interested
 in reconstructing experiments in a cloud setting, instructions are
 [here]({{ site.baseurl }}/ec2-instructions.html).
+
+### Troubleshooting
 
 We have tried to ensure that benchmarks can be run as smoothly as possible.
 However, you might still encounter some issues due to some concurrency bugs
