@@ -45,18 +45,14 @@ consistency and isolation guarantees.
 
 ### Running the Benchmark
 
-The aim of our experiments is to show that, while both `Rubis` and
-`Rubis_strong` preserve necessary semantic guarantees (e.g: only the
-buyer who wins the auction gets billed), the former does so while
-delivering orders of magnitude higher throughput and lower latency
-than the latter. We start with an experiment to measure latency and
-throughput, when one auction is open and (the default) 3 buyers are
-bidding for the item.  We take the measurements for each of the
-`Rubis` and `Rubis_strong` cases. The commands to execute, and output
-generated in our sample runs are shown below.  Like our other
-benchmarks, experiments can be terminated either manually (via
-`CTRL+C`), or by setting a hard time limit via `--terminateAfter`
-option, which accepts number of seconds as argument.
+We start with an experiment to measure latency and throughput, when
+one auction is open and (the default) 3 buyers are bidding for the
+item.  We take the measurements for each of the `Rubis` and
+`Rubis_strong` cases. The commands to execute, and output generated in
+our sample runs are shown below.  Like our other benchmarks,
+experiments can be terminated either manually (via `CTRL+C`), or by
+setting a hard time limit via `--terminateAfter` option, which accepts
+number of seconds as argument.
 
 ### Rubis
 
@@ -88,4 +84,10 @@ capturing measurements for sample runs are shown below:
 
 ![rubis-sc-8-10]({{ site.baseurl }}/assets/rubis-sc-8-10.png)
 
+### Observations
 
+As demonstrated in sample runs, experiments should let us infer that,
+while both `Rubis` and `Rubis_strong` preserve necessary semantic
+guarantees (e.g: only the buyer who wins the auction gets billed), the
+former does so while delivering orders of magnitude higher throughput
+and lower latency than the latter.
