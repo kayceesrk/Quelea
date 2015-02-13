@@ -73,7 +73,7 @@ auctionTime :: Int
 auctionTime = 5 * 1000000 -- 5 seconds
 
 numBuyers :: Int
-numBuyers = 4
+numBuyers = 3
 
 --------------------------------------------------------------------------------
 
