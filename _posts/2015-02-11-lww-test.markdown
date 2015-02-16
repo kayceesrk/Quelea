@@ -29,7 +29,23 @@ First, we run a basic experiment to measure latency and throughput,
 when a single client sends 1000 successive transation requests (with
 an inter-request delay of 1ms (1000 μs)). We take the measurements for
 each of the _NoTxn_, _RC_, _MAV_, and _RR_ cases. The commands to
-execute, and output generated in our sample runs are shown below:
+execute, and output generated in our sample runs are shown below.  As
+with the [BankAccount benchmark]({{ site.baseurl }}/bank-account-test.html), 
+experiments can be terminated either manually (via `CTRL+C`), or by
+setting a hard time limit via `--terminateAfter` option, which accepts
+number of seconds as argument.
+
+#### NoTxn
+
+    ./LWW_txn --kind Daemon --numRounds 1000 --numThreads 1 --delayReq 1000 --measureLatency --txnKind NoTxn
+
+![lww-txn-notxn1]({{ site.baseurl }}/assets/lww-txn-notxn1.png)
+
+Once you have aggregate latency and throughput data, terminate the
+experiment by pressing `CTRL-C`. If you have encountered an error, or
+if you suspect that execution is not making progress, please refer to
+the [troubleshooting guide]({{ site.baseurl }}/troubleshooting.html)
+for quick fix.
 
 #### RC
 
@@ -53,6 +69,10 @@ The experiment can now be repeated varying the number of client
 threads (`--numThreads`) from 2 to 4. Screenshots capturing
 measurements for sample runs when `--numThreads` is 4 are shown below:
 
+##### NoTxn
+
+![lww-txn-notxn2]({{ site.baseurl }}/assets/lww-txn-notxn2.png)
+
 ##### RC
 
 ![lww-txn-rc2]({{ site.baseurl }}/assets/lww-txn-rc2.png)
@@ -65,4 +85,16 @@ measurements for sample runs when `--numThreads` is 4 are shown below:
 
 ![lww-txn-rr2]({{ site.baseurl }}/assets/lww-txn-rr2.png)
 
+### Observations
+
+As demonstrated in sample runs, experimental results should indicate
+that throughput depends on the strength of the isolation level of
+transactions:
+
++ Througput is highest when no transactional guarantees (including
+  atomicity) are required. 
++ Transactions requiring the weakest isolation level (_RC_) yeild
+  highest throughput.
++ Transactions requiring strongest isolation level (_RR_) yeild
+  lowest throughput.
 

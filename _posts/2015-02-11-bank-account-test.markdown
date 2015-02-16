@@ -42,12 +42,22 @@ _CC_ and _SC_ binaries run all operations under eventual, causal and
 strong consistency levels, respectively. On the other hand, the _Q_
 testcase runs operations at appropriate consistency levels as
 determined by the contract classification procedure. The commands to
-execute, and output generated in our sample runs are shown below:
+execute, and output generated in our sample runs are shown below.
+Please note that experiments can be terminated either manually (via
+`CTRL+C`), or by setting a hard time limit via `--terminateAfter`
+option, which accepts number of seconds as argument.
 
 ##### EC
+
     ./BankAccount_EC --kind Daemon --measureLatency --delayReq 1000 --numThreads 1 --numRounds 1000
 
 ![ba-ec1]({{ site.baseurl }}/assets/ba-ec1.png)
+
+Once you have aggregate latency and throughput data, terminate the
+experiment by pressing `CTRL-C`. If you have encountered an error, or
+if you suspect that execution is not making progress, please refer to
+the [troubleshooting guide]({{ site.baseurl }}/troubleshooting.html)
+for quick fix.
 
 ##### CC
 
@@ -88,6 +98,7 @@ measurements for sample runs when `--numThreads` is 4 are shown below:
 
 ![ba-q2]({{ site.baseurl }}/assets/ba-q2.png)
 
+### Observations
 
 As shown in the sample runs, you should be able to observe that:
 

@@ -34,19 +34,23 @@ to run the experiments.
 
 ### Part 2: Setting up the cluster
 
-+ Log into all the instance using their public IP
++ Open three terminals, and log into all three instances using their public IPs
+(listed on EC2 dashboard, against the instance id), and your pem file. For
+example, if your pem file is saved as `~/.ssh/name-key-pair-uswestoregon.pem`,
+to log on to an instance wiht public IP of `54.149.150.102`, you should the
+following:
 
-    ssh -i <key_file_name>.pem ubuntu@<public_ip>
+      ssh -i ~/.ssh/name-key-pair-uswestoregon.pem ubuntu@54.149.150.102
 
 ![ec2-5]({{ site.baseurl }}/assets/ec2-5.png)
 
-+ Run:
++ On every instance, run:
 
       cd ~Quelea/src
       git pull origin master
       cabal install
 
-  To get the latest sources.
+  To build and install latest sources.
 + Of the three instances (say A, B & C) pick two to be servers (say A & B). 
 + Get the private IP of machine A. Type “hostname” on A. If the output is “ip-10-36-2-14”, then the private ip is “10.36.2.14”.
 + On A and B:
@@ -54,7 +58,8 @@ to run the experiments.
        cd ~/Quelea/Ec2Files
        sudo sh ec2snitch_init.sh <private_ip_of_A>
 
-  This sets up the cassandra configuration files.
+  This sets up the cassandra configuration files appropriately. Please note that
+  you should use the private IP of A on **both** A and B.
 + On A and B:
 
         cd ~/dsc-cassandra-2.0.12

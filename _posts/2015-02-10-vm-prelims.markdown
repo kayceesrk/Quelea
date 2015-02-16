@@ -23,21 +23,21 @@ service:
   _terminal_).
 + Run `sudo ~/dsc-cassandra-2.0.12/bin/cassandra -f > /dev/null`
 
-Cassandra service should now run in the foreground, listening on port 9042 for
-new connections. We can verify this by opening a Cassandra Query Languagae
-(CQL) shell:
+Cassandra service should now run in the foreground, listening on port
+9160 for new connections. We can verify this by opening a Cassandra
+Query Languagae (CQL) shell:
 
 ![cqlsh]({{ site.baseurl }}/assets/cqlsh.png)
 
 #### Getting familiar with Quelea source repository
 
 VM maintains a local git repository of Quelea at `~/git/quelea`. The
-sub-directory `src` contains Quelea's Haskell source files, along with a cabal
-build file named `Codeec.cabal`. The cabal package of Quelea is called Codeec
-(for historic reasons), and is already installed in the VM. However, should you
-chose to do a `git pull` (not required), you can build and install latest
-version of Codeec by simply running a `cabal install` under the `src`
-directory.
+sub-directory `src` contains Quelea's Haskell source files, along with
+a cabal build file named `Codeec.cabal`. The cabal package of Quelea
+is called Codeec (for historic reasons), and is already installed in
+the VM. However, it is advisable to do a `git pull origin master`, and
+install the latest version of Codeec by running a `cabal install`
+under the `src` directory.
 
 Tests (benchmarks) are located in the sub-directory called `tests`:
 
@@ -64,6 +64,8 @@ how to interpret the data generated are provided in the following pages:
 + [RUBiS]({{ site.baseurl }}/rubis-test.html) benchmark
 + [LWW GC]({{ site.baseurl }}/lww-gc-test.html) benchmark
 
+### Running experiments in cloud
+
 Please note that the experimental results reported in the paper were conducted
 on a 5 node Quelea cluster, where each node was a c3.4xlarge machine with 16
 vCPUs and 30GiB of main memory. As a result, the scale of the results are much
@@ -71,6 +73,8 @@ smaller in the VM. Nevertheless, you should be able to observe similar patterns
 as reported in the paper, at a smaller scale in the VM. If you are interested
 in reconstructing experiments in a cloud setting, instructions are
 [here]({{ site.baseurl }}/ec2-instructions.html).
+
+### Troubleshooting
 
 We have tried to ensure that benchmarks can be run as smoothly as possible.
 However, you might still encounter some issues due to some concurrency bugs

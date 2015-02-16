@@ -27,6 +27,6 @@ our [draft paper](http://gowthamk.github.io/docs/quelea.pdf).
 
 ### Try Quelea
 
-If you want to quickly see Quelea in action, [download the VM](https://www.dropbox.com/s/dd1nzms16ihlggl/Quelea.ova?dl=0), and follow
-the instructions [here]({{ site.baseurl }}/prelims.html) to run the benchmark
-suite.
+If you want to quickly see Quelea in action, [download the VM]({{ site.vmurl}}),
+and follow the instructions [here]({{ site.baseurl }}/prelims.html) to
+run the benchmark suite.
