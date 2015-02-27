@@ -10,11 +10,11 @@ build-type:     Simple
 
 Library
   Build-Depends:
+    cassandra-cql >= 0.5.0.1  && < 1,
     base,
     bytestring,
     zeromq4-haskell,
     cereal,
-    cassandra-cql,
     containers,
     lens,
     template-haskell,
@@ -52,7 +52,7 @@ Library
     Codeec.ShimLayer.UpdateFetcher
     Codeec.ShimLayer.GC
   Extensions: CPP
-  ghc-options: -Wall -O2 -threaded
+  ghc-options: -O2 -threaded -fno-warn-unused-do-bind
 
 -- Executable LWW_txn
 -- main-is:
