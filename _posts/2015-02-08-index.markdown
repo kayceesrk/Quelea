@@ -23,7 +23,7 @@ implementation of run-time component is tailor-made to work with the Cassandra
 data store. 
 
 For further details, and to understand the theory behind Quelea, please read
-our [draft paper](http://gowthamk.github.io/docs/quelea.pdf).  
+our [PLDI paper](http://gowthamk.github.io/docs/quelea.pdf).  
 
 ### Try Quelea
 
