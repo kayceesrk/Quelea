@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns  #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns, FlexibleContexts #-}
 
 module Codeec.ShimLayer.UpdateFetcher (
   fetchUpdates
