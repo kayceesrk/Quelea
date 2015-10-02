@@ -1,7 +1,8 @@
 EXE=BankAccount_Q BankAccount_SC BankAccount_CC BankAccount_EC BankAccount_1key
+SCRIPTS:=$(shell cqlsh -f ../create_keyspace.cql)
 BROKER=
 
-all: $(EXE)
+all: $(EXE) $(SCRIPTS)
 
 BankAccount_Q: BankAccount_Q.hs
 	ghc $(BROKER) -rtsopts -threaded BankAccount_Q.hs

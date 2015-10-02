@@ -1,11 +1,11 @@
-EXE=DynamoRegister
+EXE=ShoppingCart
 SCRIPTS:=$(shell cqlsh -f ../create_keyspace.cql)
 BROKER=
 
 all: $(EXE) $(SCRIPTS)
 
-DynamoRegister: Register1.hs
-	ghc $(BROKER) -threaded Register1.hs
+ShoppingCart: ShoppingCart1.hs
+	ghc $(BROKER) -threaded ShoppingCart1.hs -o $(EXE)
 
 clean:
 	rm -f *.dyn* *~ *.hi *.o $(EXE)

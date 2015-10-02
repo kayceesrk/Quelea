@@ -52,7 +52,7 @@ Library
     Codeec.ShimLayer.UpdateFetcher
     Codeec.ShimLayer.GC
   Extensions: CPP
-  ghc-options: -Wall -O2 -threaded
+  ghc-options: -w -O2 -threaded
 
 -- Executable LWW_txn
 -- main-is:

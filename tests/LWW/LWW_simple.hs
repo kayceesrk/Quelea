@@ -276,9 +276,9 @@ clientCore args delay someTime avgLat round = do
   t1 <- getNow args someTime
   randInt <- liftIO $ randomIO
   case read $ availability args of
-    Eventual -> ecWrite key randInt >> ecRead key
-    Causal -> ccWrite key randInt >> ccRead key
-    Strong -> scWrite key randInt >> scRead key
+    Main.Eventual -> ecWrite key randInt >> ecRead key
+    Main.Causal -> ccWrite key randInt >> ccRead key
+    Main.Strong -> scWrite key randInt >> scRead key
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
