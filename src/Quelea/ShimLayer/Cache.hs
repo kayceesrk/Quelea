@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell, DataKinds, OverloadedStrings, DoAndIfThenElse, BangPatterns  #-}
 
-module Codeec.ShimLayer.Cache (
+module Quelea.ShimLayer.Cache (
   CacheManager,
 
   initCacheManager,
@@ -17,7 +17,7 @@ module Codeec.ShimLayer.Cache (
   getInclTxnsAt,
 ) where
 
-import Codeec.Consts
+import Quelea.Consts
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Data.ByteString hiding (map, pack, putStrLn, foldl, length, filter)
@@ -34,10 +34,10 @@ import System.IO
 import Control.Applicative ((<$>))
 import Data.Tuple.Select
 
-import Codeec.Types
-import Codeec.ShimLayer.Types
-import Codeec.DBDriver
-import Codeec.ShimLayer.UpdateFetcher
+import Quelea.Types
+import Quelea.ShimLayer.Types
+import Quelea.DBDriver
+import Quelea.ShimLayer.UpdateFetcher
 
 makeLenses ''CacheManager
 

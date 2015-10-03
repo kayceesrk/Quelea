@@ -1,13 +1,13 @@
 {-# LANGUAGE ScopedTypeVariables, TypeSynonymInstances, TemplateHaskell #-}
 
-module Codeec.Marshall (
+module Quelea.Marshall (
   mkGenOp,
   mkGenSum,
   decodeOperationPayload,
   decodeResponse
 ) where
 
-import Codeec.Types
+import Quelea.Types
 import Database.Cassandra.CQL
 import Data.Serialize as S
 import Control.Applicative ((<$>))

@@ -14,7 +14,7 @@ module MicroBlogCtrts (
 ) where
 
 import MicroBlogDefs
-import Codeec.Contract
+import Quelea.Contract
 
 addNewUserTxnCtrt :: Fol Operation
 addNewUserTxnCtrt = liftProp $ true

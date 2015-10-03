@@ -10,7 +10,7 @@ module RubisCtrts (
 ) where
 
 import RubisDefs
-import Codeec.Contract
+import Quelea.Contract
 
 bidForItemTxnCtrt :: Fol Operation
 bidForItemTxnCtrt = liftProp $ true

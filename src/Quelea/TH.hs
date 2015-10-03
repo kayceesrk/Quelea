@@ -1,18 +1,18 @@
 {-# Language TemplateHaskell, EmptyDataDecls, ScopedTypeVariables #-}
 
-module Codeec.TH (
+module Quelea.TH (
   mkOperations,
   checkOp,
   checkTxn
 ) where
 
 
-import Codeec.Types
-import Codeec.Contract.Language
-import Codeec.Contract.TypeCheck
+import Quelea.Types
+import Quelea.Contract.Language
+import Quelea.Contract.TypeCheck
 import Language.Haskell.TH
-import Codeec.Marshall
-import Codeec.Shim
+import Quelea.Marshall
+import Quelea.Shim
 import Language.Haskell.TH.Syntax (lift)
 import Debug.Trace
 

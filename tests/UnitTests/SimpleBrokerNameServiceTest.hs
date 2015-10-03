@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Codeec.NameService.SimpleBroker
+import Quelea.NameService.SimpleBroker
 import System.Environment
 import System.Process
 import Control.Monad

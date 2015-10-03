@@ -1,18 +1,18 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
-import Codeec.Shim
-import Codeec.ClientMonad
-import Codeec.DBDriver
-import Codeec.Contract
+import Quelea.Shim
+import Quelea.ClientMonad
+import Quelea.DBDriver
+import Quelea.Contract
 import Control.Concurrent (ThreadId, myThreadId, forkIO, threadDelay, killThread)
-import Codeec.NameService.Types
-import Codeec.Types (summarize)
-import Codeec.Marshall
-import Codeec.TH
+import Quelea.NameService.Types
+import Quelea.Types (summarize)
+import Quelea.Marshall
+import Quelea.TH
 #ifdef LBB
-import Codeec.NameService.LoadBalancingBroker
+import Quelea.NameService.LoadBalancingBroker
 #else
-import Codeec.NameService.SimpleBroker
+import Quelea.NameService.SimpleBroker
 #endif
 
 import Prelude hiding (catch)
@@ -132,7 +132,7 @@ args = Args
 -------------------------------------------------------------------------------
 
 keyspace :: Keyspace
-keyspace = Keyspace $ pack "Codeec"
+keyspace = Keyspace $ pack "Quelea"
 
 dtLib = mkDtLib [(HAWrite, mkGenOp writeReg summarize, $(checkOp HAWrite haWriteCtrt)),
                  (CAUWrite, mkGenOp writeReg summarize, $(checkOp CAUWrite cauWriteCtrt)),

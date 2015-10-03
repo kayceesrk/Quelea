@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Codeec.ClientMonad (
+module Quelea.ClientMonad (
   Key,
   Session,
   Availability(..),
@@ -21,13 +21,13 @@ module Codeec.ClientMonad (
   getLastEffect
 ) where
 
-import Codeec.Types
-import Codeec.Client hiding (invoke, getServerAddr, invokeAndGetDeps, getLastEffect, getStats)
-import qualified Codeec.Client as CCLow
+import Quelea.Types
+import Quelea.Client hiding (invoke, getServerAddr, invokeAndGetDeps, getLastEffect, getStats)
+import qualified Quelea.Client as CCLow
 import Control.Monad.Trans.State
 import Control.Monad.Trans (liftIO)
 import Control.Lens
-import Codeec.NameService.Types
+import Quelea.NameService.Types
 import Data.Serialize hiding (get, put)
 import qualified Data.Set as S
 import qualified System.ZMQ4 as ZMQ4

@@ -1,20 +1,20 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
-import Codeec.Shim
-import Codeec.ClientMonad
-import Codeec.DBDriver
+import Quelea.Shim
+import Quelea.ClientMonad
+import Quelea.DBDriver
 import BankAccountDefs
-import Codeec.Contract
+import Quelea.Contract
 import System.Process (runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (threadDelay)
-import Codeec.NameService.SimpleBroker
-import Codeec.Marshall
-import Codeec.TH
+import Quelea.NameService.SimpleBroker
+import Quelea.Marshall
+import Quelea.TH
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
-import Codeec.Types (summarize)
+import Quelea.Types (summarize)
 import Control.Monad (replicateM_, forever, when)
 import Data.IORef
 import Control.Concurrent
@@ -31,7 +31,7 @@ bePort = 5559
 data Kind = B | C | S | D | Drop deriving (Read, Show)
 
 keyspace :: Keyspace
-keyspace = Keyspace $ pack "Codeec"
+keyspace = Keyspace $ pack "Quelea"
 
 dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, $(checkOp Deposit depositCtrt)),
                  (Withdraw, mkGenOp withdraw summarize, $(checkOp Withdraw withdrawCtrt)),

@@ -2,9 +2,9 @@
 
 import Control.Applicative ((<$>))
 
-import Codeec.Types
-import Codeec.Contract
-import Codeec.TH
+import Quelea.Types
+import Quelea.Contract
+import Quelea.TH
 
 import TestCtrtDefs
 

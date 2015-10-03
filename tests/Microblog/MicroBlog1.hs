@@ -1,11 +1,11 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
-import Codeec.Shim
-import Codeec.ClientMonad
-import Codeec.Marshall
-import Codeec.NameService.Types
-import Codeec.NameService.SimpleBroker
-import Codeec.TH
+import Quelea.Shim
+import Quelea.ClientMonad
+import Quelea.Marshall
+import Quelea.NameService.Types
+import Quelea.NameService.SimpleBroker
+import Quelea.TH
 
 import Language.Haskell.TH 
 import Language.Haskell.TH.Syntax (Exp (..))
@@ -14,7 +14,7 @@ import System.Environment (getExecutablePath, getArgs)
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
-import Codeec.Types (summarize)
+import Quelea.Types (summarize)
 import Control.Monad (replicateM_)
 import Control.Concurrent (threadDelay)
 import Data.Time

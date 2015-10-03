@@ -1,15 +1,15 @@
 {-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns  #-}
 
-module Codeec.ShimLayer.GC (
+module Quelea.ShimLayer.GC (
   maybeGCCache,
   gcWorker
 ) where
 
-import Codeec.Consts
-import Codeec.Types
-import Codeec.ShimLayer.Types
-import Codeec.DBDriver
-import Codeec.ShimLayer.UpdateFetcher
+import Quelea.Consts
+import Quelea.Types
+import Quelea.ShimLayer.Types
+import Quelea.DBDriver
+import Quelea.ShimLayer.UpdateFetcher
 
 import Control.Monad.State
 import Control.Lens

@@ -1,4 +1,4 @@
-module Codeec.Contract (
+module Quelea.Contract (
   Rel(..),
   Prop(..),
   EffCol(..),
@@ -43,5 +43,5 @@ module Codeec.Contract (
   dummyZ3Sort
 ) where
 
-import Codeec.Contract.Language
-import Codeec.Contract.TypeCheck
+import Quelea.Contract.Language
+import Quelea.Contract.TypeCheck

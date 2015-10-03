@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse, FlexibleContexts #-}
 
-module Codeec.Contract.TypeCheck (
+module Quelea.Contract.TypeCheck (
   classifyOperContract,
   classifyTxnContract,
   isValid,
@@ -13,8 +13,8 @@ module Codeec.Contract.TypeCheck (
 ) where
 
 
-import Codeec.Types
-import Codeec.Contract.Language
+import Quelea.Types
+import Quelea.Contract.Language
 import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, solverAssertCnstr, push, pop,
                         check, getModel)
 import qualified Z3.Monad as Z3M (mkFreshFuncDecl, mkFreshConst, solverAssertCnstr,

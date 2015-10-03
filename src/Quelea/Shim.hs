@@ -2,21 +2,21 @@
     TemplateHaskell, DataKinds, OverloadedStrings,
     DoAndIfThenElse#-}
 
-module Codeec.Shim (
+module Quelea.Shim (
  runShimNode,
  runShimNodeWithOpts,
  mkDtLib
 ) where
 
-import Codeec.Consts
-import Codeec.Types
-import Codeec.Consts
-import Codeec.NameService.Types
-import Codeec.Marshall
-import Codeec.DBDriver
-import Codeec.ShimLayer.Cache
-import Codeec.ShimLayer.GC
-import Codeec.Contract.Language
+import Quelea.Consts
+import Quelea.Types
+import Quelea.Consts
+import Quelea.NameService.Types
+import Quelea.Marshall
+import Quelea.DBDriver
+import Quelea.ShimLayer.Cache
+import Quelea.ShimLayer.GC
+import Quelea.Contract.Language
 
 import Control.Concurrent (threadDelay)
 import Data.Serialize

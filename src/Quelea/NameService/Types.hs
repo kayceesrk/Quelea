@@ -1,4 +1,4 @@
-module Codeec.NameService.Types (
+module Quelea.NameService.Types (
   Frontend(..),
   Backend(..),
   NameService(..)

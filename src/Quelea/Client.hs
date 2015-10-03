@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
-module Codeec.Client (
+module Quelea.Client (
   Key,
   Session,
   Availability(..),
@@ -21,13 +21,13 @@ module Codeec.Client (
 ) where
 
 import Data.UUID
-import Codeec.Types
-import Codeec.NameService.Types
+import Quelea.Types
+import Quelea.NameService.Types
 import Control.Lens
 import Control.Monad (when)
 import System.ZMQ4
 import Data.Serialize
-import Codeec.Marshall
+import Quelea.Marshall
 import System.Random (randomIO)
 import Control.Applicative
 import Data.ByteString (ByteString, length)
