@@ -10,15 +10,15 @@ build-type:     Simple
 
 Library
   Build-Depends:
+    cassandra-cql >= 0.5.0.1  && < 1,
     base,
     bytestring,
     zeromq4-haskell,
     cereal,
-    cassandra-cql,
     containers,
     lens,
     template-haskell,
-    z3,
+    z3 >= 4.0.0,
     mtl,
     random,
     uuid,
