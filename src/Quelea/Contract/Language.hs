@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 
-module Codeec.Contract.Language (
+module Quelea.Contract.Language (
   Rel(..),
   Prop(..),
   Fol(..),
@@ -41,7 +41,7 @@ module Codeec.Contract.Language (
 ) where
 
 
-import Codeec.Types
+import Quelea.Types
 import Z3.Monad
 import qualified Data.Map as M
 import Control.Monad.State

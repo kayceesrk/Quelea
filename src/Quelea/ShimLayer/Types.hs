@@ -1,7 +1,7 @@
 {-# Language TemplateHaskell, EmptyDataDecls, ScopedTypeVariables,
     TypeSynonymInstances, FlexibleInstances #-}
 
-module Codeec.ShimLayer.Types (
+module Quelea.ShimLayer.Types (
   CacheManager(..),
   CacheMap,
   NearestDeps,
@@ -18,7 +18,7 @@ import Control.Concurrent.MVar
 import Database.Cassandra.CQL
 import Data.Time
 
-import Codeec.Types
+import Quelea.Types
 
 type Effect = ByteString
 

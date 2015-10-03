@@ -8,8 +8,8 @@ module ShoppingCartTxns (
   checkOut
 ) where
 
-import Codeec.ClientMonad
-import Codeec.TH (checkTxn)
+import Quelea.ClientMonad
+import Quelea.TH (checkTxn)
 
 import ShoppingCartDefs
 import ShoppingCartCtrts

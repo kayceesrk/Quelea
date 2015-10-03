@@ -1,4 +1,4 @@
-Name:           Codeec
+Name:           Quelea
 Version:        0.0.1
 Cabal-Version:  >= 1.2
 License:        BSD3
@@ -18,7 +18,7 @@ Library
     containers,
     lens,
     template-haskell,
-    z3,
+    z3 >= 4.0.0,
     mtl,
     random,
     uuid,
@@ -32,27 +32,27 @@ Library
     process,
     optparse-applicative
   Exposed-modules:
-    Codeec.NameService.Types
-    Codeec.NameService.SimpleBroker
-    Codeec.NameService.LoadBalancingBroker
-    Codeec.Marshall
-    Codeec.Shim
-    Codeec.Client
-    Codeec.ClientMonad
-    Codeec.Types
-    Codeec.TH
-    Codeec.Contract
-    Codeec.DBDriver
+    Quelea.NameService.Types
+    Quelea.NameService.SimpleBroker
+    Quelea.NameService.LoadBalancingBroker
+    Quelea.Marshall
+    Quelea.Shim
+    Quelea.Client
+    Quelea.ClientMonad
+    Quelea.Types
+    Quelea.TH
+    Quelea.Contract
+    Quelea.DBDriver
   Other-modules:
-    Codeec.Contract.Language
-    Codeec.Contract.TypeCheck
-    Codeec.Consts
-    Codeec.ShimLayer.Types
-    Codeec.ShimLayer.Cache
-    Codeec.ShimLayer.UpdateFetcher
-    Codeec.ShimLayer.GC
+    Quelea.Contract.Language
+    Quelea.Contract.TypeCheck
+    Quelea.Consts
+    Quelea.ShimLayer.Types
+    Quelea.ShimLayer.Cache
+    Quelea.ShimLayer.UpdateFetcher
+    Quelea.ShimLayer.GC
   Extensions: CPP
-  ghc-options: -O2 -threaded -fno-warn-unused-do-bind
+  ghc-options: -w -O2 -threaded
 
 -- Executable LWW_txn
 -- main-is:

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Codeec.NameService.LoadBalancingBroker (
+module Quelea.NameService.LoadBalancingBroker (
   mkNameService,
   startBroker
 ) where
@@ -13,7 +13,7 @@ import Data.ByteString.Char8 (unpack, pack)
 import System.Directory
 import System.Posix.Process
 import Control.Monad.Trans (liftIO)
-import Codeec.NameService.Types
+import Quelea.NameService.Types
 
 -- #define DEBUG
 

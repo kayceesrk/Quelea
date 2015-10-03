@@ -16,9 +16,9 @@ import qualified Data.Map as Map
 import Data.Serialize as S
 import Data.Word (Word8)
 import Control.Applicative ((<$>))
-import Codeec.Types
-import Codeec.Contract
-import Codeec.TH
+import Quelea.Types
+import Quelea.Contract
+import Quelea.TH
 import Debug.Trace
 import Data.DeriveTH
 

@@ -1,7 +1,8 @@
 EXE=Rubis Rubis_strong
+SCRIPTS:=$(shell cqlsh -f ../create_keyspace.cql)
 BROKER=
 
-all: $(EXE)
+all: $(EXE) $(SCRIPTS)
 
 Rubis: Rubis.hs RubisDefs.hs RubisTxns.hs
 	ghc $(BROKER) -threaded -rtsopts Rubis.hs

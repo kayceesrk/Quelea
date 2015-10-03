@@ -1,4 +1,4 @@
-module Codeec.Consts (
+module Quelea.Consts (
   cCACHE_LWM,
   cDISK_LWM,
   cGC_WORKER_THREAD_DELAY,

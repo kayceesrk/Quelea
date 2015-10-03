@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables, EmptyDataDecls, TemplateHaskell,
     DataKinds, OverloadedStrings, DoAndIfThenElse  #-}
 
-module Codeec.DBDriver (
+module Quelea.DBDriver (
   TableName(..),
   ReadRow,
 
@@ -30,11 +30,11 @@ module Codeec.DBDriver (
 ) where
 
 
-import Codeec.Consts
+import Quelea.Consts
 import Control.Concurrent (threadDelay)
-import Codeec.Types
-import Codeec.NameService.SimpleBroker
-import Codeec.Marshall
+import Quelea.Types
+import Quelea.NameService.SimpleBroker
+import Quelea.Marshall
 import Data.Serialize
 import Control.Applicative ((<$>))
 import Control.Monad (forever)

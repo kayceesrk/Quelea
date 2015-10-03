@@ -1,7 +1,7 @@
 {-# Language TemplateHaskell, EmptyDataDecls, ScopedTypeVariables,
     TypeSynonymInstances, FlexibleInstances #-}
 
-module Codeec.Types (
+module Quelea.Types (
   Cell(..),
   Deps(..),
   Effectish(..),

@@ -48,10 +48,10 @@ import Control.Applicative ((<$>))
 import Data.Tuple.Select (sel1)
 import Data.DeriveTH
 
-import Codeec.Types
-import Codeec.Contract
-import Codeec.TH
-import Codeec.DBDriver
+import Quelea.Types
+import Quelea.Contract
+import Quelea.TH
+import Quelea.DBDriver
 import Data.List (groupBy, find)
 
 

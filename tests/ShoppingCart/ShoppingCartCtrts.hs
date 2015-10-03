@@ -8,7 +8,7 @@ module ShoppingCartCtrts (
 ) where
 
 import ShoppingCartDefs
-import Codeec.Contract
+import Quelea.Contract
 
 openSiteTxnCtrt :: Fol Operation
 openSiteTxnCtrt = liftProp $ true

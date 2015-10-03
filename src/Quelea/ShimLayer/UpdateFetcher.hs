@@ -1,6 +1,6 @@
-{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns  #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, DoAndIfThenElse, BangPatterns, FlexibleContexts #-}
 
-module Codeec.ShimLayer.UpdateFetcher (
+module Quelea.ShimLayer.UpdateFetcher (
   fetchUpdates
 ) where
 
@@ -21,10 +21,10 @@ import System.Posix.Process (getProcessID)
 import Data.Tuple.Select
 import Data.Time
 
-import Codeec.Consts
-import Codeec.Types
-import Codeec.ShimLayer.Types
-import Codeec.DBDriver
+import Quelea.Consts
+import Quelea.Types
+import Quelea.ShimLayer.Types
+import Quelea.DBDriver
 
 makeLenses ''CacheManager
 makeLenses ''Addr

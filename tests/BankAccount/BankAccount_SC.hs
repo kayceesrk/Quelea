@@ -1,27 +1,27 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
-import Codeec.Shim
-import Codeec.Types
-import Codeec.ClientMonad
-import Codeec.DBDriver
+import Quelea.Shim
+import Quelea.Types
+import Quelea.ClientMonad
+import Quelea.DBDriver
 import BankAccountDefs
 import Prelude hiding (catch)
-import Codeec.Contract
+import Quelea.Contract
 import System.Process (ProcessHandle, runCommand, terminateProcess)
 import System.Environment (getExecutablePath, getArgs)
 import Control.Concurrent (ThreadId, myThreadId, forkIO, threadDelay, killThread)
-import Codeec.NameService.Types
+import Quelea.NameService.Types
 #ifdef LBB
-import Codeec.NameService.LoadBalancingBroker
+import Quelea.NameService.LoadBalancingBroker
 #else
-import Codeec.NameService.SimpleBroker
+import Quelea.NameService.SimpleBroker
 #endif
-import Codeec.Marshall
-import Codeec.TH
+import Quelea.Marshall
+import Quelea.TH
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
-import Codeec.Types (summarize)
+import Quelea.Types (summarize)
 import Control.Monad (replicateM_, foldM, when, forever)
 import Data.IORef
 import Options.Applicative
@@ -122,7 +122,7 @@ args = Args
 -------------------------------------------------------------------------------
 
 keyspace :: Keyspace
-keyspace = Keyspace $ pack "Codeec"
+keyspace = Keyspace $ pack "Quelea"
 
 dtLib = mkDtLib [(Deposit, mkGenOp deposit summarize, Strong),
                  (Withdraw, mkGenOp withdraw summarize, Strong),

@@ -1,9 +1,0 @@
-[submodule "Z3_Haskell"]
-	path = Z3_Haskell
-	url = https://github.com/kayceesrk/Z3_Haskell
-[submodule "Z3"]
-	path = Z3
-	url = https://github.com/kayceesrk/Z3
-[submodule "cassandra-cql"]
-	path = cassandra-cql
-	url = https://github.com/kayceesrk/cassandra-cql

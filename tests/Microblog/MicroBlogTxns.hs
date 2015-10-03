@@ -14,8 +14,8 @@ module MicroBlogTxns (
   getFollowingUN,
 ) where
 
-import Codeec.ClientMonad
-import Codeec.TH (checkTxn)
+import Quelea.ClientMonad
+import Quelea.TH (checkTxn)
 
 import MicroBlogDefs
 import MicroBlogCtrts

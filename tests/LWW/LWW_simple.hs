@@ -1,18 +1,18 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
-import Codeec.Shim
-import Codeec.ClientMonad
-import Codeec.DBDriver
-import Codeec.Contract
+import Quelea.Shim
+import Quelea.ClientMonad
+import Quelea.DBDriver
+import Quelea.Contract
 import Control.Concurrent (ThreadId, myThreadId, forkIO, threadDelay, killThread)
-import Codeec.NameService.Types
-import Codeec.Types (summarize)
-import Codeec.Marshall
-import Codeec.TH
+import Quelea.NameService.Types
+import Quelea.Types (summarize)
+import Quelea.Marshall
+import Quelea.TH
 #ifdef LBB
-import Codeec.NameService.LoadBalancingBroker
+import Quelea.NameService.LoadBalancingBroker
 #else
-import Codeec.NameService.SimpleBroker
+import Quelea.NameService.SimpleBroker
 #endif
 
 import Language.Haskell.TH 
@@ -134,7 +134,7 @@ args = Args
 -------------------------------------------------------------------------------
 
 keyspace :: Keyspace
-keyspace = Keyspace $ pack "Codeec"
+keyspace = Keyspace $ pack "Quelea"
 
 [
   haWriteCtrtA,
@@ -276,9 +276,9 @@ clientCore args delay someTime avgLat round = do
   t1 <- getNow args someTime
   randInt <- liftIO $ randomIO
   case read $ availability args of
-    Eventual -> ecWrite key randInt >> ecRead key
-    Causal -> ccWrite key randInt >> ccRead key
-    Strong -> scWrite key randInt >> scRead key
+    Main.Eventual -> ecWrite key randInt >> ecRead key
+    Main.Causal -> ccWrite key randInt >> ccRead key
+    Main.Strong -> scWrite key randInt >> scRead key
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1

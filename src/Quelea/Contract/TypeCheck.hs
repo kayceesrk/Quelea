@@ -1,6 +1,6 @@
-{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse #-}
+{-# LANGUAGE TemplateHaskell, ScopedTypeVariables, DoAndIfThenElse, FlexibleContexts #-}
 
-module Codeec.Contract.TypeCheck (
+module Quelea.Contract.TypeCheck (
   classifyOperContract,
   classifyTxnContract,
   isValid,
@@ -13,11 +13,11 @@ module Codeec.Contract.TypeCheck (
 ) where
 
 
-import Codeec.Types
-import Codeec.Contract.Language
-import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, assertCnstr, push, pop,
+import Quelea.Types
+import Quelea.Contract.Language
+import Z3.Monad hiding (mkFreshFuncDecl, mkFreshConst, solverAssertCnstr, push, pop,
                         check, getModel)
-import qualified Z3.Monad as Z3M (mkFreshFuncDecl, mkFreshConst, assertCnstr,
+import qualified Z3.Monad as Z3M (mkFreshFuncDecl, mkFreshConst, solverAssertCnstr,
                                   push, pop, check, getModel)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -103,7 +103,7 @@ assertCnstr name ast = do
     putStrLn $ "(assert " ++ astStr ++ ")"
     hFlush stdout
     hFlush stderr
-  Z3M.assertCnstr ast
+  Z3M.solverAssertCnstr ast
   #ifdef DEBUG_CHECK
   push
   r <- check
@@ -111,7 +111,7 @@ assertCnstr name ast = do
   pop 1
   #endif
 #else
-assertCnstr s a = Z3M.assertCnstr a
+assertCnstr s a = Z3M.solverAssertCnstr a
 #endif
 
 mkFreshFuncDecl :: String -> [Sort] -> Sort -> Z3 FuncDecl

@@ -10,7 +10,7 @@ mkQuery a b c =
   in executeTrans qs (a,b,c)
 
 main = do
-  pool <- newPool [("localhost", "9042")] "Codeec" Nothing
+  pool <- newPool [("localhost", "9042")] "Quelea" Nothing
   runCas pool $ do
     r <- mkQuery 5 5 5
     liftIO . putStrLn $ show r
