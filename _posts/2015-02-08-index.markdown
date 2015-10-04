@@ -2,32 +2,89 @@
 layout: post
 permalink: index.html
 ---
-### Welcome to Quelea's home
-Quelea is a Haskell library that is intended to simplify programming with
-eventually consistent NoSQL stores, such as Cassandra. Among other things, the
-library implements:
+## Welcome to Quelea's home!
 
-+ A high-level logic-based DSL that lets NoSQL application programmers
-  declare the consistency requirements of their applications as
-  _contracts_, 
+Quelea is a Haskell library that helps programmers develop highly
+scalable applications on the top of eventually consistent NoSQL
+stores, such as Cassandra. You can think of Quelea as a mediator
+between the application programmer and the underlying NoSQL store. It
+understands both the application requirements and the store semantics,
+and helps programmers use NoSQL stores in such a way so as to maximize
+performance _and_ ensure correct application behaviour, both at the
+same time! 
+<!-- The programmer is perfectly aware of the requirements of her
+application, but she need not necessarily understand the complex
+low-level semantics of NoSQL stores. Consequently, she may not know
+how to configure the store so as to maximize the performance of her
+application, while guaranteeing its correctness. Moreover, different
+NoSQL stores have different semantics, so, if programmer wishes to
+port her application across a different NoSQL store, she has to go
+through the process of understanding and configuring the store all
+over again. In such cases, Quelea comes to the rescue of
+programmer -->
+
+Among other things, Quelea library implements:
+
++ A Domain-Specific Language (DSL) that lets NoSQL application
+  programmers declare the consistency requirements of their
+  applications as _contracts_ (also called _specifications_), 
 + A static contract classification procedure that maps high-level
-  application contracts to appropriate low-level store consistency
-  guarantees, and 
+  application contracts to appropriate low-level consistency
+  guarantees provided by the underlying NoSQL store, and 
 + A run-time that runs application operations after tuning the store
   consistency to appropriate levels as determined by the contract
   classification procedure.  
 
-While the implementations of DSL and the static contract classification
-components are largely independent of the actual NoSQL store used, the current
-implementation of run-time component is tailor-made to work with the Cassandra
-data store. 
+While the implementations of DSL and the static contract
+classification components are largely independent of the actual NoSQL
+store used, the current implementation of run-time component is
+tailor-made to work with the Cassandra data store. 
 
-For further details, and to understand the theory behind Quelea, please read
-our [PLDI paper](http://gowthamk.github.io/docs/quelea.pdf).  
+If you'd like to understand the theory and engineering that powers
+Quelea, then please read our [PLDI'15
+paper](http://gowthamk.github.io/docs/quelea.pdf), or go through the
+[slides](http://gowthamk.github.io/docs/Quelea-PLDI15.pptx) from our
+PLDI'15 presentation at Portland. On a lighter note, below is a
+tongue-in-cheek video about how Quelea helps Cassandra be more
+approachable to users :-)
 
-### Try Quelea
+<iframe width="420" height="315" style="padding-left:80px"
+src="https://www.youtube.com/embed/gPKxPZAnlfQ" frameborder="0"
+allowfullscreen></iframe>
 
-If you want to quickly see Quelea in action, [download the VM]({{ site.vmurl}}), 
-and follow the instructions [here]({{ site.baseurl }}/prelims.html) to
-run the benchmark suite.  
 
+## Install Quelea
+
+__Via an installer__: If you are running Ubuntu (14.04 64-bit), then
+installing quelea is very easy - download the [tar.gz]({{ site.tarurl }}), 
+untar it, and run the install script. You should be good to go.
+
+__Via cabal__: Quelea Haskell package is also available via Cabal, the
+Haskell package manager. If you have `ghc` and `cabal` installed on
+your machine, then you can install Quelea by running:
+
+    cabal install quelea --disable-library-profiling
+
+Please note that Quelea requires Microsoft's z3 theorem prover and
+Datastax's Cassandra data store, which cannot be installed via cabal.
+On Mac OS X, you can install z3 using homebrew: `brew install z3`.
+Installing cassandra is also easy: please follow the instructions
+[here](http://www.datastax.com/2012/01/working-with-apache-cassandra-on-mac-os-x).
+
+__Use a VM__:On the other hand, if you want to quickly see Quelea in action,
+[download the VM]({{ site.vmurl}}), and follow the instructions
+[here]({{ site.baseurl }}/prelims.html) to run the benchmark suite.  
+
+
+## Getting started
+
+Quelea is a programming framework that encourages scalability oriented
+development. So, the best way to get started with Quelea is to develop
+small, but highly scalable NoSQL applications. We wrote a couple of
+tutorials to help you in this process:
+
+* [A monotonically increasing counter]({{ site.baseurl }}/counter-tutorial.html) (to count youtube video views,
+  for example).
+* [A microblogging application]({{ site.baseurl }}/microblog-tutorial.html) (very much like Twitter).
+
+Happy programming!
