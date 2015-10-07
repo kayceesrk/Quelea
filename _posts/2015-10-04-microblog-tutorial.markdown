@@ -1,5 +1,5 @@
 ---
-title: Monotonically Increasing Counter
+title: Microblog
 layout: post
 permalink: microblog-tutorial.html
 ---
