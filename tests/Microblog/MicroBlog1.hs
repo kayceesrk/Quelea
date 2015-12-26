@@ -9,16 +9,25 @@ import Quelea.TH
 
 import Language.Haskell.TH 
 import Language.Haskell.TH.Syntax (Exp (..))
-import System.Process (runCommand, terminateProcess)
+-- import System.Process (runCommand, terminateProcess)
+import System.Posix.Process (forkProcess)
+import System.Posix.Signals (signalProcess, killProcess, internalAbort)
 import System.Environment (getExecutablePath, getArgs)
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
 import Data.Text (pack)
 import Quelea.Types (summarize)
-import Control.Monad (replicateM_)
+import Control.Monad (replicateM_, void, ap)
 import Control.Concurrent (threadDelay)
 import Data.Time
 import System.IO (hFlush, stdout)
+import Data.Serialize
+
+{- For user input parsing -}
+import Text.Parsec
+import Text.Parsec.String
+import Data.Char (isLetter, isDigit)
+import Control.Exception
 
 import MicroBlogDefs
 import MicroBlogCtrts
@@ -111,6 +120,83 @@ dtLib = do
                     (NewTweetUL, mkGenOp addToUserline summarize, addToUserlineCtrtA),
                     (GetTweetsInUL, mkGenOp getTweetsInUserline summarize, getTweetsInUserlineCtrtA)]
 
+{- Removing typesig for the following results in ambiguous type error. -}
+invokeOp :: Serialize a => Operation -> a -> CSN ()
+invokeOp op arg = do
+  key <- liftIO $ newKey
+  invoke key op arg
+
+whitespace :: Parser ()
+whitespace = void $ many $ char ' '
+
+varW :: Parser String
+varW = do
+  whitespace
+  fc <- firstChar
+  rest <- many nonFirstChar
+  return (fc:rest)
+  where
+    firstChar = satisfy (\a -> isLetter a || a == '_')
+    nonFirstChar = satisfy (\a -> isDigit a || isLetter a || a == '_')
+
+stringW :: String -> Parser String
+stringW s = (whitespace >> string s)
+
+{-
+opParser :: Parser Operation
+opParser = 
+      (stringW "AddUser" >> return AddUser)
+  <|> (stringW "NewTweet" >> return NewTweet)-}
+
+csnParser :: Parser (CSN ())
+csnParser = 
+  let addUserParser = do
+        void $ stringW "AddUser"
+        uname <- varW
+        pwd <- varW
+        return $ invokeOp AddUser (uname,pwd)
+      newTweetParser = do
+        void $ stringW "NewTweet"
+        owner <- varW
+        txt <- (whitespace >> (many anyChar))
+        return $ invokeOp NewTweet (owner,txt)
+  in addUserParser <|> newTweetParser
+
+mkUserSession :: IO (CSN ())
+mkUserSession = catch mkIOCSN (\(e::AsyncException) -> 
+                    (return $ return ()))
+  where
+    mkIOCSN = do
+      putStrLn "What would you like to do?"
+      line <- getLine
+      let es = parse (stringW "EndSession") "EOF" line
+      let x = case es of 
+                  Left _ -> ()
+                  Right _ -> throw UserInterrupt
+      evaluate x
+      let csnHead = case parse csnParser "Operation Parser" line of 
+                  Left _ -> return ()
+                  Right csn -> csn
+      csnTail <- mkUserSession
+      return $ csnHead >> csnTail
+    
+
+runBroker :: IO ()
+runBroker = 
+  startBroker (Frontend $ "tcp://*:" ++ show fePort)
+              (Backend $ "tcp://*:" ++ show bePort)
+  
+runServer :: NameService -> IO ()
+runServer ns = do
+  dtLib <- dtLib
+  runShimNode dtLib [("localhost","9042")] keyspace ns
+
+runClient :: NameService -> IO ()
+runClient ns = do
+  userSession <- liftIO mkUserSession 
+  putStrLn "Running the user session..."
+  runSession ns userSession
+  
 main :: IO ()
 main = do
   (kindStr:broker:restArgs) <- getArgs
@@ -118,30 +204,24 @@ main = do
   let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
                          (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
   case k of
-    B -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
-                     (Backend $ "tcp://*:" ++ show bePort)
+    B -> runBroker
 
-    S -> do
-      dtLib <- dtLib
-      runShimNode dtLib [("localhost","9042")] keyspace ns
+    S -> runServer ns
 
-    C -> runSession ns $ do
-      key <- liftIO $ newKey
-      r::() <- invoke key AddUser ("Alice","test123")
-      return ()
+    C -> runClient ns
 
     D -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
       runCas pool $ createTables
-      progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
-      b <- runCommand $ progName ++ " B"
+      bpid <- forkProcess $ runBroker
       putStrLn "Driver : Starting server"
-      s <- runCommand $ progName ++ " S"
+      spid <- forkProcess $ runServer ns 
       putStrLn "Driver : Starting client"
-      c <- runCommand $ progName ++ " C"
+      cpid <- forkProcess $ runClient ns
       threadDelay 25000000
-      mapM_ terminateProcess [b,s,c]
+      let terminateProcess = signalProcess internalAbort
+      mapM_ terminateProcess [bpid,spid,cpid]
       runCas pool $ dropTables
 
     Drop -> do
