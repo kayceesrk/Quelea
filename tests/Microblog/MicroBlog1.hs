@@ -162,24 +162,20 @@ csnParser =
         return $ invokeOp NewTweet (owner,txt)
   in addUserParser <|> newTweetParser
 
-mkUserSession :: IO (CSN ())
-mkUserSession = catch mkIOCSN (\(e::AsyncException) -> 
-                    (return $ return ()))
-  where
-    mkIOCSN = do
-      putStrLn "What would you like to do?"
-      line <- getLine
-      let es = parse (stringW "EndSession") "EOF" line
-      let x = case es of 
-                  Left _ -> ()
-                  Right _ -> throw UserInterrupt
-      evaluate x
-      let csnHead = case parse csnParser "Operation Parser" line of 
-                  Left _ -> return ()
-                  Right csn -> csn
-      csnTail <- mkUserSession
-      return $ csnHead >> csnTail
-    
+interactiveSession :: CSN ()
+interactiveSession =  do
+  liftIO $ putStrLn "What would you like to do?"
+  line <- liftIO $ getLine
+  let es = parse (stringW "EndSession") "EOF" line
+  let x = case es of 
+              Left _ -> ()
+              Right _ -> throw UserInterrupt
+  liftIO $ evaluate x
+  let csnHead = case parse csnParser "Operation Parser" line of 
+              Left _ -> return ()
+              Right csn -> csn
+  let csnTail = interactiveSession
+  csnHead >> csnTail
 
 runBroker :: IO ()
 runBroker = 
@@ -192,17 +188,16 @@ runServer ns = do
   runShimNode dtLib [("localhost","9042")] keyspace ns
 
 runClient :: NameService -> IO ()
-runClient ns = do
-  userSession <- liftIO mkUserSession 
-  putStrLn "Running the user session..."
-  runSession ns userSession
+runClient ns = catch (runSession ns interactiveSession) 
+    (\(e::AsyncException) -> return ())
   
 main :: IO ()
 main = do
   (kindStr:broker:restArgs) <- getArgs
   let k = read kindStr
   let ns = mkNameService (Frontend $ "tcp://" ++ broker ++ ":" ++ show fePort)
-                         (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort) "localhost" 5560
+                         (Backend  $ "tcp://" ++ broker ++ ":" ++ show bePort)
+                         "localhost" 5560
   case k of
     B -> runBroker
 
