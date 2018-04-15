@@ -230,11 +230,11 @@ dropTable tname = do
 
 tryGetLock :: TableName -> Key -> SessID -> Bool {- tryInsert -} -> Cas Bool
 tryGetLock tname k (SessID sid) True = do
-  res <- executeTrans (mkLockInsert tname) (k, sid) ALL
+  res <- executeTrans (mkLockInsert tname) (k, sid)
   if res then return True
   else tryGetLock tname k (SessID sid) False
 tryGetLock tname k (SessID sid) False = do
-  res <- executeTrans (mkLockUpdate tname) (sid, k, knownUUID) ALL
+  res <- executeTrans (mkLockUpdate tname) (sid, k, knownUUID)
   if res then return True
   else do
     liftIO $ threadDelay cLOCK_DELAY
@@ -247,7 +247,7 @@ getLock tname k sid pool = runCas pool $ do
 
 releaseLock :: TableName -> Key -> SessID -> Pool -> IO ()
 releaseLock tname k (SessID sid) pool = runCas pool $ do
-  res <- executeTrans (mkLockUpdate tname) (knownUUID, k, sid) ALL
+  res <- executeTrans (mkLockUpdate tname) (knownUUID, k, sid)
   if res then return ()
   else error $ "releaseLock : key=" ++ show k ++ " sid=" ++ show sid
 
@@ -255,12 +255,11 @@ releaseLock tname k (SessID sid) pool = runCas pool $ do
 
 tryGetGCLock :: TableName -> Key -> SessID -> Bool {- tryInsert -} -> Cas Bool
 tryGetGCLock tname k (SessID sid) True = do
-  res <- executeTrans (mkGCLockInsert tname) (k, sid) ALL
+  res <- executeTrans (mkGCLockInsert tname) (k, sid)
   if res then return True
   else tryGetGCLock tname k (SessID sid) False
 tryGetGCLock tname k (SessID sid) False = do
-  res <- executeTrans (mkGCLockUpdate tname) (sid, k, knownUUID) ALL
-
+  res <- executeTrans (mkGCLockUpdate tname) (sid, k, knownUUID)
   if res then return True
   else do
     liftIO $ threadDelay cLOCK_DELAY
@@ -273,7 +272,7 @@ getGCLock tname k sid pool = runCas pool $ do
 
 releaseGCLock :: TableName -> Key -> SessID -> Pool -> IO ()
 releaseGCLock tname k (SessID sid) pool = runCas pool $ do
-  res <- executeTrans (mkGCLockUpdate tname) (knownUUID, k, sid) ALL
+  res <- executeTrans (mkGCLockUpdate tname) (knownUUID, k, sid)
   if res then return ()
   else error $ "releaseGCLock : key=" ++ show k ++ " sid=" ++ show sid
 
@@ -288,10 +287,10 @@ getGlobalLock :: TxnID -> Pool -> IO ()
 getGlobalLock (TxnID txnid) pool = runCas pool loop
   where
     loop = do
-      success <- executeTrans mkGlobalLockUpdate (txnid, knownUUID, knownUUID) ALL
+      success <- executeTrans mkGlobalLockUpdate (txnid, knownUUID, knownUUID)
       when (not success) loop
 
 releaseGlobalLock :: TxnID -> Pool -> IO ()
 releaseGlobalLock (TxnID txnid) pool = runCas pool $ do
-  success <- executeTrans mkGlobalLockUpdate (knownUUID, knownUUID, txnid) ALL
+  success <- executeTrans mkGlobalLockUpdate (knownUUID, knownUUID, txnid)
   when (not success) (error $ "releaseGlobalLock: key=" ++ show (TxnID txnid))
