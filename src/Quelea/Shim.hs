@@ -59,15 +59,16 @@ debugPrint _ = return ()
 runShimNodeWithOpts :: OperationClass a
                     => GCSetting
                     -> Int -- fetch update interval
+                    -> Double -- keep fraction
                     -> DatatypeLibrary a
                     -> [Server] -> Keyspace -- Cassandra connection info
                     -> NameService
                     -> IO ()
-runShimNodeWithOpts gcSetting fetchUpdateInterval dtLib serverList keyspace ns = do
+runShimNodeWithOpts gcSetting fetchUpdateInterval keepFraction dtLib serverList keyspace ns = do
   {- Connection to the Cassandra deployment -}
   pool <- newPool serverList keyspace Nothing
   {- Spawn cache manager -}
-  cache <- initCacheManager pool fetchUpdateInterval
+  cache <- initCacheManager pool fetchUpdateInterval keepFraction
   {- Spawn a pool of workers -}
   replicateM cNUM_WORKERS (forkIO $ worker dtLib pool cache gcSetting)
   case gcSetting of
@@ -84,7 +85,7 @@ runShimNode :: OperationClass a
             -> [Server] -> Keyspace -- Cassandra connection info
             -> NameService
             -> IO ()
-runShimNode = runShimNodeWithOpts GC_Full cCACHE_THREAD_DELAY
+runShimNode = runShimNodeWithOpts GC_Full cCACHE_THREAD_DELAY cKEEP_FRACTION
 
 worker :: OperationClass a => DatatypeLibrary a -> Pool -> CacheManager -> GCSetting -> IO ()
 worker dtLib pool cache gcSetting = do

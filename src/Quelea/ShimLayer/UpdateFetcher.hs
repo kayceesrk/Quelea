@@ -85,7 +85,7 @@ fetchUpdates cm const todoList = do
 
   let todoObjsCRS = S.fromList todoList
   let crs = CollectRowsState (sel1 inclTxns) todoObjsCRS M.empty M.empty
-  CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) const lgctMap) crs
+  CollectRowsState _ _ !rowsMapCRS !newTransMap <- execStateT (collectTransitiveRows (cm^.pool) (cm^.keepFraction) const lgctMap) crs
 
   -- Update disk row count for later use by gcDB
   drc <- takeMVar $ cm^.diskRowCntMVar
@@ -360,10 +360,10 @@ resolve cursor ot k sid sqn = do
 mergeCursorsAtKey :: CursorAtKey -> CursorAtKey -> CursorAtKey
 mergeCursorsAtKey = M.unionWith max
 
-collectTransitiveRows :: Pool -> Consistency
+collectTransitiveRows :: Pool -> Double -> Consistency
                       -> M.Map (ObjType, Key) UTCTime
                       -> StateT CollectRowsState IO ()
-collectTransitiveRows pool const lgct = do
+collectTransitiveRows pool keepFraction const lgct = do
   to <- use todoObjsCRS
   case S.minView to of
     Nothing -> return ()
@@ -377,13 +377,13 @@ collectTransitiveRows pool const lgct = do
           -- Read this (ot,k)
           rows <- case M.lookup (ot,k) lgct of
                   Nothing -> liftIO $ do
-                    runCas pool $ cqlRead ot const k
+                    runCas pool $ cqlRead ot const k keepFraction
                   Just gcTime -> liftIO $ do
-                    runCas pool $ cqlReadAfterTime ot const k gcTime
+                    runCas pool $ cqlReadAfterTime ot const k gcTime keepFraction
           -- Mark as read
           rowsMapCRS .= M.insert (ot,k) rows rm
           mapM_ processRow rows
-      collectTransitiveRows pool const lgct
+      collectTransitiveRows pool keepFraction const lgct
   where
     processRow (_,_,_,_,Nothing) = return ()
     processRow (sid, sqn, deps, val, Just txid) = do

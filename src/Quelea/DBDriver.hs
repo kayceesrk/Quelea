@@ -38,7 +38,7 @@ import Quelea.Marshall
 import Data.Serialize
 import Control.Applicative ((<$>))
 import Control.Monad (forever)
-import Data.ByteString hiding (map, pack)
+import Data.ByteString hiding (map, pack, foldl, zip)
 import Data.Either (rights)
 import Data.Map (Map)
 import Data.Time
@@ -49,10 +49,11 @@ import Database.Cassandra.CQL
 import Data.UUID
 import Data.Int (Int64)
 import qualified Data.Set as S
-import Data.Text hiding (map)
+import Data.Text hiding (map, zip, foldl)
 import Control.Monad.Trans (liftIO)
 import Data.Maybe (fromJust)
-import Control.Monad (when)
+import Control.Monad (when, replicateM)
+import Data.Distribution
 
 -- Simply an alias for Types.ObjType
 type TableName = String
@@ -158,25 +159,39 @@ mkGlobalLockUpdate = "update GlobalLock set txnid = ? where id = ? if txnid = ?"
 
 -------------------------------------------------------------------------------
 
-cqlReadAfterTime :: TableName -> Consistency -> Key -> UTCTime -> Cas [ReadRow]
-cqlReadAfterTime tname c k gcTime = do
+cqlReadAfterTime :: TableName -> Consistency -> Key -> UTCTime -> Double -> Cas [ReadRow]
+cqlReadAfterTime tname c k gcTime keepFrac = do
   rows <- executeRows c (mkReadAfterTime tname) (k, gcTime)
-  return $ map (\(sid, sqn, Deps deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
+  probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
+  return $ foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
+    if keep then (SessID sid, sqn, deps, val, TxnID <$> txid):acc else acc)
+    [] (zip probs rows)
+  where
+    g = fromDistribution $ withProbability keepFrac
 
-cqlRead :: TableName -> Consistency -> Key -> Cas [ReadRow]
-cqlRead tname c k = do
+cqlRead :: TableName -> Consistency -> Key -> Double -> Cas [ReadRow]
+cqlRead tname c k keepFrac = do
   rows <- executeRows c (mkRead tname) k
-  return $ map (\(sid, sqn, Deps deps, val, txid) -> (SessID sid, sqn, deps, val, TxnID <$> txid)) rows
+  probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
+  return $ foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
+    if keep then (SessID sid, sqn, deps, val, TxnID <$> txid):acc else acc)
+    [] (zip probs rows)
+  where
+    g = fromDistribution $ withProbability keepFrac
 
-cqlReadAfterTimeWithTime :: TableName -> Consistency -> Key -> UTCTime -> Cas [ReadRowWithTime]
-cqlReadAfterTimeWithTime tname c k gcTime = do
+cqlReadAfterTimeWithTime :: TableName -> Consistency -> Key -> UTCTime -> Double -> Cas [ReadRowWithTime]
+cqlReadAfterTimeWithTime tname c k gcTime keepFrac = do
   rows <- executeRows c (mkReadAfterTimeWithTime tname) (k, gcTime)
   return $ map (\(sid, sqn, addedat, Deps deps, val, txid) -> (SessID sid, sqn, addedat, deps, val, TxnID <$> txid)) rows
+  where
+    g = fromDistribution $ withProbability keepFrac
 
-cqlReadWithTime :: TableName -> Consistency -> Key -> Cas [ReadRowWithTime]
-cqlReadWithTime tname c k = do
+cqlReadWithTime :: TableName -> Consistency -> Key -> Double -> Cas [ReadRowWithTime]
+cqlReadWithTime tname c k keepFrac = do
   rows <- executeRows c (mkReadWithTime tname) k
   return $ map (\(sid, sqn, addedat, Deps deps, val, txid) -> (SessID sid, sqn, addedat, deps, val, TxnID <$> txid)) rows
+  where
+    g = fromDistribution $ withProbability keepFrac
 
 cqlInsertWithTime :: TableName -> Consistency -> Key -> ReadRow -> UTCTime -> Cas ()
 cqlInsertWithTime tname c k (SessID sid, sqn, dep,val,txid) ct = do

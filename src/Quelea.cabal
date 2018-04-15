@@ -30,7 +30,8 @@ Library
     tuple,
     derive,
     process,
-    optparse-applicative
+    optparse-applicative,
+    distribution
   Exposed-modules:
     Quelea.NameService.Types
     Quelea.NameService.SimpleBroker

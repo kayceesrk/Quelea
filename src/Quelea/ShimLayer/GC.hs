@@ -79,8 +79,8 @@ gcDBCore cm ot k gc repeat = do
   let gcTime = currentTime
   lgctMap <- readMVar $ cm^.lastGCTimeMVar
   rows <- case M.lookup (ot,k) lgctMap of
-            Nothing -> runCas (cm^.pool) $ cqlReadWithTime ot ALL k
-            Just lastGCTime -> runCas (cm^.pool) $ cqlReadAfterTimeWithTime ot ALL k lastGCTime
+            Nothing -> runCas (cm^.pool) $ cqlReadWithTime ot ALL k (cm^.keepFraction)
+            Just lastGCTime -> runCas (cm^.pool) $ cqlReadAfterTimeWithTime ot ALL k lastGCTime (cm^.keepFraction)
   -- Split the rows into effects and gc markers
   let (effRows, gcMarker) = foldl (\(effAcc,gcAcc) (sid,sqn,time,deps,val,txnid) ->
         case txnid of

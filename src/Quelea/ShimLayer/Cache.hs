@@ -55,8 +55,8 @@ debugPrint _ = return ()
 #endif
 
 
-initCacheManager :: Pool -> Int -> IO CacheManager
-initCacheManager pool fetchUpdateInterval = do
+initCacheManager :: Pool -> Int -> Double -> IO CacheManager
+initCacheManager pool fetchUpdateInterval keepFraction = do
   cache <- newMVar M.empty
   cursor <- newMVar M.empty
   nearestDeps <- newMVar M.empty
@@ -70,6 +70,7 @@ initCacheManager pool fetchUpdateInterval = do
   blockedList <- newMVar []
   let cm = CacheManager cache cursor nearestDeps lastGCAddr lastGCTime
                         seenTxns hwm drc hotLocs sem blockedList pool
+                        keepFraction
   forkIO $ cacheMgrCore cm
   forkIO $ signalGenerator sem fetchUpdateInterval
   return $ cm

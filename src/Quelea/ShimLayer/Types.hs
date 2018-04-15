@@ -49,5 +49,6 @@ data CacheManager = CacheManager {
   _hotLocsMVar      :: HotLocs,
   _semMVar          :: Semaphore,
   _blockedMVar      :: ThreadQueue,
-  _pool             :: Pool
+  _pool             :: Pool,
+  _keepFraction     :: Double
 }
