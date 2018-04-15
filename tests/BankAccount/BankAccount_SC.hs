@@ -25,6 +25,7 @@ import Quelea.Types (summarize)
 import Control.Monad (replicateM_, foldM, when, forever)
 import Data.IORef
 import Options.Applicative
+import Control.Applicative
 import Data.Time
 import Control.Concurrent.MVar
 import System.Posix.Signals
@@ -79,6 +80,9 @@ data Args = Args {
   -- Measure latency
   measureLatency :: Bool
 }
+
+(<>):: Monoid a => a -> a -> a
+(<>) = mappend
 
 args :: Parser Args
 args = Args
