@@ -1,5 +1,7 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
+#define LBB
+
 import Quelea.Shim
 import Quelea.ClientMonad
 import Quelea.DBDriver
@@ -190,7 +192,7 @@ run args = do
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
       dtLib <- dtLib
-      runShimNodeWithOpts (read $ "GC_Full") 100000 0.5 dtLib [("localhost","9042")] keyspace ns
+      runShimNodeWithOpts (read $ "GC_Mem_Only") 100000 0.5 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
@@ -218,6 +220,8 @@ run args = do
       b <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Broker --brokerAddr " ++ broker
       putStrLn "Driver : Starting server"
+      s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
+                        ++ " -RTS --kind Server --brokerAddr " ++ broker
       s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Server --brokerAddr " ++ broker
       putStrLn "Driver : Starting client(1)"
@@ -270,7 +274,7 @@ clientCore args delay someTime avgLat round = do
   when (b' < 0) $ do
     et <- liftIO $ getCurrentTime
     let timeDiff = diffUTCTime et someTime
-    liftIO $ putStrLn $ "Anamoly balance=" ++ show b ++ " time_since_start=" ++ show timeDiff
+    liftIO $ putStrLn $ "Anamoly balance=" ++ show b' ++ " time_since_start=" ++ show timeDiff
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1

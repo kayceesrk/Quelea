@@ -146,7 +146,7 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
-      runShimNode dtLib [("localhost","9042")] keyspace ns
+      runShimNodeWithOpts (read $ "GC_Mem_Only") 100000 0.5 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
