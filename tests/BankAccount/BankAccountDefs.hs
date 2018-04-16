@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables, TemplateHaskell, BangPatterns #-}
 
 module BankAccountDefs (
   BankAccount(..),
@@ -34,19 +34,19 @@ instance CasType BankAccount where
 type Res a = (a, Maybe BankAccount)
 
 deposit :: [BankAccount] -> Int -> Res ()
-deposit _ amt = ((), Just $ Deposit_ amt)
-
+deposit _ amt =
+  ((), Just $ Deposit_ amt)
 
 withdraw :: [BankAccount] -> Int -> Res Bool
 withdraw ctxt amt =
-  let (bal, _) = getBalance ctxt ()
-  in if bal > amt
+  let (!bal, _) = getBalance ctxt ()
+  in if {- trace ("W bal=" ++ show bal ++ " amt=" ++ show amt) -} bal >= amt
      then (True, Just $ Withdraw_ amt)
      else (False, Nothing)
 
 getBalance :: [BankAccount] -> () -> Res Int
 getBalance ops () =
-  let v = {- trace ("GB : #effect=" ++ (show $ length ops)) -} foldl acc 0 ops
+  let v = {- trace ("GB : effects=" ++ (show ops)) -} foldl acc 0 ops
   in (v, Nothing)
   where
     acc s (Deposit_ i) = s + i

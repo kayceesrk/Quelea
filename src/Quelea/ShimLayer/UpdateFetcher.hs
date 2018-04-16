@@ -52,8 +52,6 @@ data ResolutionState = ResolutionState {
 
 makeLenses ''ResolutionState
 
-#define DEBUG
-
 debugPrint :: String -> IO ()
 #ifdef DEBUG
 debugPrint s = do
@@ -138,15 +136,15 @@ fetchUpdates cm const todoList = do
                   GCMarker _ -> er) M.empty rowList
          in M.insert (ot,k) er erm) M.empty rowsMapCRS
 
-  -- debugPrint $ "newCursor"
-  -- mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList newCursor
+  debugPrint $ "newCursor"
+  mapM_ (\((ot,k), m) -> mapM_ (\(sid,sqn) -> debugPrint $ show $ Addr sid sqn) $ M.toList m) $ M.toList newCursor
 
   -- Now filter those rows which are unresolved i.e) those rows whose
   -- dependencies are not visible.
   let !filteredMap = filterUnresolved newCursor effRowsMap
 
-  -- debugPrint $ "filteredMap"
-  -- mapM_ (\((ot,k), s) -> mapM_ (\(addr,_,_) -> debugPrint $ show addr) $ S.toList s) $ M.toList filteredMap
+  debugPrint $ "filteredMap"
+  mapM_ (\((ot,k), s) -> mapM_ (\(addr,_,_) -> debugPrint $ show addr) $ S.toList s) $ M.toList filteredMap
 
   -- Update state. First obtain locks...
   !cache      <- takeMVar $ cm^.cacheMVar

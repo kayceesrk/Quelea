@@ -151,7 +151,7 @@ run args = do
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
       let fetchUpdateInterval = 100000
-      runShimNodeWithOpts (read $ gcSetting args) 100000 dtLib [("localhost","9042")] keyspace ns
+      runShimNodeWithOpts (read $ gcSetting args) 100000 1.0 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args

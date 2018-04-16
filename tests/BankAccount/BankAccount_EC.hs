@@ -17,6 +17,7 @@ import Quelea.NameService.LoadBalancingBroker
 import Quelea.NameService.SimpleBroker
 #endif
 import Quelea.Marshall
+import System.IO (hFlush, stdout)
 import Quelea.TH
 import Database.Cassandra.CQL
 import Control.Monad.Trans (liftIO)
@@ -31,7 +32,7 @@ import Control.Concurrent.MVar
 import System.Posix.Signals
 import Control.Exception ( SomeException(..), AsyncException(..) , catch, handle, throw)
 import System.Exit (exitSuccess)
-import System.Random (randomIO)
+import System.Random (randomIO, randomRIO)
 
 
 --------------------------------------------------------------------------------
@@ -46,7 +47,7 @@ tableName :: String
 tableName = "BankAccount"
 
 numOpsPerRound :: Num a => a
-numOpsPerRound = 3
+numOpsPerRound = 4
 
 printEvery :: Int
 printEvery = 100
@@ -145,7 +146,7 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
-      runShimNode dtLib [("localhost","9042")] keyspace ns
+      runShimNodeWithOpts (read $ "GC_Full") 100000 0.5 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
       let threads = read $ numThreads args
@@ -154,7 +155,9 @@ run args = do
 
       t1 <- getCurrentTime
       replicateM_ threads $ forkIO $ do
-        avgLatency <- runSession ns $ foldM (clientCore args delay someTime) 0 [1 .. rounds]
+        avgLatency <- runSession ns $ do
+          liftIO $ putStrLn "Client running.."
+          foldM (clientCore args delay someTime) 0 [1 .. rounds]
         putMVar mv avgLatency
       totalLat <- foldM (\l _ -> takeMVar mv >>= \newL -> return $ l + newL) 0 [1..threads]
       t2 <- getCurrentTime
@@ -173,7 +176,14 @@ run args = do
       putStrLn "Driver : Starting server"
       s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Server --brokerAddr " ++ broker
-      putStrLn "Driver : Starting client"
+      putStrLn "Driver : Starting client(1)"
+      c <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
+                        ++ " -RTS --kind Client --brokerAddr " ++ broker
+                        ++ " --numThreads " ++ (numThreads args)
+                        ++ " --numRounds " ++ (numRounds args)
+                        ++ " --delayReq " ++ (delayReq args)
+                        ++ if (measureLatency args) then " --measureLatency" else ""
+      putStrLn "Driver : Starting client(2)"
       c <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Client --brokerAddr " ++ broker
                         ++ " --numThreads " ++ (numThreads args)
@@ -203,24 +213,32 @@ clientCore :: Args -> Int -> UTCTime -- default arguments
            -> NominalDiffTime -> Int -> CSN NominalDiffTime
 clientCore args delay someTime avgLat round = do
   -- Generate key
-  key <- liftIO $ (mkKey . (\i -> i `mod` (100000::Int))) <$> randomIO
+  key <- liftIO $ (mkKey . (\i -> i `mod` (1::Int))) <$> randomIO
   -- Delay thread if required
   when (delay /= 0) $ liftIO $ threadDelay delay
   -- Perform the operations
   t1 <- getNow args someTime
-  r::() <- invoke key Deposit (2::Int)
-  r::() <- invoke key Withdraw (1::Int)
-  r :: Int <- invoke key GetBalance ()
+  _::() <- invoke key Deposit (1::Int)
+  b :: Int <- invoke key GetBalance ()
+  _::() <- invoke key Withdraw (b::Int)
+  b' :: Int <- invoke key GetBalance ()
+  liftIO $ putStrLn $ "b=" ++ show b ++ " b'=" ++ show b'
+  when (b' < 0) $ do
+    et <- liftIO $ getCurrentTime
+    let timeDiff = diffUTCTime et someTime
+    liftIO $ putStrLn $ "Anamoly balance=" ++ show b ++ " time_since_start=" ++ show timeDiff
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   -- Print info if required
   when (round `mod` printEvery == 0) $ do
-    liftIO . putStrLn $ "Round = " ++ show round ++ " result = " ++ show r
+    liftIO $ do
+      _ <- putStrLn $ "Round = " ++ show round ++ " result = " ++ show b
                         ++ if (measureLatency args)
                             then " latency = " ++ show newAvgLat
                             else ""
+      hFlush stdout
   return newAvgLat
 
 getNow :: Args -> UTCTime -> CSN UTCTime

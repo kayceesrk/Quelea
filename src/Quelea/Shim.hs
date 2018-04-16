@@ -45,8 +45,6 @@ makeLenses ''Addr
 makeLenses ''DatatypeLibrary
 makeLenses ''OperationPayload
 
-#define DEBUG
-
 debugPrint :: String -> IO ()
 #ifdef DEBUG
 debugPrint s = do
@@ -181,7 +179,8 @@ doOp op cache request const = do
   addHotLocation cache objType key
   let resDeps = if getDeps then deps else S.empty
   result <- case effM of
-    Nothing -> return $ ResOper seqno res Nothing Nothing resDeps
+    Nothing -> do
+      return $ ResOper seqno res Nothing Nothing resDeps
     Just eff -> do
       -- Write effect writes to DB, and potentially to cache
       writeEffect cache objType key (Addr sessid (seqno+1)) eff deps const $ sel1 <$> mbtxid

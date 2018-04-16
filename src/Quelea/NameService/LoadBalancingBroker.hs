@@ -15,8 +15,6 @@ import System.Posix.Process
 import Control.Monad.Trans (liftIO)
 import Quelea.NameService.Types
 
--- #define DEBUG
-
 debugPrint :: String -> IO ()
 #ifdef DEBUG
 debugPrint s = do

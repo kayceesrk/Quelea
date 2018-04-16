@@ -41,8 +41,6 @@ import Quelea.ShimLayer.UpdateFetcher
 
 makeLenses ''CacheManager
 
-#define DEBUG
-
 debugPrint :: String -> IO ()
 #ifdef DEBUG
 debugPrint s = do

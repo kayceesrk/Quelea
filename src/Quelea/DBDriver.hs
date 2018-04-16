@@ -38,7 +38,7 @@ import Quelea.Marshall
 import Data.Serialize
 import Control.Applicative ((<$>))
 import Control.Monad (forever)
-import Data.ByteString hiding (map, pack, foldl, zip)
+import Data.ByteString hiding (map, pack, foldl, zip, length, putStrLn)
 import Data.Either (rights)
 import Data.Map (Map)
 import Data.Time
@@ -49,7 +49,7 @@ import Database.Cassandra.CQL
 import Data.UUID
 import Data.Int (Int64)
 import qualified Data.Set as S
-import Data.Text hiding (map, zip, foldl)
+import Data.Text hiding (map, zip, foldl, length)
 import Control.Monad.Trans (liftIO)
 import Data.Maybe (fromJust)
 import Control.Monad (when, replicateM)
@@ -163,9 +163,10 @@ cqlReadAfterTime :: TableName -> Consistency -> Key -> UTCTime -> Double -> Cas 
 cqlReadAfterTime tname c k gcTime keepFrac = do
   rows <- executeRows c (mkReadAfterTime tname) (k, gcTime)
   probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
-  return $ foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
-    if keep then (SessID sid, sqn, deps, val, TxnID <$> txid):acc else acc)
-    [] (zip probs rows)
+  let r = foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
+            if keep then (SessID sid, sqn, deps, val, TxnID <$> txid):acc else acc)
+            [] (zip probs rows)
+  return r
   where
     g = fromDistribution $ withProbability keepFrac
 
@@ -173,9 +174,10 @@ cqlRead :: TableName -> Consistency -> Key -> Double -> Cas [ReadRow]
 cqlRead tname c k keepFrac = do
   rows <- executeRows c (mkRead tname) k
   probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
-  return $ foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
-    if keep then (SessID sid, sqn, deps, val, TxnID <$> txid):acc else acc)
-    [] (zip probs rows)
+  let r = foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
+            if keep then (SessID sid, sqn, deps, val, TxnID <$> txid):acc else acc)
+            [] (zip probs rows)
+  return r
   where
     g = fromDistribution $ withProbability keepFrac
 
