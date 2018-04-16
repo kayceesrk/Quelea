@@ -88,7 +88,7 @@ inv1 wid =
 {- Invariant corresponds to doNewOrderTxn -}
 {- District's NEXT_O_ID - 1 = max(OrderID) where OrderID's district is this 
    District'd did and OrderID's warehouse is this district's warehouse(dwid) . -}
-inv2 :: WarehouseID -> DistrictID -> CSN (Bool)
+inv2 :: DistrictID -> WarehouseID -> CSN (Bool)
 inv2 did dwid = 
   {-keys ks_d = All keys of district table-}
   let ks_d = [] in
