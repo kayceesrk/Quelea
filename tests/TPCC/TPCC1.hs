@@ -49,11 +49,14 @@ import TPCCTxns
   addHistoryAmtCtrtA,
   addOrderCtrtA,
   addOrderlineCtrtA,
-  getOrderlineCtrtA,
   addCustomerBalCtrtA,
   setCarrierCtrtA,
   setDeliveryDateCtrtA,
-  getOlCntCtrtA] =
+  getOlCntCtrtA,
+  getYtdCtrtA,
+  getHistoryAmtCtrtA,
+  checkCarrierSetCtrtA,
+  checkDeliverySetCtrtA] =
     $(do
         t1 <- runIO getCurrentTime
         a <- (checkOp AddYtd addYtdCtrt)
@@ -65,8 +68,12 @@ import TPCCTxns
         j <- (checkOp SetCarrier setCarrierCtrt)
         k <- (checkOp SetDeliveryDate setDeliveryDateCtrt)
         l <- (checkOp GetOlCnt getOlCntCtrt)
+        m <- (checkOp GetYtd getYtdCtrt)
+        n <- (checkOp GetHistoryAmt getHistoryAmtCtrt)
+        o <- (checkOp CheckCarrierSet checkCarrierSetCtrt)
+        p <- (checkOp CheckDeliverySet checkDeliverySetCtrt)
         le <- return $ (ListE::[Exp] -> Exp)
-                [a, c, d, f, h, i, j, k, l]
+                [a, c, d, f, h, i, j, k, l, m, n, o, p]
         t2 <- runIO getCurrentTime
         _ <- runIO $ putStrLn $ "----------------------------------------------------------"
         _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
@@ -77,13 +84,18 @@ import TPCCTxns
 
 dtLib = mkDtLib [(AddYtd, mkGenOp addYtd summarize, addYtdCtrtA),
                  (GetAndIncNextOID, mkGenOp getandIncNextOID summarize, getandIncNextOIDCtrtA),
-                 (AddHistoryAmt, mkGenOp addHistoryAmt summarize, addHistoryAmtCtrtA)
+                 (AddHistoryAmt, mkGenOp addHistoryAmt summarize, addHistoryAmtCtrtA),
                  (AddOrder, mkGenOp addOrder summarize, addOrderCtrtA),
-                 (AddOrderline, mkGenOp addOrderline summarize, addOrderlineCtrtA)
-                 (AddCustomerBal, mkGenOp addCustomerBal summarize, addCustomerBalCtrtA)
+                 (AddOrderline, mkGenOp addOrderline summarize, addOrderlineCtrtA),
+                 (AddCustomerBal, mkGenOp addCustomerBal summarize, addCustomerBalCtrtA),
                  (SetCarrier, mkGenOp setCarrier summarize, setCarrierCtrtA),
                  (SetDeliveryDate, mkGenOp setDeliveryDate summarize, setDeliveryDateCtrtA),
-                 (GetOlCnt, mkGenOp getOlCnt summarize, getOlCntCtrtA)]
+                 (GetOlCnt, mkGenOp getOlCnt summarize, getOlCntCtrtA),
+                 (GetYtd, mkGenOp getYtd summarize, getYtdCtrtA),
+                 (GetHistoryAmt, mkGenOp getHistoryAmt summarize, getHistoryAmtCtrtA),
+                 (CheckCarrierSet, mkGenOp checkCarrierSet summarize, checkCarrierSetCtrtA),
+                 (CheckDeliverySet, mkGenOp checkDeliverySet summarize, checkDeliverySetCtrtA)]
+
 
 --------------------------------------------------------------------------------
 
@@ -191,7 +203,6 @@ run args = do
     Broker -> startBroker (Frontend $ "tcp://*:" ++ show fePort)
                      (Backend $ "tcp://*:" ++ show bePort)
     Server -> do
-      dtLib <- dtLib
       runShimNodeWithOpts (read $ "GC_Full") 100000 0.5 dtLib [("localhost","9042")] keyspace ns
     Client -> do
       let rounds = read $ numRounds args
@@ -268,14 +279,6 @@ clientCore args delay someTime avgLat round = do
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
-  -- Print info if required
-  when (round `mod` printEvery == 0) $ do
-    liftIO $ do
-      _ <- putStrLn $ "Round = " ++ show round ++ " result = " ++ show b
-                        ++ if (measureLatency args)
-                            then " latency = " ++ show newAvgLat
-                            else ""
-      hFlush stdout
   return newAvgLat
 
 getNow :: Args -> UTCTime -> CSN UTCTime

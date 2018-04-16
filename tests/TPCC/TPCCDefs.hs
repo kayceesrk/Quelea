@@ -11,6 +11,7 @@ module TPCCDefs (
 
   -- Warehouse
   addYtd, addYtdCtrt,
+  getYtd, getYtdCtrt,
 
   -- District
   getandIncNextOID, getandIncNextOIDCtrt,
@@ -22,17 +23,19 @@ module TPCCDefs (
 
   -- History
   addHistoryAmt, addHistoryAmtCtrt,
-  --getHistoryAmt, getHistoryAmtCtrt, 
+  getHistoryAmt, getHistoryAmtCtrt,
 
   -- Order
   setCarrier, setCarrierCtrt,
   addOrder, addOrderCtrt,
   getOlCnt, getOlCntCtrt,
+  checkCarrierSet, checkCarrierSetCtrt,
   {-getOrder, getOrderCtrt,-}
 
   -- Orderline
   addOrderline, addOrderlineCtrt,
-  setDeliveryDate, setDeliveryDateCtrt
+  setDeliveryDate, setDeliveryDateCtrt,
+  checkDeliverySet, checkDeliverySetCtrt
   --getOrderline, getOrderlineCtrt
   ) where
 
@@ -70,16 +73,16 @@ instance CasType WarehouseEffect where
 addYtd :: [WarehouseEffect] -> (Int) -> ((), Maybe WarehouseEffect)
 addYtd _ (ytd) = ((),Just $ AddYtd_ ytd)
 
-getYtd :: [WarehouseEffect] -> () -> Int
-getYtd ops w_id =
+getYtd :: [WarehouseEffect] -> () -> ((Int), Maybe WarehouseEffect)
+getYtd ops _ =
   let v = foldl acc 0 ops
-  in v
+  in (v, Nothing)
   where
     acc s (AddYtd_ ytd) = s+ytd
     acc s GetYtd_ = s
 
 instance Effectish WarehouseEffect where
-  summarize ctxt = [AddYtd_ (getYtd ctxt ())]
+  summarize ctxt = ctxt
 
 {- District Table : key (WarehouseID, DistrictID) -}
 
@@ -96,10 +99,11 @@ instance CasType DistrictEffect where
   getCas = get
   casType _ = CBlob
 
-getandIncNextOID :: [DistrictEffect] -> () -> ((Int), Maybe DistrictEffect)
-getandIncNextOID ops (w_id) =
+getandIncNextOID :: [DistrictEffect] -> (Bool) -> ((Int), Maybe DistrictEffect)
+getandIncNextOID ops inc{-If set then increment-} =
   let v = foldl acc 0 ops
-  in (v, Just $ GetAndIncNextOID_)
+  in
+  if inc then (v, Just $ GetAndIncNextOID_) else (v, Nothing)
   where
     acc s GetAndIncNextOID_ = s+1
     acc s GetNextOID_ = s
@@ -143,13 +147,13 @@ instance CasType HistoryEffect where
 addHistoryAmt :: [HistoryEffect] -> (Int) -> ((),Maybe HistoryEffect)
 addHistoryAmt _ (amt) = ((),Just $ AddHistoryAmt_ amt)
 
-{-getHistoryAmt :: [HistoryEffect] -> (WarehouseID) -> ((Int), Maybe HistoryEffect)
-getHistoryAmt ops (h_w_id) =
+getHistoryAmt :: [HistoryEffect] -> () -> ((Int), Maybe HistoryEffect)
+getHistoryAmt ops _ =
   let v = foldl acc 0 ops
   in (v, Nothing)
   where
-    acc s (AddHistoryAmt_ wid amt) = if wid==h_w_id then s+amt else s
-    acc s GetHistoryAmt_= s-}
+    acc s (AddHistoryAmt_ amt) = s+amt
+    acc s _ = s
 
 instance Effectish HistoryEffect where
   summarize ctxt = ctxt
@@ -159,7 +163,8 @@ instance Effectish HistoryEffect where
 newtype OrderID = OrderID Int deriving (Eq, Ord)
 
 data OrderEffect = GetOlCnt_
-                  | AddOrder_ Int {- o_ol_cnt -} 
+                  | AddOrder_ Int {- o_ol_cnt -}
+                  | CheckCarrierSet_
                   | SetCarrier_ deriving Eq
 
 $(derive makeSerialize ''OrderID)
@@ -179,7 +184,11 @@ getOlCnt [] _ = (0, Nothing)
 getOlCnt (AddOrder_ o_ol_cnt:_) _ = (o_ol_cnt, Nothing)
 
 setCarrier :: [OrderEffect] -> () -> ((),Maybe OrderEffect)
-setCarrier _ o_ol_cnt = ((),Just $ SetCarrier_)
+setCarrier _ _ = ((),Just $ SetCarrier_)
+
+checkCarrierSet :: [OrderEffect] -> () -> ((Bool),Maybe OrderEffect)
+checkCarrierSet [] _ = (False, Nothing)
+checkCarrierSet (SetCarrier_:_) _ = (True, Nothing)
 
 instance Effectish OrderEffect where
   summarize ctxt = ctxt
@@ -189,7 +198,8 @@ instance Effectish OrderEffect where
 newtype OrderlineTableID = OrderlineTableID (OrderID, DistrictID, WarehouseID, Int) deriving (Eq, Ord)
 
 data OrderlineEffect = Get_
-                  | AddOrderline_ 
+                  | AddOrderline_
+                  | CheckDeliverySet_
                   | SetDeliveryDate_ deriving Eq
 
 
@@ -207,6 +217,10 @@ addOrderline _ _ = ((),Just $ AddOrderline_)
 
 setDeliveryDate :: [OrderlineEffect] -> () -> ((),Maybe OrderlineEffect)
 setDeliveryDate _ _ = ((),Just $ SetDeliveryDate_)
+
+checkDeliverySet :: [OrderlineEffect] -> () -> ((Bool),Maybe OrderlineEffect)
+checkDeliverySet [] _ = (False, Nothing)
+checkDeliverySet (SetDeliveryDate_:_) _ = (True, Nothing)
 
 getolRowCnt :: [OrderlineEffect] -> (WarehouseID) -> ((Int),Maybe OrderlineEffect)
 getolRowCnt ops (o_w_id) =
@@ -237,11 +251,20 @@ trueCtrt x = liftProp $ true
 addYtdCtrt :: Contract Operation
 addYtdCtrt = trueCtrt
 
+getYtdCtrt :: Contract Operation
+getYtdCtrt = trueCtrt
+
 addCustomerBalCtrt :: Contract Operation
 addCustomerBalCtrt = trueCtrt
 
 addHistoryAmtCtrt :: Contract Operation
 addHistoryAmtCtrt = trueCtrt
+
+getHistoryAmtCtrt :: Contract Operation
+getHistoryAmtCtrt = trueCtrt
+
+checkCarrierSetCtrt :: Contract Operation
+checkCarrierSetCtrt = trueCtrt
 
 getandIncNextOIDCtrt :: Contract Operation
 getandIncNextOIDCtrt x = forallQ_ [GetAndIncNextOID] $ \a -> liftProp $
@@ -249,6 +272,9 @@ getandIncNextOIDCtrt x = forallQ_ [GetAndIncNextOID] $ \a -> liftProp $
 
 setDeliveryDateCtrt :: Contract Operation
 setDeliveryDateCtrt = trueCtrt
+
+checkDeliverySetCtrt :: Contract Operation
+checkDeliverySetCtrt = trueCtrt
 
 setCarrierCtrt :: Contract Operation
 setCarrierCtrt = trueCtrt
