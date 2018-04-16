@@ -50,11 +50,14 @@ data Kind = B | C | S | D | Drop deriving (Read, Show)
   addHistoryAmtCtrtA, 
   addOrderCtrtA,
   addOrderlineCtrtA,
-  getOrderlineCtrtA,
   addCustomerBalCtrtA,
   setCarrierCtrtA,
   setDeliveryDateCtrtA,
-  getOlCntCtrtA] = 
+  getOlCntCtrtA,
+  getYtdCtrtA,
+  getHistoryAmtCtrtA,
+  checkCarrierSetCtrtA,
+  checkDeliverySetCtrtA] = 
     $(do 
         t1 <- runIO getCurrentTime
         a <- (checkOp AddYtd addYtdCtrt)
@@ -66,8 +69,12 @@ data Kind = B | C | S | D | Drop deriving (Read, Show)
         j <- (checkOp SetCarrier setCarrierCtrt)
         k <- (checkOp SetDeliveryDate setDeliveryDateCtrt)
         l <- (checkOp GetOlCnt getOlCntCtrt)
+        m <- (checkOp GetYtd getYtdCtrt)
+        n <- (checkOp GetHistoryAmt getHistoryAmtCtrt)
+        o <- (checkOp CheckCarrierSet checkCarrierSetCtrt)
+        p <- (checkOp CheckDeliverySet checkDeliverySetCtrt)
         le <- return $ (ListE::[Exp] -> Exp) 
-                [a, c, d, f, h, i, j, k, l]
+                [a, c, d, f, h, i, j, k, l, m, n, o, p]
         t2 <- runIO getCurrentTime
         _ <- runIO $ putStrLn $ "----------------------------------------------------------"
         _ <- runIO $ putStrLn $ "Classification of operation contracts completed in "++
@@ -84,4 +91,8 @@ dtLib = mkDtLib [(AddYtd, mkGenOp addYtd summarize, addYtdCtrtA),
                  (AddCustomerBal, mkGenOp addCustomerBal summarize, addCustomerBalCtrtA)
                  (SetCarrier, mkGenOp setCarrier summarize, setCarrierCtrtA),
                  (SetDeliveryDate, mkGenOp setDeliveryDate summarize, setDeliveryDateCtrtA),
-                 (GetOlCnt, mkGenOp getOlCnt summarize, getOlCntCtrtA)]
+                 (GetOlCnt, mkGenOp getOlCnt summarize, getOlCntCtrtA),
+                 (GetYtd, mkGenOp getYtd summarize, getYtdCtrtA),
+                 (GetHistoryAmt, mkGenOp getHistoryAmt summarize, getHistoryAmtCtrtA),
+                 (CheckCarrierSet, mkGenOp checkCarrierSet summarize, checkCarrierSetCtrtA),
+                 (CheckDeliverySet, mkGenOp checkDeliverySet summarize, checkDeliverySetCtrtA)]
