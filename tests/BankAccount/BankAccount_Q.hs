@@ -266,7 +266,7 @@ clientCore args delay someTime avgLat round = do
   b :: Int <- invoke key GetBalance ()
   _::() <- invoke key Withdraw (b::Int)
   b' :: Int <- invoke key GetBalance ()
-  liftIO $ putStrLn $ "b=" ++ show b ++ " b'=" ++ show b'
+  -- liftIO $ putStrLn $ "b=" ++ show b ++ " b'=" ++ show b'
   when (b' < 0) $ do
     et <- liftIO $ getCurrentTime
     let timeDiff = diffUTCTime et someTime

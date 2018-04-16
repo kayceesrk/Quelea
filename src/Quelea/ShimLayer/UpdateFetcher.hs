@@ -277,7 +277,7 @@ fetchUpdates cm const todoList = do
     newGCHasOccurred :: Maybe SessID -> Maybe (SessID, SeqNo, S.Set Addr, UTCTime) -> Bool
     newGCHasOccurred Nothing Nothing = False
     newGCHasOccurred Nothing (Just _) = True
-    newGCHasOccurred (Just _) Nothing = error "newGCHasOccurred: unexpected state"
+    newGCHasOccurred (Just _) Nothing = False
     newGCHasOccurred (Just fromCache) (Just (fromDB,_,_,_)) = fromCache /= fromDB
 
 

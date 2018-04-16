@@ -162,13 +162,17 @@ mkGlobalLockUpdate = "update GlobalLock set txnid = ? where id = ? if txnid = ?"
 cqlReadAfterTime :: TableName -> Consistency -> Key -> UTCTime -> Double -> Cas [ReadRow]
 cqlReadAfterTime tname c k gcTime keepFrac = do
   rows <- executeRows c (mkReadAfterTime tname) (k, gcTime)
-  probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
+  probs <- liftIO $ do
+    case c of
+      ONE -> replicateM (Prelude.length rows) $ getSample g
+      otherwise -> replicateM (Prelude.length rows) (return True)
   let r = foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
             let incl = (SessID sid, sqn, deps, val, TxnID <$> txid):acc
             in case val of
                  GCMarker _ -> incl
                  otherwise -> if keep then incl else acc)
             [] (zip probs rows)
+  -- liftIO $ putStrLn $ "read1 " ++ show (length rows) ++ " " ++ show (length r)
   return r
   where
     g = fromDistribution $ withProbability keepFrac
@@ -176,13 +180,17 @@ cqlReadAfterTime tname c k gcTime keepFrac = do
 cqlRead :: TableName -> Consistency -> Key -> Double -> Cas [ReadRow]
 cqlRead tname c k keepFrac = do
   rows <- executeRows c (mkRead tname) k
-  probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
+  probs <- liftIO $ do
+    case c of
+      ONE -> replicateM (Prelude.length rows) $ getSample g
+      otherwise -> replicateM (Prelude.length rows) (return True)
   let r = foldl (\acc (keep, (sid, sqn, Deps deps, val, txid)) ->
             let incl = (SessID sid, sqn, deps, val, TxnID <$> txid):acc
             in case val of
                  GCMarker _ -> incl
                  otherwise -> if keep then incl else acc)
             [] (zip probs rows)
+  -- liftIO $ putStrLn $ "read2 " ++ show (length rows) ++ " " ++ show (length r)
   return r
   where
     g = fromDistribution $ withProbability keepFrac
@@ -190,13 +198,17 @@ cqlRead tname c k keepFrac = do
 cqlReadAfterTimeWithTime :: TableName -> Consistency -> Key -> UTCTime -> Double -> Cas [ReadRowWithTime]
 cqlReadAfterTimeWithTime tname c k gcTime keepFrac = do
   rows <- executeRows c (mkReadAfterTimeWithTime tname) (k, gcTime)
-  probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
+  probs <- liftIO $ do
+    case c of
+      ONE -> replicateM (Prelude.length rows) $ getSample g
+      otherwise -> replicateM (Prelude.length rows) (return True)
   let r = foldl (\acc (keep, (sid, sqn, addedat, Deps deps, val, txid)) ->
             let incl = (SessID sid, sqn, addedat, deps, val, TxnID <$> txid):acc
             in case val of
                  GCMarker _ -> incl
                  otherwise -> if keep then incl else acc)
           [] (zip probs rows)
+  -- liftIO $ putStrLn $ "read3 " ++ show (length rows) ++ " " ++ show (length r)
   return r
   where
     g = fromDistribution $ withProbability keepFrac
@@ -204,13 +216,17 @@ cqlReadAfterTimeWithTime tname c k gcTime keepFrac = do
 cqlReadWithTime :: TableName -> Consistency -> Key -> Double -> Cas [ReadRowWithTime]
 cqlReadWithTime tname c k keepFrac = do
   rows <- executeRows c (mkReadWithTime tname) k
-  probs <- liftIO $ replicateM (Prelude.length rows) $ getSample g
+  probs <- liftIO $ do
+    case c of
+      ONE -> replicateM (Prelude.length rows) $ getSample g
+      otherwise -> replicateM (Prelude.length rows) (return True)
   let r = foldl (\acc (keep, (sid, sqn, addedat, Deps deps, val, txid)) ->
             let incl = (SessID sid, sqn, addedat, deps, val, TxnID <$> txid):acc
             in case val of
                  GCMarker _ -> incl
                  otherwise -> if keep then incl else acc)
           [] (zip probs rows)
+  -- liftIO $ putStrLn $ "read4 " ++ show (length rows) ++ " " ++ show (length r)
   return r
   where
     g = fromDistribution $ withProbability keepFrac

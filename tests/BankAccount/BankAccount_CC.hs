@@ -1,5 +1,7 @@
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables, CPP #-}
 
+#define LBB
+
 import Quelea.Shim
 import Quelea.Types
 import Quelea.ClientMonad
@@ -173,7 +175,13 @@ run args = do
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Broker --brokerAddr " ++ broker
-      putStrLn "Driver : Starting server"
+      putStrLn "Driver : Starting server(1)"
+      s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
+                        ++ " -RTS --kind Server --brokerAddr " ++ broker
+      putStrLn "Driver : Starting server(2)"
+      s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
+                        ++ " -RTS --kind Server --brokerAddr " ++ broker
+      threadDelay 1000000
       s <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
                         ++ " -RTS --kind Server --brokerAddr " ++ broker
       putStrLn "Driver : Starting client(1)"
@@ -222,11 +230,11 @@ clientCore args delay someTime avgLat round = do
   b :: Int <- invoke key GetBalance ()
   _::() <- invoke key Withdraw (b::Int)
   b' :: Int <- invoke key GetBalance ()
-  liftIO $ putStrLn $ "b=" ++ show b ++ " b'=" ++ show b'
+  -- liftIO $ putStrLn $ "b=" ++ show b ++ " b'=" ++ show b'
   when (b' < 0) $ do
     et <- liftIO $ getCurrentTime
     let timeDiff = diffUTCTime et someTime
-    liftIO $ putStrLn $ "Anamoly balance=" ++ show b ++ " time_since_start=" ++ show timeDiff
+    liftIO $ putStrLn $ "Anamoly balance=" ++ show b' ++ " time_since_start=" ++ show timeDiff
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
