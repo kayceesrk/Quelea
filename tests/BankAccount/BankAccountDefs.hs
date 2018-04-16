@@ -40,7 +40,7 @@ deposit _ amt =
 withdraw :: [BankAccount] -> Int -> Res Bool
 withdraw ctxt amt =
   let (!bal, _) = getBalance ctxt ()
-  in if {- trace ("W bal=" ++ show bal ++ " amt=" ++ show amt) -} bal >= amt
+  in if {- trace ("W bal=" ++ show bal ++ " amt=" ++ show amt) -} bal >= amt && bal > 0
      then (True, Just $ Withdraw_ amt)
      else (False, Nothing)
 
