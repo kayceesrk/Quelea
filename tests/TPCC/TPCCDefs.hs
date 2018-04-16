@@ -148,8 +148,12 @@ addHistoryAmt :: [HistoryEffect] -> (Int) -> ((),Maybe HistoryEffect)
 addHistoryAmt _ (amt) = ((),Just $ AddHistoryAmt_ amt)
 
 getHistoryAmt :: [HistoryEffect] -> () -> ((Int), Maybe HistoryEffect)
-getHistoryAmt [] _ = (0, Nothing)
-getHistoryAmt (AddHistoryAmt_ amt:_) _ = (amt, Nothing)
+getHistoryAmt ops _ = 
+  let v = foldl acc 0 ops
+  in (v, Nothing)
+  where
+    acc s (AddHistoryAmt_ amt) = s+amt
+    acc s _ = s
 
 instance Effectish HistoryEffect where
   summarize ctxt = ctxt
