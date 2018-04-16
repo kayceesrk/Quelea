@@ -47,7 +47,7 @@ doNewOrderTxn :: DistrictID -> WarehouseID -> Int -> CSN (Int)
 doNewOrderTxn did wid ireq = 
   let ireqs = [1..ireq] in
   atomically (doNewOrderTxnCtrtA) $ do
-    nextoid::Int <- invoke (mkKey (did,wid)) GetAndIncNextOID ()
+    nextoid::Int <- invoke (mkKey (did,wid)) GetAndIncNextOID (True)
     r::() <- invoke (mkKey (nextoid,did,wid)) AddOrder (length ireqs)
     r::() <- foldM (\ _ x -> invoke (mkKey (nextoid,did,wid,x)) AddOrderline ()) () ireqs
     return nextoid
