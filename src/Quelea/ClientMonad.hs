@@ -11,6 +11,7 @@ module Quelea.ClientMonad (
   runSession,
   runSessionWithStats,
   getStats,
+  getKeys,
   invoke,
   invokeAndGetDeps,
   newKey,
@@ -22,7 +23,8 @@ module Quelea.ClientMonad (
 ) where
 
 import Quelea.Types
-import Quelea.Client hiding (invoke, getServerAddr, invokeAndGetDeps, getLastEffect, getStats)
+import Quelea.Client hiding (getKeys, invoke, getServerAddr, invokeAndGetDeps,
+                             getLastEffect, getStats)
 import qualified Quelea.Client as CCLow
 import Control.Monad.Trans.State
 import Control.Monad.Trans (liftIO)
@@ -55,6 +57,12 @@ getStats :: CSN (Double, NominalDiffTime)
 getStats = do
   session <- get
   liftIO $ CCLow.getStats session
+
+getKeys :: Serialize a => ObjType -> CSN [a]
+getKeys ot = do
+  session <- get
+  res <- liftIO $ CCLow.getKeys session ot
+  return res
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Key -> on -> arg -> CSN res

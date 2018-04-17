@@ -14,6 +14,7 @@ module Quelea.Client (
   invokeAndGetDeps,
   newKey,
   mkKey,
+  getKeys,
   getServerAddr,
   beginTxn,
   endTxn,
@@ -97,6 +98,7 @@ beginSession ns = beginSessionStats ns False
 endSession :: Session -> IO ()
 endSession s = disconnect (s ^. server) (s^.serverAddr)
 
+
 beginTxn :: Session -> TxnKind -> IO Session
 beginTxn s tk = do
   when (s^.curTxn /= Nothing) $ error "beginTxn: Nested transactions are not supported!"
@@ -126,6 +128,19 @@ endTxn extraDeps s = do
 
 getServerAddr :: Session -> String
 getServerAddr s = s^.serverAddr
+
+
+getKeys :: Serialize a
+        => Session -> ObjType {- TableName :: String -}
+        -> IO [a]
+getKeys s ot = do
+  let req :: Request () = ReqKeys ot
+  send (s^.server) [] $ encode req
+  responseBlob <- receive (s^.server)
+  let (ResKeys keys) = decodeResponse responseBlob
+  return $ foldl (\acc (Key bs) -> case decode bs of
+                                     Left _ -> acc
+                                     Right v -> v:acc) [] keys
 
 invoke :: (OperationClass on, Serialize arg, Serialize res)
        => Session -> Key -> on -> arg -> IO (res, Session)

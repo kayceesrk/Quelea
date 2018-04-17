@@ -130,6 +130,7 @@ data Request a =
     ReqOper (OperationPayload a)
   | ReqTxnCommit TxnID (S.Set TxnDep)
   | ReqSnapshot (S.Set (ObjType,Key))
+  | ReqKeys ObjType
 
 data Response = ResOper {
                   seqno  :: SeqNo, {- if an effect was produce (effect = Just _),
@@ -142,6 +143,7 @@ data Response = ResOper {
                   visibilitySet :: S.Set Addr }
               | ResSnapshot (M.Map (ObjType, Key) (S.Set (Addr, EffectVal)))
               | ResCommit
+              | ResKeys [Key]
 
 operationsTyConStr :: String
 operationsTyConStr = "Operation"

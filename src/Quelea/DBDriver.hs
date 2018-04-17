@@ -12,6 +12,7 @@ module Quelea.DBDriver (
   cqlReadAfterTime,
   cqlReadWithTime,
   cqlReadAfterTimeWithTime,
+  cqlGetDistinctKeys,
 
   cqlInsert,
   -- cqlInsertWithTime,
@@ -158,6 +159,12 @@ mkGlobalLockUpdate :: Query Write (UUID {- New TxnID -}, UUID {- ID -}, UUID {- 
 mkGlobalLockUpdate = "update GlobalLock set txnid = ? where id = ? if txnid = ?"
 
 -------------------------------------------------------------------------------
+
+cqlGetDistinctKeys :: TableName -> Consistency -> Cas [Key]
+cqlGetDistinctKeys tname c = do
+  let getDistinctKeys :: Query Rows () Key = query $ pack $ "select distinct objid from " ++ tname
+  r :: [Key] <- executeRows c getDistinctKeys ()
+  return r
 
 cqlReadAfterTime :: TableName -> Consistency -> Key -> UTCTime -> Double -> Cas [ReadRow]
 cqlReadAfterTime tname c k gcTime keepFrac = do
