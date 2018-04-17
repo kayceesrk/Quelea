@@ -90,8 +90,8 @@ inv1 wid = do
 {- Invariant corresponds to doNewOrderTxn -}
 {- District's NEXT_O_ID - 1 = max(OrderID) where OrderID's district is this
    District'd did and OrderID's warehouse is this district's warehouse(dwid) . -}
-inv2 :: WarehouseID -> DistrictID -> CSN (Bool)
-inv2 (WarehouseID did) (DistrictID dwid) = do
+inv2 :: DistrictID -> WarehouseID -> CSN (Bool)
+inv2 (DistrictID did) (WarehouseID dwid) = do
   ks_d::[(DistrictID, WarehouseID)] <- getKeys "DistrictEffect"
   ks_o::[(OrderID, DistrictID, WarehouseID)] <- getKeys "OrderEffect"
   max_oid::Int <- foldM (\ s (OrderID o_id, DistrictID o_d_id, WarehouseID o_w_id) ->
