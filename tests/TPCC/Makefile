@@ -4,7 +4,7 @@ BROKER=
 
 all: $(EXE) $(SCRIPTS)
 
-TPCC: TPCC1.hs
+TPCC: TPCC1.hs TPCCTxns.hs TPCCDefs.hs
 	ghc $(BROKER) -rtsopts -threaded TPCC1.hs -o $(EXE)
 
 clean:
