@@ -50,13 +50,12 @@ import Quelea.Contract
 import Quelea.TH
 import Debug.Trace
 import Data.DeriveTH
-import Data.UUID
 import Quelea.DBDriver
 import Data.List (groupBy, find)
 
 {-Warehouse Table : key (WarehouseID) -}
 
-newtype WarehouseID = WarehouseID UUID deriving (Eq, Ord)
+newtype WarehouseID = WarehouseID Int deriving (Eq, Ord)
 
 data WarehouseEffect = GetYtd_
                     | AddYtd_ Int{- Ytd -} deriving Eq
@@ -86,10 +85,10 @@ instance Effectish WarehouseEffect where
 
 {- District Table : key (WarehouseID, DistrictID) -}
 
-newtype DistrictID = DistrictID UUID deriving (Eq, Ord)
+newtype DistrictID = DistrictID Int deriving (Eq, Ord)
 
 data DistrictEffect = GetNextOID_
-                  | GetAndIncNextOID_ deriving Eq
+                    | GetAndIncNextOID_ deriving Eq
 
 $(derive makeSerialize ''DistrictID)
 $(derive makeSerialize ''DistrictEffect)
@@ -99,7 +98,7 @@ instance CasType DistrictEffect where
   getCas = get
   casType _ = CBlob
 
-getandIncNextOID :: [DistrictEffect] -> (Bool) -> ((Int), Maybe DistrictEffect)
+getandIncNextOID :: [DistrictEffect] -> Bool -> (Int, Maybe DistrictEffect)
 getandIncNextOID ops inc{-If set then increment-} =
   let v = foldl acc 0 ops
   in
@@ -113,7 +112,7 @@ instance Effectish DistrictEffect where
 
 {-Customer Table: key (CustomerID, DistrictID, WarehouseID) -}
 
-newtype CustomerID = CustomerID UUID deriving (Eq, Ord)
+newtype CustomerID = CustomerID Int deriving (Eq, Ord)
 
 data CustomerEffect = GetCustomerBal_
                     | AddCustomerBal_ Int{- Amt -} deriving Eq
@@ -163,9 +162,9 @@ instance Effectish HistoryEffect where
 newtype OrderID = OrderID Int deriving (Eq, Ord)
 
 data OrderEffect = GetOlCnt_
-                  | AddOrder_ Int {- o_ol_cnt -}
-                  | CheckCarrierSet_
-                  | SetCarrier_ deriving Eq
+                 | AddOrder_ Int {- o_ol_cnt -}
+                 | CheckCarrierSet_
+                 | SetCarrier_ deriving (Eq, Show)
 
 $(derive makeSerialize ''OrderID)
 

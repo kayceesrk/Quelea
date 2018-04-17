@@ -105,9 +105,6 @@ fePort = 5558
 bePort :: Int
 bePort = 5559
 
-tableName :: String
-tableName = "TPCC"
-
 numOpsPerRound :: Num a => a
 numOpsPerRound = 4
 
@@ -222,10 +219,10 @@ run args = do
       putStrLn $ "Latency (s) = " ++ (show $ (totalLat / fromIntegral threads))
     Create -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ createTable tableName
+      runCas pool $ createTables
     Daemon -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ createTable tableName
+      runCas pool $ createTables
       progName <- getExecutablePath
       putStrLn "Driver : Starting broker"
       b <- runCommand $ progName ++ " +RTS " ++ (rtsArgs args)
@@ -255,31 +252,44 @@ run args = do
       threadDelay (termWait * 1000000)
       -- Woken up..
       mapM_ terminateProcess [b,s,c]
-      runCas pool $ dropTable tableName
+      runCas pool $ dropTables
     Drop -> do
       pool <- newPool [("localhost","9042")] keyspace Nothing
-      runCas pool $ dropTable tableName
+      runCas pool $ dropTables
 
 reportSignal :: Pool -> [ProcessHandle] -> ThreadId -> IO ()
 reportSignal pool procList mainTid = do
   mapM_ terminateProcess procList
-  runCas pool $ dropTable tableName
+  runCas pool $ dropTables
   killThread mainTid
 
 clientCore :: Args -> Int -> UTCTime -- default arguments
            -> NominalDiffTime -> Int -> CSN NominalDiffTime
 clientCore args delay someTime avgLat round = do
-  -- Generate key
-  key <- liftIO $ (mkKey . (\i -> i `mod` (1::Int))) <$> randomIO
+  -- Generate info
+  did <- DistrictID <$> mkInt 100
+  wid <- WarehouseID <$> mkInt 1000
+  cid <- CustomerID <$> mkInt 10000
+  h_amt <- mkInt 10000
+  ireq <- mkInt 10
   -- Delay thread if required
   when (delay /= 0) $ liftIO $ threadDelay delay
   -- Perform the operations
   t1 <- getNow args someTime
+  liftIO $ putStrLn "doNewOrderTxn"
+  oid <- doNewOrderTxn did wid ireq
+  liftIO $ putStrLn "doDeliveryTxn"
+  doDeliveryTxn wid did oid
+  liftIO $ putStrLn "doPaymentTxn"
+  doPaymentTxn h_amt wid did cid
   t2 <- getNow args someTime
   -- Calculate new latency
   let timeDiff = diffUTCTime t2 t1
   let newAvgLat = ((timeDiff / numOpsPerRound) + (avgLat * (fromIntegral $ round - 1))) / (fromIntegral round)
   return newAvgLat
+
+mkInt :: Int -> CSN Int
+mkInt max = liftIO $ (\i -> i `mod` max) <$> randomIO
 
 getNow :: Args -> UTCTime -> CSN UTCTime
 getNow args someTime =

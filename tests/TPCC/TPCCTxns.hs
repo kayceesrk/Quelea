@@ -34,7 +34,7 @@ import System.IO (hFlush, stdout)
       a1 <- checkTxn "doNewOrderTxn" doNewOrderTxnCtrt
       a2 <- checkTxn "doPaymentTxn" doPaymentTxnCtrt
       a3 <- checkTxn "doDeliveryTxn" doDeliveryTxnCtrt
-      le <- return $ (ListE::[Exp] -> Exp) [a1]
+      le <- return $ (ListE::[Exp] -> Exp) [a1, a2, a3]
       t2 <- runIO getCurrentTime
       _ <- runIO $ putStrLn $ "----------------------------------------------------------"
       _ <- runIO $ putStrLn $ "Classification of transaction contracts completed in "++
@@ -43,14 +43,18 @@ import System.IO (hFlush, stdout)
       _ <- runIO $ hFlush stdout
       return le)
 
-doNewOrderTxn :: DistrictID -> WarehouseID -> Int -> CSN (Int)
+doNewOrderTxn :: DistrictID -> WarehouseID -> Int -> CSN OrderID
 doNewOrderTxn did wid ireq =
   let ireqs = [1..ireq] in
   atomically (doNewOrderTxnCtrtA) $ do
-    nextoid::Int <- invoke (mkKey (did,wid)) GetAndIncNextOID ()
+    liftIO $ putStrLn "GetAndIncNextOID"
+    nextoid::Int <- invoke (mkKey (did,wid)) GetAndIncNextOID True
+    liftIO $ putStrLn "AddOrder"
     r::() <- invoke (mkKey (nextoid,did,wid)) AddOrder (length ireqs)
-    r::() <- foldM (\ _ x -> invoke (mkKey (nextoid,did,wid,x)) AddOrderline ()) () ireqs
-    return nextoid
+    r::() <- foldM (\ _ x -> do
+               liftIO $ putStrLn "AddOrderLine"
+               invoke (mkKey (nextoid,did,wid,x)) AddOrderline ()) () ireqs
+    return $ OrderID nextoid
 
 doPaymentTxn :: Int -> WarehouseID -> DistrictID -> CustomerID -> CSN ()
 doPaymentTxn h_amt wid cdid cid =
